@@ -973,6 +973,7 @@ the agent to write. So:
 | What is heard | Text for the input: never sent by itself |
 | A code block's Run button | Only your click types a block into your terminal, and only a block whose every character shows as itself: an answer cannot run anything by itself, nor hide a part of what it runs. What the agent hears back is that block's output, quoted, and nothing you typed |
 | The window stays the app | It cannot be taken to another address, and opens no further windows |
+| What the app starts | The daemon, `pine init`, the login shell it asks for your environment, and the shell in the terminal get none of the app's open files, sockets and pipes. On Linux a program keeps whatever its parent did not mark to be closed, and Chromium marks little: there each starts behind `bash`, which closes all but the three standard ones and then becomes the program. So nothing you start in the terminal, and nothing a profile leaves running (`ssh-agent`), holds the app's files after it has quit |
 | The agent's browser beside a conversation | With this computer's pine, the page itself: the app has the agent's browser, a view of its own in the window laid over the panel (its own session, sandboxed, nothing of the app's in it), which you use as any browser and the agent drives at the same time. All of it goes through pine's guard, the same as the browser pine starts itself, which the agent goes back to when the app is closed; logins made in one are not in the other. Its address and titles are text in the app. While a dialog or a menu of the app's lies over the panel, a still picture of the page stands in for it. With another machine's pine, on the phone and in the web client: a picture, drawn, and the app hands the daemon what you did in it (places, keys, an address), which the browser's own server checks piece by piece |
 | Browser access | Off until you turn it on. Then the app's SSH server of its own (not the system's SSH server, Remote Login on macOS) accepts only the keys you allowed at this computer, by key and never by password, and gives them this computer's pine and nothing else; at most 8 connections at a time, and one that has not signed in within 20 seconds is closed. A device's name is shown as plain text, 60 characters at most. See "Browser access" |
 | On the local network | While browser access and Visible on this network are on, a Bonjour record (`_pine._tcp`) named "Pine" and the start of this computer's key fingerprint, never its name, with that fingerprint, the service's address and a random word that changes every five minutes, which a request without a code has to name. Nothing listens behind it: a phone still goes through the service and checks the key, and the four digits are what you compare. Requests without a code are one at a time and paused after refusals. While visibility is off the app has no socket on port 5353 |
@@ -1042,7 +1043,8 @@ desktop/
                    behind the guard of the browser server that drives it through a WebSocket with a word
     service.ts     finds node and pine, runs `pine service`, keeps the daemon it started
     fds.ts         what a program the app starts gets of the app's own open files: on Linux, where
-                   Chromium leaves them open across a start, nothing but its stdio (`sealed`)
+                   Chromium leaves them open across a start, nothing but its stdio: it starts
+                   behind bash, which closes the rest and becomes the program (`withoutFds`)
     command.ts     `pine` for a terminal: the link into the shell's PATH, made and removed (on
                    Windows only looked for: the installer puts it there)
     terminal.ts, shell-hooks.ts  the owner's terminal beside a conversation, and the hooks of zsh,
@@ -1120,7 +1122,7 @@ desktop/
                    update-feed.ts (the names of a release's zip and update feed, and the feed)
   test/            the app from end to end, driven through its real window, which is drawn
                    and never put on the screen; command.test.ts, updates.test.ts,
-                   daemon.test.ts and preview.test.ts need no window.
+                   daemon.test.ts, preview.test.ts and fds.test.ts need no window.
                    support/: the build a test starts, without a screen (app.ts), the one
                    window of app.test.ts and app-around.test.ts (window.ts), and a daemon
                    of the test's own told from another run's by its token (daemon.ts)
