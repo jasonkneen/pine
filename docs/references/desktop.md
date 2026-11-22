@@ -85,7 +85,7 @@ web tools drive. It asks for each where it is missing.
 
 | What the app finds | What it does |
 |---|---|
-| No pine home | It offers to set pine up (`pine init`): the example home is copied, and the browser is fetched (about 600 MB, once) |
+| No pine home | It offers to set pine up (`pine init`): the example home is copied, and the browser is fetched (about 600 MB, once). On Linux `pine init` also sets up the sandbox, which needs an administrator (bubblewrap, and on some systems a rule for AppArmor): the app runs none of that. The commands are shown, to be run in a terminal, and then **Try again**. Until they have run, pine works without the sandbox |
 | The welcome | The app opens on the main agent's own conversation (`main` in a new home, with pine's mark as its picture), which begins with pine's welcome: that the main agent is pine's administrator and the one to ask, that agents come first (ask it for one for each purpose: coding, work, automation, chat), that the first conversation is kept and the others are cleared after a while unless pinned, the things pine is for (chatting, code, a folder, acting on events), a prompt to try (one that watches the Downloads folder, which puts its words into the input), and where pine keeps everything (its home, shown in the Finder with a click). pine wrote it, and it is never sent to a model. The terminal UI shows the same there while nothing was said in it yet |
 | Nothing to answer with | A new home has nothing to run on: the agent's card at the top of a conversation says **Connect a model first**, with a button to Settings > Models (the main agent's too, above pine's welcome); that page lists every agent that cannot answer, with the reason (nothing connected yet, or nobody signed in to its provider). A message sent meanwhile says so; send it again once a model is there |
 | A sign-in in Settings > Models | A Claude, ChatGPT or Copilot subscription is signed in to through the browser (**Sign in**), any provider with an API key. Where the choice in force cannot answer, pine switches to the provider's usual one (pi's choice) and the dialog says which, with **Another one…**; so does adding a server of your own. Otherwise nothing switches by itself and the dialog offers **Choose the model your agents run on**. The page keeps it (`defaults.model`) with **Change** |
@@ -1128,6 +1128,7 @@ desktop/
   test/            the app from end to end, driven through its real window, which is drawn
                    and never put on the screen; command.test.ts, updates.test.ts,
                    daemon.test.ts, preview.test.ts and fds.test.ts need no window.
+                   setup.test.ts starts the app on a stand-in for pine with no home yet.
                    support/: the build a test starts, without a screen (app.ts), the one
                    window of app.test.ts and app-around.test.ts (window.ts), and a daemon
                    of the test's own told from another run's by its token (daemon.ts)

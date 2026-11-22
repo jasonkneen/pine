@@ -21,7 +21,8 @@ const bridge = {
 	/** What is said of a newer app, each time the app's own download of it moves on. */
 	onUpdate: on("pine:update-state"),
 	restart: () => ipcRenderer.invoke("pine:restart"),
-	init: () => ipcRenderer.invoke("pine:init"),
+	/** `pine init`: its exit code, or "administrator" when it set up everything but what an administrator has to run (Linux), which it printed. */
+	init: (): Promise<number | "administrator"> => ipcRenderer.invoke("pine:init"),
 	/** Fetch the browser build this pine drives (`pine browser-install`); what it prints comes as init lines. */
 	browserInstall: () => ipcRenderer.invoke("pine:browser"),
 	prefs: (change: Record<string, unknown>) => ipcRenderer.invoke("pine:prefs", change),
