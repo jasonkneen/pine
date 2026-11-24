@@ -389,7 +389,8 @@ when a device asks are not tied to that section: they show wherever you are in t
 
 A phone with the Pine app on the same network finds this computer and asks; a browser on this
 computer opens Pine by a link. Either way you still compare four digits and press Allow here
-([ADR 0005](../adr/0005-pairing-from-nearby-devices.md)).
+([ADR 0005](../adr/0005-pairing-from-nearby-devices.md)). To stop phones on the same network from
+seeing this computer at all, turn `Visible on this network` off.
 
 | What | How |
 |---|---|
@@ -768,7 +769,7 @@ and the agent's changes together.
 | What the agent knows | What you do there, it sees when it next looks at the page. When you took the browser to another page, the agent is told so before it acts, and does not act on a page it has not seen ([mcp.md](mcp.md), "Seeing the browser, and logging in yourself") |
 | No page | Until the agent opens one, or you open an address, there is nothing to show. The browser of a conversation closes when the conversation has been idle for a while (`idleMs`, 15 minutes) and when pine restarts. Opening an address starts it again, without a turn of the agent's; its logins are kept |
 | Running in this conversation | While no page is open, the view lists the ports of the programs this conversation left running (a dev server the agent started), as under Running. A click opens `localhost:<port>` in this browser |
-| Opened by the agent before | While no page is open, the view lists the last addresses the agent opened in this conversation, newest first, at most 12. A click opens one. Only a page that came is listed, and never an address the agent was refused. The list is the conversation's: it goes when the conversation is reset or removed |
+| Opened by the agent before | While no page is open, the view lists the last addresses the agent opened in this conversation, newest first, at most 12. A click opens one: the way back to the page the agent had open when the browser is empty. Only a page that came is listed, and never an address the agent was refused. The list is the conversation's: it goes when the conversation is reset or removed |
 
 A page the agent made for you to use (a board, switches, a form) is shown here like any other,
 and what you press on it wakes the agent ([interfaces.md](interfaces.md)).
