@@ -337,11 +337,16 @@ jobs:
       - if: steps.signing.outputs.ready == 'true'
         name: Start it once
         run: node desktop/scripts/smoke.mjs
+      # Under a name without a wildcard: a wildcard in the path would keep the folder's own name
+      # (win-unpacked, win-arm64-unpacked) inside the artifact, and SignPath's configuration
+      # expects Pine.exe at the top of each processor's folder.
+      - if: steps.signing.outputs.ready == 'true'
+        run: mv desktop/release/win-*unpacked desktop/release/app
       - if: steps.signing.outputs.ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pine-windows-${{ matrix.arch }}
-          path: desktop/release/win-*unpacked/
+          path: desktop/release/app/
           retention-days: 3
 
   app-windows-sign:
