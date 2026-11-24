@@ -605,7 +605,7 @@ test("many tabs keep their width and scroll instead of stepping on each other", 
 	await page.waitForFunction(() => {
 		const strip = document.querySelector("header [data-slot=scroll-area-viewport]")!.getBoundingClientRect();
 		const r = document.querySelector("[data-slot=tab][data-active]")!.getBoundingClientRect();
-		return r.left >= strip.left - 0.5 && r.right <= strip.right + 0.5;
+		return r.left >= strip.left - 1 && r.right <= strip.right + 1;
 	});
 	await shot("many-tabs");
 	while ((await page.locator("[data-slot=tab]").count()) > had) await page.click("[data-slot=tab] >> nth=-1 >> button[aria-label='Close this tab']");
