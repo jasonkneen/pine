@@ -285,16 +285,19 @@ test("a message for a busy session can be queued or steered into the running tas
 test("a steered message can be sent now: the step under way stops, the work reads it and goes on", async () => {
 	const h = await harness({ agents: { main: {} } });
 	const started = Date.now();
-	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 4; echo slept" } }] }, { text: "first done" }]), ...owner });
+	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 6; echo slept" } }] }, { text: "first done" }]), ...owner });
 	await until(() => h.pine.bus.query({ topic: "agent/main/started" }).length === 1 && h.mock.state.requests.length >= 1);
 	await sleep(150);
 	const steered = h.pine.agents.submit({ agent: "main", prompt: "STATUS?", whenBusy: "steer", ...owner });
 	assert.equal(steered.meta.steered, first.id);
 	assert.equal(h.pine.tasks.get(steered.id)!.meta.read, undefined, "the command still runs: not read yet");
+	const sent = Date.now();
 	assert.equal(h.pine.agents.sendNow(steered.id), true);
 	const r = await h.pine.agents.wait(first.id);
 	assert.equal(r.status, "done", String(r.error));
-	assert.ok(Date.now() - started < 3500, "the command was stopped, not waited for");
+	// Counted from the press, not from the start, which a busy computer makes long: a command that was
+	// waited for would end some six seconds after it began.
+	assert.ok(Date.now() - sent < 4000, `the command was stopped, not waited for (${Date.now() - sent} ms after the press, ${Date.now() - started} ms in all)`);
 	// pi may hand the message over itself as the step is cut off; either way it comes before pine's words.
 	const said = JSON.stringify(h.mock.state.requests.at(-1).body.messages.slice(-3));
 	assert.ok(said.includes("STATUS?") && said.includes("Your owner stopped your work") && said.indexOf("STATUS?") > said.indexOf("Command aborted"), `the work went on with the message: ${said}`);

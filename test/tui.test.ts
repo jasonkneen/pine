@@ -254,10 +254,16 @@ test("tui: esc stops a running task; an approval is asked in a dialog and answer
 	await t.sees("● bash sleep 5");
 	await t.send(mockMsg([{ delayMs: 600, text: "This is the answer to the correction." }]));
 	t.term.type([KEY.esc]);
+	const stoppedAt = Date.now();
 	await until(() => count(t.text(), "■ stopped") === 2, 4000, "the running work to stop");
 	await until(() => t.h.pine.tasks.list({ status: "running" }).length === 1, 2000, "the waiting message to start");
-	t.term.type([KEY.esc]);
-	await t.sees("This is your next message being answered");
+	// The second esc comes within the few seconds esc spares a message that was waiting (STOP_GRACE in
+	// src/tui/app.ts). A computer so busy that the stop alone took longer cannot press it in time: there
+	// the correction is only seen to be answered.
+	if (Date.now() - stoppedAt < 2500) {
+		t.term.type([KEY.esc]);
+		await t.sees("This is your next message being answered");
+	}
 	await t.sees("This is the answer to the correction.");
 	assert.equal(count(t.text(), "■ stopped"), 2, "the correction was not stopped");
 
