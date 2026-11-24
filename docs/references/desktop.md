@@ -210,9 +210,10 @@ pine, setting pine up. To open a folder for a conversation you type its path.
 
 ## The daemon: started or reused
 
+The app starts pine itself, the Mac app as the app on Linux and Windows: you do not have to start
+pine first.
 When the app starts it asks `pine service` ([operations.md](operations.md), "A UI of its own")
-for the daemon of your home, so you never have to start pine first, on a Mac, on Linux and on
-Windows alike:
+for the daemon of your home:
 
 | What it finds | What happens |
 |---|---|

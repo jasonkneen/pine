@@ -318,8 +318,8 @@ list.
 
 The terminal UI starts a daemon inside itself when none runs. A UI that is another program (a
 desktop app, an editor plug-in) gets the same with `pine service`: it starts the daemon where none
-runs, and says where it answers and its token. The UI is then a client of the control API like
-every other:
+runs, and says where it answers and its token. That is how the Pine app, a desktop app, starts the
+daemon and gets its token. The UI is then a client of the control API like every other:
 
 ```bash
 pine service
