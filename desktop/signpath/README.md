@@ -44,7 +44,8 @@ four numbers Windows keeps beside it (0.41.0.0). Should SignPath compare the fou
    | `SIGNPATH_PROJECT_SLUG`    | `pine`                                             |
    | `SIGNPATH_POLICY_SLUG`     | `test-signing`                                     |
 
-   Without all four the Windows jobs build nothing and say so; with only some they fail.
+   Without all four a release's installers are uploaded unsigned and the job says so, and a trial
+   fails; with only some, both fail.
 5. **The trial:** `gh workflow run release.yml --ref <branch> -f version=0.0.1 -f
    signing_trial=true` packs both apps from that branch, has them and their installers signed with
    the test certificate (no approval) and keeps the result as an artifact of the run. SignPath

@@ -25,7 +25,7 @@ name: Release
 # A release from main also gets the Pine app for Linux (an AppImage and a deb for x64 and arm64,
 # with SHA256SUMS and GitHub's build attestation; no secrets) and for Windows (an installer for
 # x64 and arm64, signed through SignPath Foundation: four secrets, listed above the job app-windows;
-# desktop/signpath/README.md says how it is set up).
+# desktop/signpath/README.md says how it is set up; without them the installers go out unsigned).
 #
 # A release from main also gets the Android app (mobile/), attached as Pine-<version>.apk, with
 # versionName the release's version and versionCode major*1000000 + minor*1000 + patch
@@ -273,8 +273,8 @@ jobs:
   #   SIGNPATH_API_TOKEN, SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG
   # and the project at signpath.io needs the two artifact configurations in desktop/signpath/
   # (slugs "app-folder" and "installer"). desktop/signpath/README.md says how it is set up.
-  # Without the secrets nothing is built, and the job says so: an unsigned installer is one Windows
-  # warns about on every download.
+  # Without the secrets the installers are uploaded unsigned, and the job says so: Windows warns
+  # about them ("More info", then "Run anyway" installs one) until the release they are signed in.
   app-windows:
     needs: release
     if: always() && (github.event_name == 'workflow_dispatch' || needs.release.outputs.channel == 'latest')
@@ -309,14 +309,18 @@ jobs:
           for name in SIGNPATH_API_TOKEN SIGNPATH_ORGANIZATION_ID SIGNPATH_PROJECT_SLUG SIGNPATH_POLICY_SLUG; do
             if [ -z "$(printenv "$name")" ]; then missing="$missing $name"; fi
           done
-          if [ "$(echo $missing | wc -w)" -eq 4 ]; then
-            echo "::notice::The Pine app for Windows was not built: the environment \"$SECRETS_IN\" has no SignPath secrets yet (see release.yml)."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
+          # Without the secrets a release's installers go out unsigned (Windows warns, "Run anyway"
+          # installs them), and from the first release with them on, signed. A trial is only signing.
+          if [ "$(echo $missing | wc -w)" -eq 4 ] && [ "$TRIAL" != "true" ]; then
+            echo "::notice::The Pine app for Windows is not signed: the environment \"$SECRETS_IN\" has no SignPath secrets yet (desktop/signpath/README.md). Its installers are uploaded unsigned."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "sign=false" >> "$GITHUB_OUTPUT"
           elif [ -n "$missing" ]; then
             echo "::error::The Pine app for Windows cannot be signed: these secrets are missing in the environment \"$SECRETS_IN\":$missing"
             exit 1
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "sign=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.signing.outputs.ready == 'true'
         run: git config --global core.autocrlf false
@@ -382,14 +386,18 @@ jobs:
           for name in SIGNPATH_API_TOKEN SIGNPATH_ORGANIZATION_ID SIGNPATH_PROJECT_SLUG SIGNPATH_POLICY_SLUG; do
             if [ -z "$(printenv "$name")" ]; then missing="$missing $name"; fi
           done
-          if [ "$(echo $missing | wc -w)" -eq 4 ]; then
-            echo "::notice::The Pine app for Windows was not built: the environment \"$SECRETS_IN\" has no SignPath secrets yet (see release.yml)."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
+          # Without the secrets a release's installers go out unsigned (Windows warns, "Run anyway"
+          # installs them), and from the first release with them on, signed. A trial is only signing.
+          if [ "$(echo $missing | wc -w)" -eq 4 ] && [ "$TRIAL" != "true" ]; then
+            echo "::notice::The Pine app for Windows is not signed: the environment \"$SECRETS_IN\" has no SignPath secrets yet (desktop/signpath/README.md). Its installers are uploaded unsigned."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "sign=false" >> "$GITHUB_OUTPUT"
           elif [ -n "$missing" ]; then
             echo "::error::The Pine app for Windows cannot be signed: these secrets are missing in the environment \"$SECRETS_IN\":$missing"
             exit 1
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "sign=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.signing.outputs.ready == 'true'
         run: git config --global core.autocrlf false
@@ -416,14 +424,14 @@ jobs:
         with:
           name: pine-windows-arm64
           path: desktop/release/unsigned/arm64
-      - if: steps.signing.outputs.ready == 'true'
+      - if: steps.signing.outputs.sign == 'true'
         id: unsigned
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pine-windows-unsigned
           path: desktop/release/unsigned/
           retention-days: 3
-      - if: steps.signing.outputs.ready == 'true'
+      - if: steps.signing.outputs.sign == 'true'
         name: Sign both folders (waits for the approval at signpath.io)
         uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
         with:
@@ -439,22 +447,23 @@ jobs:
           wait-for-completion-timeout-in-seconds: 7200
           output-artifact-directory: desktop/release/signed
       - if: steps.signing.outputs.ready == 'true'
-        name: The installers, from the signed folders
+        name: The installers, from the signed folders (unsigned ones without the secrets)
         run: |
-          node desktop/scripts/pack.mjs --prepackaged desktop/release/signed/x64 --arch x64
-          node desktop/scripts/pack.mjs --prepackaged desktop/release/signed/arm64 --arch arm64
+          node desktop/scripts/pack.mjs --prepackaged desktop/release/$FOLDERS/x64 --arch x64
+          node desktop/scripts/pack.mjs --prepackaged desktop/release/$FOLDERS/arm64 --arch arm64
           mkdir -p desktop/release/installers
           mv "desktop/release/Pine-$VERSION-x64-setup.exe" "desktop/release/Pine-$VERSION-arm64-setup.exe" desktop/release/installers/
         env:
           PINE_VERSION: ${{ env.VERSION }}
-      - if: steps.signing.outputs.ready == 'true'
+          FOLDERS: ${{ steps.signing.outputs.sign == 'true' && 'signed' || 'unsigned' }}
+      - if: steps.signing.outputs.sign == 'true'
         id: installers
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pine-windows-installers
           path: desktop/release/installers/
           retention-days: 3
-      - if: steps.signing.outputs.ready == 'true'
+      - if: steps.signing.outputs.sign == 'true'
         name: Sign both installers (waits for the approval at signpath.io)
         uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
         with:
@@ -469,7 +478,7 @@ jobs:
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: 7200
           output-artifact-directory: desktop/release/out
-      - if: steps.signing.outputs.ready == 'true'
+      - if: steps.signing.outputs.sign == 'true'
         name: What another Windows will say to it
         shell: pwsh
         run: |
@@ -494,9 +503,10 @@ jobs:
           path: desktop/release/out/
           retention-days: 3
       - if: steps.signing.outputs.ready == 'true' && env.TRIAL != 'true'
-        run: gh release upload "v$VERSION" "desktop/release/out/Pine-$VERSION-x64-setup.exe" "desktop/release/out/Pine-$VERSION-arm64-setup.exe" --clobber
+        run: gh release upload "v$VERSION" "desktop/release/$FROM/Pine-$VERSION-x64-setup.exe" "desktop/release/$FROM/Pine-$VERSION-arm64-setup.exe" --clobber
         env:
           GH_TOKEN: ${{ github.token }}
+          FROM: ${{ steps.signing.outputs.sign == 'true' && 'out' || 'installers' }}
 
   # The Android app of a release (mobile/): a signed APK attached to the release, next to the disk images.
   android:

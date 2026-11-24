@@ -939,7 +939,7 @@ A release from `main` gets the Pine app for Linux (`app-linux`: an AppImage and 
 arm64, started under a virtual screen, with checksums and GitHub's attestation) and for Windows
 (`app-windows` packs and starts each, `app-windows-sign` has both folders and then both installers
 signed through SignPath Foundation: two approvals a release at signpath.io; four secrets in the
-environment `release`, listed above the job; without them nothing is built). Only pine's own
+environment `release`, listed above the job; without them the installers go out unsigned). Only pine's own
 programs are signed (`desktop/signpath/`, whose README says how it is set up), and each has to say
 "Pine" and the release's version: the `pack` job of `test.yml` checks that on Windows. The signing
 is tried from any branch without a release (`gh workflow run release.yml --ref <branch> -f
