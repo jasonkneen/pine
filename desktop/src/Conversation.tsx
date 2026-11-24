@@ -3,8 +3,8 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
-import { Fragment, memo, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { Fragment, memo, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment, AttachmentContent, AttachmentGroup, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
@@ -24,11 +24,13 @@ import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemFooter, It
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
-import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
+import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toggle } from "@/components/ui/toggle";
 import { HoverTooltip } from "@/components/hover-tooltip";
+import { QuoteChip } from "@/components/quote-chip";
+import { SelectionToolbar, SelectionToolbarButton, useTextSelection } from "@/components/selection-toolbar";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { cn } from "@/lib/utils";
@@ -37,9 +39,10 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
-import { type Item, type Part, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
+import { sameSource } from "../../src/quotes.ts";
 
 /** A note's tone is information (a warning, a failure), so it colors the note's icon. */
 const NOTE_TONE: Record<string, string | undefined> = { warn: "text-warn", bad: "text-destructive", good: "text-primary", accent: "text-primary" };
@@ -255,7 +258,7 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 
 /** The owner's turn (or a task's prompt): a bubble on the owner's side, with the files it brought. */
 /** A message of the owner's. With `menu`, a right click on it offers to branch from it. */
-export function OwnerTurn({ text, from, files, menu, skeleton, footer }: { text?: string; from?: string; files?: string[]; menu?: () => void; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
+export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, onQuote, quoteTask }: { text?: string; from?: string; files?: string[]; menu?: () => void; quotes?: SentQuote[]; onQuote?: (quote: SentQuote) => void; quoteTask?: number; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
 	if (skeleton)
 		return (
 			<Message align="end" data-item="user-skeleton">
@@ -264,12 +267,22 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer }: { text?
 				</MessageContent>
 			</Message>
 		);
+	const body = text ?? "";
 	return (
-		<Message align="end" data-item="user" onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
+		<Message align="end" data-item="user" data-quote-task={quoteTask} data-quote-part={quoteTask === undefined ? undefined : "prompt"} onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
 			<MessageContent>
 				{from ? <MessageHeader>{from}</MessageHeader> : null}
 				<Bubble align="end" variant="muted">
-					<BubbleContent className="text-base leading-snug whitespace-pre-wrap select-text">{text}</BubbleContent>
+					<BubbleContent className="text-base leading-snug whitespace-pre-wrap select-text">
+						{quotes?.length ? (
+							<div className={cn("flex flex-wrap gap-1.5 whitespace-normal", body.trim() && "mb-2")}>
+								{quotes.map((q, i) => (
+									<QuoteChip key={i} text={q.text} className="bg-background" onOpen={onQuote ? () => onQuote(q) : undefined} />
+								))}
+							</div>
+						) : null}
+						{body}
+					</BubbleContent>
 				</Bubble>
 				{files?.length ? (
 					<AttachmentGroup>
@@ -454,11 +467,11 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "user": {
 			const task = tab.kind === "chat" ? item.task : undefined;
 			const steer = tab.kind === "chat" ? item.steer : undefined;
-			return <OwnerTurn text={item.text} from={item.from} files={item.files} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
+			return <OwnerTurn text={item.text} from={item.from} files={item.files} quotes={item.quotes} quoteTask={task ?? steer?.task} onQuote={tab.kind === "chat" ? (q) => store.showQuote(tab.key, q.source) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
 		}
 		case "answer":
 			return (
-				<Message data-item="answer" className="text-base leading-snug">
+				<Message data-item="answer" data-quote-task={item.task} data-quote-part="answer" className="text-base leading-snug">
 					<MessageContent>
 						<Markdown text={item.text} live={item.live} where={{ agent: item.agent, session: tab.kind === "chat" ? tab.session : undefined, id: `${tab.id}:${item.id}`, arrived: item.arrived }} />
 					</MessageContent>
@@ -642,7 +655,7 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 	const h = has?.holdings;
 	const counts: Array<[string, number]> = h ? [["skill", h.skills.length], ["event source", h.sources.length], ["schedule", h.schedules.length], ["MCP server", h.servers.length], ["conversation", h.conversations.length]] : [];
 	return (
-		<Empty>
+		<Empty data-quote-source="welcome">
 			<EmptyHeader>
 				<EmptyMedia>
 					<AgentAvatar agent={{ id: tab.agent, color: info?.color, main: info?.main }} size="lg" />
@@ -933,6 +946,52 @@ function lastOwnerMessage(items: Item[]): number {
 	return -1;
 }
 
+function selectionSource(root: HTMLElement | null): QuoteSource | undefined {
+	const sel = window.getSelection();
+	if (!root || !sel?.rangeCount) return undefined;
+	const node = sel.getRangeAt(0).startContainer;
+	const el = node instanceof Element ? node : node.parentElement;
+	if (!el || !root.contains(el)) return undefined;
+	const msg = el.closest<HTMLElement>("[data-quote-task]");
+	if (msg) {
+		const task = Number(msg.dataset.quoteTask);
+		const part = msg.dataset.quotePart;
+		return Number.isSafeInteger(task) && (part === "prompt" || part === "answer") ? { task, part } : undefined;
+	}
+	const place = el.closest<HTMLElement>("[data-quote-source]")?.dataset.quoteSource;
+	return place === "letter" || place === "welcome" ? place : undefined;
+}
+
+function quoteTarget(root: HTMLElement | null | undefined, source: QuoteSource): HTMLElement | null | undefined {
+	return root?.querySelector<HTMLElement>(typeof source === "string" ? `[data-quote-source="${source}"]` : `[data-quote-task="${source.task}"][data-quote-part="${source.part}"]`);
+}
+
+function QuoteJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null> }) {
+	const { scrollToMessage, scrollToStart } = useMessageScroller();
+	const go = () => {
+		const want = store.pendingQuote;
+		if (!want || want.key !== tab.key || store.active !== tab) return;
+		store.pendingQuote = undefined;
+		const el = quoteTarget(root.current, want.source);
+		if (!el) return store.flash("The quoted message is no longer in this conversation.", "muted");
+		const row = typeof want.source === "string" ? undefined : el.closest<HTMLElement>("[data-message-id]");
+		if (row?.dataset.messageId) scrollToMessage(row.dataset.messageId, { align: "center", behavior: "smooth" });
+		else scrollToStart({ behavior: "smooth" });
+		(row ?? el).animate(
+			[
+				{ borderRadius: "0.75rem", backgroundColor: "color-mix(in oklab, var(--primary) 12%, transparent)", boxShadow: "inset 0 0 0 2px color-mix(in oklab, var(--primary) 45%, transparent)" },
+				{ borderRadius: "0.75rem", backgroundColor: "transparent", boxShadow: "inset 0 0 0 2px transparent" },
+			],
+			{ duration: 1500, delay: 250, easing: "ease-out", fill: "backwards" },
+		);
+	};
+	useSignal("show-quote", go);
+	useEffect(() => {
+		if (store.pendingQuote?.key === tab.key) requestAnimationFrame(go);
+	}, []);
+	return null;
+}
+
 export function Conversation({ tab }: { tab: Tab }) {
 	useModel(tab);
 	// It opens by a key, and by itself when the conversation was found by words that are in it.
@@ -952,6 +1011,19 @@ export function Conversation({ tab }: { tab: Tab }) {
 	// The words are marked once what was said is on the page.
 	const loaded = tab.loaded;
 	const scroller = useRef<HTMLDivElement>(null);
+	const frame = useRef<HTMLDivElement>(null);
+	const [selected, unselect] = useTextSelection(scroller);
+	const source = selected ? selectionSource(scroller.current) : undefined;
+	const quote = () => {
+		if (!selected || !source) return;
+		const text = selected.text.trim();
+		if (!text) return;
+		if (!tab.quotes.some((q) => q.text === text && sameSource(q.source, source))) tab.quotes.push({ id: quoteId(), text, tab: tab.key, source });
+		tab.touch();
+		window.getSelection()?.removeAllRanges();
+		unselect();
+		store.ask_("focus-input");
+	};
 	// What the conversation held when this view of it was opened: its history, or what was said while another tab
 	// was in front. Message Scroller goes to a message of the owner's when it arrives (`scrollAnchor`), and takes
 	// for arrived whichever such message it has not gone to yet. So one that was there from the start is no
@@ -962,8 +1034,13 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const chat = tab.kind === "chat";
 	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
-		<div className="relative flex min-w-85 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
+		<div ref={frame} className="relative flex min-w-85 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
 			<ConvHead tab={tab} />
+			{selected && chat && source ? (
+				<SelectionToolbar rect={selected.rect} bounds={frame}>
+					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={quote} />
+				</SelectionToolbar>
+			) : null}
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}
 			{!loaded ? (
 				<ConversationSkeleton />
@@ -971,6 +1048,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 				// Message Scroller follows what arrives while the reader is at the end, holds still when
 				// they went up, and brings them back with its button. A tab opens at its end.
 				<MessageScrollerProvider autoScroll defaultScrollPosition="end">
+					<QuoteJump tab={tab} root={scroller} />
 					<MessageScroller className="flex-1">
 						<MessageScrollerViewport ref={scroller}>
 							{/* The column of the conversation, under the head and above the input. */}
@@ -983,7 +1061,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 												<Welcome tab={tab} />
 											</MessageScrollerItem>
 										) : null}
-										<MessageScrollerItem>
+										<MessageScrollerItem data-quote-source="letter">
 											<Letter tab={tab} />
 										</MessageScrollerItem>
 									</>

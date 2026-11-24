@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
 import { HoverTooltip } from "@/components/hover-tooltip";
+import { QuoteChip } from "@/components/quote-chip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "usehooks-ts";
@@ -193,10 +194,11 @@ export function Composer({ tab }: { tab: Tab }) {
 
 	const send = async (whenBusy: "steer" | "queue") => {
 		const value = text.trim();
-		if (!value) return;
+		const command = value.startsWith("/") && !value.startsWith("//");
+		if (!value && !tab.quotes.length) return;
 		recall.current = -1;
 		close();
-		if (value.startsWith("/") && !value.startsWith("//")) {
+		if (command) {
 			tab.inputs.push(value);
 			set("");
 			return runSlash(value.slice(1), tab);
@@ -336,8 +338,11 @@ export function Composer({ tab }: { tab: Tab }) {
 				onDrop={(e) => void onDrop(e)}
 			>
 				<InputGroup>
-					{tab.attachments.length || over ? (
+					{tab.attachments.length || tab.quotes.length || over ? (
 						<InputGroupAddon align="block-start" className="flex-wrap">
+							{tab.quotes.map((q, i) => (
+								<QuoteChip key={`quote:${q.id}`} text={q.text} onOpen={() => store.showQuote(q.tab, q.source)} onRemove={() => (tab.quotes.splice(i, 1), tab.touch())} />
+							))}
 							{tab.attachments.map((f, i) => (
 								<Chip size="sm" key={`${f.name}:${i}`}>
 									<AttachmentMedia variant={f.preview ? "image" : "icon"}>{f.preview ? <img src={f.preview} alt="" /> : <FileIcon />}</AttachmentMedia>
@@ -497,7 +502,7 @@ export function Composer({ tab }: { tab: Tab }) {
 								</TooltipContent>
 							</HoverTooltip>
 						) : null}
-						{tab.busy && !text.trim() ? (
+						{tab.busy && !text.trim() && !tab.quotes.length ? (
 							<HoverTooltip>
 								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full" onClick={() => void store.stop(tab)} aria-label="Stop" />}><SquareIcon /></TooltipTrigger>
 								<TooltipContent>
@@ -509,7 +514,7 @@ export function Composer({ tab }: { tab: Tab }) {
 							<HoverTooltip>
 								{/* Said as disabled, not disabled: a disabled button inside an InputGroup dims the whole
 								    composer (`has-disabled:`). With nothing to send, `send` does nothing. */}
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={!text.trim() || undefined} aria-label={tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
 								<TooltipContent>
 									{tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"}
 									<Kbd>{shortcut("↩")}</Kbd>

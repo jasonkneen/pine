@@ -27,6 +27,7 @@ import { type Approvals, checkPath, denialTools, gitForWindows, globMatch, grant
 import { type AgentChange, applyAgentChange, checkAgentChange, checkAgentId, countFiles, eraseAgent, renameAgent } from "./admin.ts";
 import { createAgent, type NewAgent } from "./agent-admin.ts";
 import type { Router } from "./router.ts";
+import { fitQuotes, type SentQuote, shortQuotes, withQuotes } from "./quotes.ts";
 import { Denials, fromOutput, gather, looksFailed, reaches, sortDenials, there, type Want, wantKey, wantText } from "./access.ts";
 import type { Bus, Kv, State, TaskStore } from "./store.ts";
 import { asksAtEnd, type Board, type BoardItem, type Boards, verdictOf } from "./boards.ts";
@@ -231,6 +232,7 @@ export interface SubmitOptions {
 	requeued?: boolean;
 	/** Files of the conversation's folder that the owner pointed at in the message ("src/a.ts", "src/a.ts#20-45"). */
 	mentions?: string[];
+	quotes?: SentQuote[];
 	/** See TaskMeta.compact. */
 	compact?: boolean;
 	/** See TaskMeta.via. */
@@ -824,11 +826,17 @@ export class AgentManager {
 		// at that agent's level ("~safe"; a name of the owner's or a model's never has a "~").
 		// A leading underscore is reserved for one-off sessions ("_t<task id>").
 		const session = ephemeral ? "pending" : `${sessionKey(wanted)}${level ? `~${level}` : ""}${trust === "untrusted" ? "~u" : ""}`;
+		const limit = Math.max(this.cfg.limits.maxEventChars, 1000) * (trust === "owner" ? 10 : 1);
+		// What the owner quoted goes first, as markdown quotes. Quotes give way to what was typed: they are cut
+		// to the room it leaves (half the limit at least), never the typed text to make room for them.
+		const fitted = trust === "owner" && o.quotes?.length ? fitQuotes(o.quotes, Math.max(limit - o.prompt.length - 2, Math.floor(limit / 2))) : [];
+		const quotes = fitted.length ? fitted : undefined;
+		const written = quotes ? withQuotes(quotes, o.prompt) : o.prompt;
 		// A message of the owner's own in a conversation that works on a goal: the goal waits for their word (src/goals.ts).
 		if (trust === "owner" && !ephemeral && !o.parent) this.goals.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply));
 		// And one in a conversation whose swarm waits for their answer: the swarm goes on with it (src/swarm.ts).
-		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(o.prompt ?? ""));
-		let prompt = truncate(o.prompt, Math.max(this.cfg.limits.maxEventChars, 1000) * (trust === "owner" ? 10 : 1));
+		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(written ?? ""));
+		let prompt = truncate(written, limit);
 		let images = o.images;
 		if (o.attachments?.length) {
 			if (trust !== "owner") throw new Error("only the owner can attach files");
@@ -851,12 +859,14 @@ export class AgentManager {
 			});
 			prompt += `\n\n[your owner points at ${named.length === 1 ? "this file" : "these files"} in your working folder: ${named.join(", ")}. Read ${named.length === 1 ? "it" : "them"} before you answer.]`;
 		}
+		const head = quotes ? withQuotes(quotes, "") : "";
+		const body = quotes ? (prompt.startsWith(head) ? prompt.slice(head.length).replace(/^\n\n/, "") : "") : undefined;
 
 		if (o.whenBusy === "steer" && !ephemeral) {
 			const live = this.lives.get(`${agent.id}:${session}`);
 			if (live?.current && live.session.isStreaming && !this.stopping) {
 				const into = live.current.task;
-				const steered = this.tasks.insert({ agent: agent.id, session, kind: o.kind ?? "event", prompt, status: "done", priority: o.priority ?? 0, created: Date.now(), event: o.event?.id || undefined, hops: o.event?.hops ?? 0, depth: 0, meta: { trust, images, steered: into.id, label: `steered into #${into.id}` } });
+				const steered = this.tasks.insert({ agent: agent.id, session, kind: o.kind ?? "event", prompt, status: "done", priority: o.priority ?? 0, created: Date.now(), event: o.event?.id || undefined, hops: o.event?.hops ?? 0, depth: 0, meta: { trust, images, steered: into.id, label: `steered into #${into.id}`, quotes, body } });
 				this.tasks.update(steered.id, { finished: Date.now(), result: `steered into task #${into.id}` });
 				// Nobody but the daemon writes a note; an incoming text that carries the tag loses it.
 				const text = prompt.replace(/<(\/?)pine-note>/gi, "<$1pine_note>");
@@ -867,7 +877,7 @@ export class AgentManager {
 				const said = trust === "owner" && steered.kind === "prompt" ? `<pine-note>\n${STEER_NOTE}\n</pine-note>\n\n${text}` : text;
 				live.steering.push({ id: steered.id, text, said, images, read: false });
 				void live.session.steer(said, loadImages(images)).catch((e: unknown) => this.log.warn(`steer failed for ${agent.id}`, errText(e)));
-				this.bus.publish(`agent/${agent.id}/steered`, { task: into.id, by: steered.id, agent: agent.id, session, kind: steered.kind, prompt: truncate(prompt, 2000), depth: 0 }, { persist: false, source: `agent:${agent.id}` });
+				this.bus.publish(`agent/${agent.id}/steered`, { task: into.id, by: steered.id, agent: agent.id, session, kind: steered.kind, prompt: truncate(prompt, 2000), quotes: shortQuotes(quotes), body: body === undefined ? undefined : truncate(body, 2000), depth: 0 }, { persist: false, source: `agent:${agent.id}` });
 				return steered;
 			}
 		}
@@ -898,6 +908,8 @@ export class AgentManager {
 				requeued: o.requeued,
 				compact: o.compact,
 				via: trust === "owner" && o.via === "app" ? "app" : undefined,
+				quotes,
+				body,
 				trust,
 				tainted: o.tainted,
 				level,
@@ -2267,7 +2279,7 @@ export class AgentManager {
 		const source = `agent:${agent.id}`;
 		// Fields every activity event carries, so a viewer can attach it to the conversation that caused it.
 		const ids = { task: task.id, agent: agent.id, session: task.session, root: task.meta.root ?? task.id, parent: task.parent, depth: task.depth };
-		this.bus.publish(`agent/${agent.id}/started`, { ...ids, kind: task.kind, reply: task.reply, label: task.meta.label, prompt: truncate(task.prompt, 2000), images: task.meta.images?.length || undefined, requeued: task.meta.requeued, compact: task.meta.compact }, { source, cause: this.causeOf(task) });
+		this.bus.publish(`agent/${agent.id}/started`, { ...ids, kind: task.kind, reply: task.reply, label: task.meta.label, prompt: truncate(task.prompt, 2000), images: task.meta.images?.length || undefined, requeued: task.meta.requeued, compact: task.meta.compact, quotes: shortQuotes(task.meta.quotes), body: task.meta.body === undefined ? undefined : truncate(task.meta.body, 2000) }, { source, cause: this.causeOf(task) });
 
 		const stats: NonNullable<Task["meta"]["stats"]> = { input: 0, output: 0, turns: 0, tools: [], ms: 0 };
 		let status: TaskStatus = "done";
