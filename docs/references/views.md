@@ -14,7 +14,8 @@ the main agent is Santa, the others are elves, each in a workshop of another kin
 picture but a page to read: what triggers agents, the agents with what each is doing, and the tools
 they use, with a line between two of them while something happens there. The three stand side by
 side; in a panel that is taller than wide, one under the other, with the cards of each side by side
-in rows as wide as the panel. An agent that leads a
+in rows as wide as the panel. When the panel changes size, it glides to show everything, laid out anew so that all of it is
+as large as the panel allows. An agent that leads a
 swarm says so on its card ("swarm · round 2 of 8", "Checking the answer", "Swarm needs your
 answer") and stays among the agents at work between its turns. It is the one the
 panel shows until you pick another ([desktop.md](desktop.md), "The view", says what is what in each). These

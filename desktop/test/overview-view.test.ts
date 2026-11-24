@@ -13,7 +13,7 @@ registerHooks({
 	resolve: (spec, ctx, next) => (spec === "pine/view" ? { url: pathToFileURL(path.resolve(import.meta.dirname, "../../src/view-kit.ts")).href, shortCircuit: true } : next(spec, ctx)),
 });
 const view = await import("../../examples/home/views/overview.ts");
-const { Recent, layoutOf, contentOf, sentenceOf, causeOf, sessionOf, linksOf, wiringOf, hitAt, hitTask, tipOf, routesOf, focusOf, allOf, held, toBoard, wholeOf, PIN, SIZE, ROW, draw, boardTitle, boardLine, boardWords, tilesOf, taskWords, rowsOf } = view;
+const { Recent, layoutOf, fittedWidth, contentOf, sentenceOf, causeOf, sessionOf, linksOf, wiringOf, hitAt, hitTask, tipOf, routesOf, focusOf, allOf, held, toBoard, wholeOf, PIN, SIZE, ROW, draw, boardTitle, boardLine, boardWords, tilesOf, taskWords, rowsOf } = view;
 
 const T0 = 1_800_000_000_000;
 const conv = (id: number, more: object = {}) => ({ id, main: false, worktree: false, busy: false, outside: false, ...more });
@@ -167,6 +167,18 @@ test("on a tall panel triggers, agents and tools stand one under the other, each
 		});
 		const lanes = ways.map((pts) => pts.slice(1, -1).map(([x, y]) => `${Math.round(x)},${Math.round(y)}`).join(" "));
 		assert.equal(new Set(lanes).size, lanes.length, "a lane each");
+	}
+});
+
+test("on a tall panel the board is laid out as wide as shows all of it largest, filling the panel side to side", () => {
+	const s = state(STORY(T0));
+	for (const view of [{ w: 360, h: 740 }, { w: 400, h: 860 }, { w: 560, h: 900 }, { w: 900, h: 1100 }]) {
+		const W = fittedWidth(s, T0, view);
+		const best = allOf(layoutOf(s, T0, W), view).z;
+		// Against laying it out as wide as the panel, and against every other width: never smaller.
+		for (let w = 200; w <= view.w * 4; w += 37) assert.ok(best >= allOf(layoutOf(s, T0, w), view).z - 0.011, `${view.w}x${view.h}: ${W} (${best}) against ${w}`);
+		// It fills the panel's width, or everything fits as large as the camera goes.
+		assert.ok((W + 32) * best >= view.w * 0.9 || best >= 1.39, `${view.w}x${view.h}: ${W} at ${best} fills the width`);
 	}
 });
 

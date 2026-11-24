@@ -495,7 +495,7 @@ export function layoutOf(s: ViewState, now: number, width?: number): Layout {
 			for (const g of groups[col]) {
 				if (g.head) {
 					if (y[col] > TITLE) y[col] += 8;
-					heads.push({ col, y: y[col], text: g.head });
+					heads.push({ col, y: y[col], x: cols[col].x, text: g.head });
 					y[col] += HEAD;
 				}
 				for (const c of g.cards) {
@@ -743,6 +743,37 @@ export function focusOf(l: Layout, ids: Iterable<string>, view: Size): Cam {
 /** Where the camera goes to show the whole board. */
 export function allOf(l: Layout, view: Size): Cam {
 	return hung(frame(wholeOf(l), roomOf(view), wholeOf(l), { zMax: Z_MAX, min: { w: l.w, h: 1 }, step: 0.01, zMin: 0.1 }), l, view);
+}
+
+/**
+ * On a tall panel, how wide to lay the board out so that all of it is shown as large as it can be: wider, more cards
+ * in a row and fewer rows; narrower, the other way. Between two widths where a part takes one more card in a row the
+ * rows stay the same, so the best width is found among those: in each, the zoom that shows everything, and of the
+ * widths that are shown that large the widest, so that the board fills the panel side to side.
+ */
+export function fittedWidth(s: ViewState, now: number, view: Size): number {
+	const room = roomOf(view);
+	const around = 2 * MARGIN + 8;
+	const lo = Math.max(NARROWEST.agent + 2 * EDGE, Math.floor(room.w / Z_MAX - around));
+	const hi = Math.max(lo + 1, room.w * 4);
+	// Where a part takes one more card in a row.
+	const steps = new Set<number>([lo]);
+	for (const least of [NARROWEST.side, NARROWEST.agent]) for (let k = 1; k < 64; k++) {
+		const w = k * (least + GUTTER) - GUTTER + 2 * EDGE;
+		if (w > hi) break;
+		if (w > lo) steps.add(w);
+	}
+	const starts = [...steps].sort((a, b) => a - b);
+	let best = { w: lo, z: 0 };
+	starts.forEach((w, i) => {
+		const end = (starts[i + 1] ?? hi) - 0.5;
+		const l = layoutOf(s, now, w);
+		const z = Math.min(Z_MAX, room.w / (w + around), room.h / (l.h + around));
+		// As wide as is still shown at that zoom, within this step.
+		const wide = Math.max(w, Math.min(end, room.w / z - around));
+		if (z > best.z + 0.004 || (Math.abs(z - best.z) <= 0.004 && wide > best.w)) best = { w: wide, z };
+	});
+	return Math.floor(best.w);
 }
 
 /** A camera somebody moved by hand, kept where some of the board is still to be seen. */
@@ -1929,10 +1960,20 @@ export default defineView((host: ViewHost) => {
 	/** Where each box is drawn right now: it glides to where it belongs, it does not jump there. */
 	const glide = new Map<string, number>();
 	let before = 0;
-	/** The camera; whether it follows what happens; and where it is on its way to after "Show everything". */
+	/** The camera; whether it follows what happens, or shows everything (after "Show everything", and after the panel's size changed). */
 	let cam: Cam | undefined;
 	let follow = true;
-	let going: Cam | undefined;
+	let whole = false;
+	/**
+	 * On a tall panel, how wide the board is laid out: as wide as the panel to begin with, and when everything is to be
+	 * shown, as wide as shows all of it largest (`fittedWidth`). Laid out anew only when the panel's size changes, when
+	 * everything is asked for, or, while everything is shown, when cards come or go: never under the owner's hand.
+	 */
+	let arranged: number | undefined;
+	let arrangedFor = "";
+	let seenView: { w: number; h: number } | undefined;
+	/** Until when boxes glide slowly: the board was laid out anew, and they move across it rather than a little way. */
+	let morphing = 0;
 	/** When something last happened at a box: what the camera keeps in view. */
 	const linger = new Map<string, number>();
 	let drag: { x: number; y: number; moved: boolean } | undefined;
@@ -1960,7 +2001,7 @@ export default defineView((host: ViewHost) => {
 	};
 	const setFollow = (on: boolean) => {
 		follow = on;
-		going = undefined;
+		whole = false;
 		followButton.setAttribute("aria-pressed", String(on));
 		hand();
 	};
@@ -2035,11 +2076,14 @@ export default defineView((host: ViewHost) => {
 		{ passive: false },
 	);
 	followButton.addEventListener("click", () => setFollow(!follow));
-	allButton.addEventListener("click", () => {
+	/** Everything, as large as it fits: laid out anew for the panel, the camera on its way to the whole board. */
+	const showAll = () => {
 		setFollow(false);
-		if (layout) going = allOf(layout, size());
+		whole = true;
+		arranged = undefined;
 		hand();
-	});
+	};
+	allButton.addEventListener("click", showAll);
 
 	const say = (s: ViewState) => {
 		words.replaceChildren(
@@ -2084,15 +2128,25 @@ export default defineView((host: ViewHost) => {
 			for (const [k, v] of Object.entries({ "--text": th.text, "--faint": th.faint, "--warn": th.warn, "--bad": th.bad, "--hover": veil(th.text, 0.07), "--press": veil(th.text, 0.12) })) box.style.setProperty(k, v);
 			// The frame is see-through only while it is dark where the app is dark: then the panel's own ground is the board's.
 			root.ownerDocument.documentElement.style.colorScheme = s.dark ? "dark" : "light";
-			// A panel taller than wide gets the three parts one under the other, their cards in rows as wide as the panel.
-			// When it turns, the camera starts afresh and nothing glides from where it stood in the other shape.
+			// When the panel's size changes, everything is shown, laid out for its new size, and the camera glides there.
+			// (Not the panel's first size: a frame can be measured before it is laid out.)
+			if (seenView && seenView.w > 40 && seenView.h > 40 && (seenView.w !== view.w || seenView.h !== view.h)) showAll();
+			seenView = view;
+			// A panel taller than wide gets the three parts one under the other, their cards in rows. When it turns, the
+			// cards glide from where they stood in the other shape to where they stand in this one, and the camera with them.
 			const tall = view.h > view.w;
 			if (tall !== layout?.tall) {
-				cam = undefined;
-				glide.clear();
 				canvas.setAttribute("aria-label", tall ? LABEL.tall : LABEL.wide);
+				if (layout) morphing = now + 900;
 			}
-			layout = layoutOf(s, now, tall ? view.w - 2 * MARGIN : undefined);
+			const count = s.agents.length + s.inputs.length + s.schedules.length + boardsOf(s).length + new Set(s.agents.flatMap((a) => [...a.mcp.map((m) => `m:${m}`), ...a.skills.map((k) => `k:${k}`)])).size;
+			if (tall && (arranged === undefined || (whole && arrangedFor !== `${count}`))) {
+				const next = whole ? fittedWidth(s, now, view) : view.w - 2 * MARGIN;
+				if (arranged !== undefined && next !== arranged) morphing = now + 900;
+				arranged = next;
+				arrangedFor = `${count}`;
+			}
+			layout = layoutOf(s, now, tall ? arranged : undefined);
 			const live = linksOf(s, layout, now);
 			const dt = before ? Math.min(100, now - before) : 0;
 			before = now;
@@ -2101,14 +2155,13 @@ export default defineView((host: ViewHost) => {
 			for (const b of layout.boxes) if (b.busy || (b.bad && b.kind !== "source")) linger.set(b.id, now);
 			for (const k of live) linger.set(k.from, now), linger.set(k.to, now);
 			for (const [id, t] of linger) if (now - t > LINGER_MS || !layout.byId.has(id)) linger.delete(id);
-			const target = follow ? focusOf(layout, linger.keys(), view) : going;
+			const target = follow ? focusOf(layout, linger.keys(), view) : whole ? allOf(layout, view) : undefined;
 			let panning = false;
 			if (!cam) cam = target ?? focusOf(layout, [], view);
 			else if (target) {
 				// Slower than a camera that is sent somewhere: it is to keep up, not to chase.
 				cam = ease(cam, target, follow ? dt * 0.55 : dt);
 				panning = cam.x !== target.x || cam.y !== target.y || cam.z !== target.z;
-				if (!panning && !follow) going = undefined;
 			}
 
 			// When an agent starts or stops, boxes change places: each moves most of its way in a fifth of a second.
@@ -2117,14 +2170,14 @@ export default defineView((host: ViewHost) => {
 			const eased = (key: string, to: number) => {
 				seen.add(key);
 				const was = glide.get(key);
-				const y = was === undefined || !dt || Math.abs(to - was) < 0.6 ? to : was + (to - was) * (1 - Math.exp(-dt / 90));
+				const y = was === undefined || !dt || Math.abs(to - was) < 0.6 ? to : was + (to - was) * (1 - Math.exp(-dt / (now < morphing ? 200 : 90)));
 				if (y !== to) gliding = true;
 				glide.set(key, y);
 				return y;
 			};
-			for (const b of layout.boxes) (b.y = eased(b.id, b.y)), (b.x = eased(`${b.id}:x`, b.x));
+			for (const b of layout.boxes) (b.y = eased(b.id, b.y)), (b.x = eased(`${b.id}:x`, b.x)), (b.w = eased(`${b.id}:w`, b.w));
 			for (const head of layout.heads) (head.y = eased(`head:${head.col}:${head.text}`, head.y)), head.x !== undefined && (head.x = eased(`head:${head.col}:${head.text}:x`, head.x));
-			for (const c of layout.cols) c.y = eased(`col:${c.title}`, c.y);
+			for (const c of layout.cols) (c.y = eased(`col:${c.title}`, c.y)), (c.x = eased(`col:${c.title}:x`, c.x));
 			for (const key of glide.keys()) if (!seen.has(key)) glide.delete(key);
 
 			const over = pointer && !drag?.moved ? boxAt(pointer) : undefined;
