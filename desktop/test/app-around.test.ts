@@ -804,7 +804,10 @@ test("a phone-wide window lays the side bar and the panel over the conversation,
 		// Wide again: the side bar is a column as wide as it was.
 		await size(1280, 820);
 		await sees("#sidebar-panel [data-slot=sidebar]");
-		assert.equal(Math.round(await page.$eval("#sidebar-panel [data-slot=sidebar]", (el: Element) => el.getBoundingClientRect().width)), wide);
+		// (The panels settle over a few frames after the window changed: waited for, then said as it is.)
+		const sideWidth = () => page.$eval("#sidebar-panel [data-slot=sidebar]", (el: Element) => Math.round(el.getBoundingClientRect().width));
+		for (let i = 0; i < 40 && (await sideWidth()) !== wide; i++) await new Promise((r) => setTimeout(r, 50));
+		assert.equal(await sideWidth(), wide);
 	} finally {
 		// The tests after this one have the width the start of this file set, whatever failed here.
 		await size(1280, 820);
