@@ -616,6 +616,9 @@ test("computer: pine does not click or type in the Pine app either, also when th
 	// The packed app's id, and the copy a run from a checkout starts; nothing else.
 	for (const bundle of ["dev.pine.desktop", "dev.pine.desktop.dev"]) assert.ok(answersHere({ host: false, bundle }), bundle);
 	for (const bundle of ["dev.pine.desktopx", "com.github.Electron", ""]) assert.ok(!answersHere({ host: false, bundle }), bundle);
+	// On Windows and Linux the helper names the program by its path: the app's, installed or an AppImage's.
+	for (const bundle of ["C:\\Users\\me\\AppData\\Local\\Programs\\Pine\\Pine.exe", "/opt/Pine/pine-desktop", "/tmp/.mount_PineXY/pine-desktop"]) assert.ok(answersHere({ host: false, bundle }), bundle);
+	for (const bundle of ["C:\\Windows\\notepad.exe", "/usr/bin/gedit", "/usr/bin/pine", "C:\\tools\\Spine.exe"]) assert.ok(!answersHere({ host: false, bundle }), bundle);
 });
 
 test("computer: a missing grant is said in plain words, with where to click, and macOS is asked to show its window once", async (t) => {

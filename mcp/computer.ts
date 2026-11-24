@@ -359,9 +359,14 @@ interface AppInfo {
  * Electron a run from a checkout starts (desktop/scripts/dev-electron.mjs).
  */
 export const PINE_APP = /^dev\.pine\.desktop(\.|$)/;
+/**
+ * The Pine app on Windows and Linux, where the helper says what program an app is by its path
+ * (mcp/computer.cs, mcp/computer-linux.py): Pine.exe, and pine-desktop (desktop/scripts/pack.mjs).
+ */
+export const PINE_PROGRAM = /(^|[\\/])(pine\.exe|pine-desktop)$/i;
 
 /** Where pine does not act: the app it runs in, and the Pine app wherever it runs. */
-export const answersHere = (a: Pick<AppInfo, "host" | "bundle">) => a.host || PINE_APP.test(a.bundle ?? "");
+export const answersHere = (a: Pick<AppInfo, "host" | "bundle">) => a.host || PINE_APP.test(a.bundle ?? "") || PINE_PROGRAM.test(a.bundle ?? "");
 
 class HelperError extends Error {
 	code: string;
