@@ -21,8 +21,8 @@ The app is attached to pine's releases, a file for each system and kind of proce
 |---|---|
 | `Pine-<version>-arm64.dmg` | A Mac with Apple silicon (M1 and later) |
 | `Pine-<version>-x64.dmg` | A Mac with an Intel processor |
-| `Pine-<version>-x64.AppImage`, `Pine-<version>-arm64.AppImage` | Linux, any distribution: one file that runs where it lies (make it executable first: `chmod +x`) |
-| `Pine-<version>-x64.deb`, `Pine-<version>-arm64.deb` | Debian and Ubuntu: installed with `sudo apt install ./Pine-<version>-x64.deb`, into `/opt/Pine`, started as Pine from the system's list of apps |
+| `Pine-<version>-x86_64.AppImage`, `Pine-<version>-arm64.AppImage` | Linux, any distribution: one file that runs where it lies (make it executable first: `chmod +x`) |
+| `Pine-<version>-amd64.deb`, `Pine-<version>-arm64.deb` | Debian and Ubuntu: installed with `sudo apt install ./Pine-<version>-amd64.deb`, into `/opt/Pine`, started as Pine from the system's list of apps |
 | `Pine-<version>-x64-setup.exe`, `Pine-<version>-arm64-setup.exe` | Windows 10 and 11: an installer for your user alone, which asks for no administrator. It puts Pine into `%LOCALAPPDATA%\Programs\Pine` (or a folder you choose) and into the Start menu |
 
 On a Mac, open the image and drag Pine into Applications. Nothing else has to be installed: no
