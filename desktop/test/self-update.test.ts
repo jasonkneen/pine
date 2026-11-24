@@ -108,6 +108,8 @@ test("a pine the app only attached to is left alone by an update, and quitting w
 		const second = await t.launch();
 		await second.page.waitForSelector(RESTART, { timeout: 20_000 });
 		const exit = t.closed(second.app);
+		// (A dialog in front would take the click: said by its words, not as a click that times out.)
+		assert.equal(await second.page.$eval("[data-slot=dialog-content]", (e: Element) => e.textContent).catch(() => null), null, "no dialog in front");
 		await second.page.click(RESTART);
 		await exit;
 		assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install-on-quit", "download", "install"]);

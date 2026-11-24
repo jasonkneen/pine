@@ -248,7 +248,7 @@ test("the main agent signs pine in to a model provider and out again: the owner 
 	const field = asked.find((r) => r.inputs)?.inputs?.[0];
 	assert.deepEqual([field?.name, field?.secret], ["answer", true], JSON.stringify(asked));
 	assert.ok(auth().opencode, "the credential is in auth.json");
-	assert.equal(fs.statSync(path.join(h.home, "auth.json")).mode & 0o777, 0o600);
+	assertPrivate(path.join(h.home, "auth.json"));
 	assert.ok(!JSON.stringify(h.mock.state.requests).includes(KEY), "the key is in no request to the model");
 	assert.ok(!h.logs.join("\n").includes(KEY), "and in no log line");
 	assert.ok(!asked.some((r) => JSON.stringify(r).includes(KEY)), "and in no question");

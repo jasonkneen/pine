@@ -134,6 +134,9 @@ jobs:
         run: xvfb-run -a npm run desktop:test
         env:
           PINE_TEST_PATIENCE: "4"
+          # The windows are shown on the virtual screen: an X server gives a window that was never
+          # mapped no keyboard focus, and nothing there reaches anybody's own screen.
+          PINE_DESKTOP_SHOW: "1"
 
   # The Pine app packed for Linux and Windows as a release packs it (unsigned, the app's folder
   # alone), and started once from there: whether it runs on the pine and the Node it carries.

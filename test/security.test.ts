@@ -381,7 +381,9 @@ test("policy on shell commands: deny patterns and a time limit the model cannot 
 	assert.ok(/not allowed here/.test(out[0]));
 	assert.ok(/timed out after 0.3 seconds/.test(out[1]) && /timed out after 0.3 seconds/.test(out[2]), out.join(" | "));
 	// A search of the whole disk is sent back in a sandbox: it takes minutes and finds nothing the agent may open.
-	// One that stays at the top, a folder of its own and a search from where it is are run.
+	// One that stays at the top, a folder of its own and a search from where it is are run. (Windows has no
+	// sandbox of pine's: there the agent works with its owner's rights, and nothing is sent back.)
+	if (process.platform === "win32") return void (await h.close());
 	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: 'ls; find / -name "notes*.md" 2>/dev/null | head' } }, { name: "bash", args: { command: "find / -maxdepth 0; echo TOP" } }, { name: "bash", args: { command: "find . -maxdepth 1 -name '*.none'; echo HERE" } }] }]), ...owner });
 	const found = h.toolResults().slice(-3);
 	assert.match(found[0], /Not run: "find \/" walks the whole disk/);

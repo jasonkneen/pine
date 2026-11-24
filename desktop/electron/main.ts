@@ -328,6 +328,10 @@ async function media(request: Request): Promise<Response> {
 
 /** The keychain's encryption (Electron's safe storage), where it can be used. */
 function keychain(): Cipher | undefined {
+	// Tests only: Linux without a keyring (a test runner's virtual screen) has the plain store Chromium
+	// falls back to, where a Mac's tests have the mock keychain. For the owner it stays refused: a key
+	// "encrypted" with a password everybody knows is not kept safe.
+	if (ACCESS_STAND_IN !== undefined && process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text") safeStorage.setUsePlainTextEncryption(true);
 	if (!safeStorage.isEncryptionAvailable()) return undefined;
 	return { seal: (text) => safeStorage.encryptString(text), open: (bytes) => safeStorage.decryptString(bytes) };
 }

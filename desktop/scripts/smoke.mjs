@@ -148,13 +148,13 @@ try {
 		dc.onOpen(() => dc.sendMessage("peered"));
 	`], { encoding: "utf8", env: { ...env, ELECTRON_RUN_AS_NODE: "1" }, timeout: 30_000 }).trim();
 	if (!peered.startsWith("peered ")) throw new Error(`node-datachannel in the app said: ${peered.slice(0, 400)}`);
-	// One binary, the one for the app's kind of Mac (an app for the other kind is tried here under Rosetta).
+	// One binary, the one for the app's system and processor (on a Mac, an app for the other kind is tried here under Rosetta).
 	const bindings = path.join(resources, "app.asar.unpacked", "node_modules", "@node-datachannel");
 	const kinds = fs.existsSync(bindings) ? fs.readdirSync(bindings) : [];
 	if (kinds.length !== 1 || !fs.existsSync(path.join(bindings, kinds[0], "node_datachannel.node"))) throw new Error(`node-datachannel's binaries outside the archive: ${kinds.join(", ") || "none"}`);
-	execFileSync("/usr/bin/codesign", ["--verify", "--strict", path.join(bindings, kinds[0], "node_datachannel.node")]);
+	if (mac) execFileSync("/usr/bin/codesign", ["--verify", "--strict", path.join(bindings, kinds[0], "node_datachannel.node")]);
 	if (!peered.includes("app.asar")) throw new Error(`node-datachannel was loaded from outside the app: ${peered}`);
-	console.log("ok: node-datachannel loads in the app, outside the archive and signed, and two peers pass a message");
+	console.log(`ok: node-datachannel loads in the app, outside the archive${mac ? " and signed" : ""}, and two peers pass a message`);
 	// PINE_SMOKE_HOLD=<seconds>: stays open that long, for somebody to look at the window.
 	if (Number(process.env.PINE_SMOKE_HOLD) > 0) await new Promise((r) => setTimeout(r, Number(process.env.PINE_SMOKE_HOLD) * 1000));
 	if (from !== "the app") throw new Error(`the app used the pine of "${from}", not the one it carries`);
@@ -183,7 +183,7 @@ try {
 		`, path.join(resources, "pine"), path.join(home, "built-here")], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: home } }).trim().split("\n");
 		const stray = found.filter((f) => !f.startsWith(path.join(resources, "pine") + path.sep));
 		if ((mac && found.length !== 3) || stray.length) throw new Error(`pine did not find the helpers the app carries: ${found.join(", ")}`);
-		for (const f of found) execFileSync("/usr/bin/codesign", ["--verify", "--strict", f]);
+		if (mac) for (const f of found) execFileSync("/usr/bin/codesign", ["--verify", "--strict", f]);
 		console.log(`ok: the daemon runs on the app's Node; ${said} through ${windows ? "pine.cmd" : "a link"}${mac ? "; the three helpers are the app's" : ""}`);
 		// Settings > General says what `pine` in a terminal is. (Only looked at: nothing is set up from here.)
 		await page.locator("[data-slot=sidebar-footer]").getByRole("button", { name: "Settings" }).click();

@@ -284,7 +284,11 @@ if (system === "darwin" && !fs.existsSync(path.join(datachannel, "node_datachann
 	fs.mkdirSync(datachannel, { recursive: true });
 	run("/usr/bin/tar", ["-xzf", path.join(into, file), "--strip-components", "1", "-C", datachannel], into);
 }
-const otherArch = arch === "arm64" ? "x64" : "arm64";
+/** node-datachannel's binaries for other systems and processors than this app's, which the app leaves out. */
+const ownBinding = { darwin: `darwin-${arch}`, linux: `linux-${arch}-gnu`, win32: `win32-${arch}-msvc` }[system];
+const otherBindings = Object.keys(JSON.parse(fs.readFileSync(path.join(root, "node_modules", "node-datachannel", "package.json"), "utf8")).optionalDependencies ?? {})
+	.map((name) => name.replace("@node-datachannel/", ""))
+	.filter((name) => name !== ownBinding);
 
 /** Where the packer put the app's folder (afterPack says it); with --prepackaged, that folder. */
 let appOutDir = prepackaged;
@@ -305,10 +309,11 @@ const made = await packApp({
 		// The exceptions are node-pty, the terminal's pseudo-terminal, and node-datachannel, browser
 		// access's peer connection (dependencies of the app's, which the packer adds by itself):
 		// native, so they lie outside the archive, where they are signed with the app. Of
-		// node-datachannel's binaries only the one for this app's kind of Mac goes in. ssh2, the access
+		// node-datachannel's binaries only the one for this app's system and processor goes in (npm puts
+		// both of Linux's beside each other, for glibc and for musl; Electron is glibc). ssh2, the access
 		// server's SSH, is not bundled either (it is CommonJS that needs `__dirname`): it is added by
 		// the packer like them, inside the archive, without its native bindings (scripts/ssh2-pure.mjs).
-		files: ["dist/**", "dist-electron/**", "package.json", `!node_modules/@node-datachannel/darwin-${otherArch}/**`],
+		files: ["dist/**", "dist-electron/**", "package.json", ...otherBindings.map((name) => `!node_modules/@node-datachannel/${name}/**`)],
 		asarUnpack: ["node_modules/node-pty/**", "node_modules/node-datachannel/**", "node_modules/@node-datachannel/**"],
 		// pine goes in whole, with what it depends on, before the app is signed. (Listed as a resource,
 		// the packer would leave its node_modules out.) With it the Node it runs on and `pine` for a terminal.
