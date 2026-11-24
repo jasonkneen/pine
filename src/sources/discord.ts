@@ -31,13 +31,13 @@ const ID = /^\d{15,22}$/;
 /** Why the gateway closed a connection for good reason, said so that the owner can do something about it. */
 const CLOSED: Record<number, string> = {
 	4004: "Discord refused the bot's token. Make a new one in the Developer Portal (Bot, Reset Token) and set the source up again",
-	4013: "Discord refused what the bot asked to be told (its intents)",
+	4013: "Discord refused what the bot asked to be told (the bot's intents)",
 	4014: 'the bot is not allowed to read messages yet: switch on "Message Content Intent" in the Developer Portal (Bot, Privileged Gateway Intents)',
 };
 
 export const type: SourceType = {
 	summary: "a Discord bot: reports messages in the servers it is in and direct messages to it, all of them or only mentions and keywords. Can write to listed channels",
-	sends: 'a Discord message to a channel on its "sendTo" list: {"channel": "123456789012345678", "text": "..."}',
+	sends: 'a Discord message to a channel on the source\'s "sendTo" list: {"channel": "123456789012345678", "text": "..."}',
 	options: Type.Object(
 		{
 			token: Type.String({ description: "the bot's token from the Discord Developer Portal (your application, Bot, Reset Token)", secret: true }),

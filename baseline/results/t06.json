@@ -21,7 +21,7 @@
       },
       {
         "label": "what the parent model got back",
-        "value": "[gonzo] FINAL:: /private/var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-baseline-0BDTwk/sub/repos/gonzo"
+        "value": "[gonzo] FINAL:: /private/var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-baseline-hBQkGv/sub/repos/gonzo"
       },
       {
         "label": "child tools offered",
@@ -42,7 +42,7 @@
     "findings": [
       {
         "label": "3 children x 800 ms model delay took ms",
-        "value": 817
+        "value": 825
       },
       {
         "label": "results",
@@ -69,7 +69,7 @@
         "value": 0
       }
     ],
-    "ms": 1623
+    "ms": 1637
   },
   {
     "id": "SA3",
@@ -79,7 +79,7 @@
       {
         "label": "extension load errors",
         "value": [
-          "Extension path does not exist: <repo>/baseline/node_modules/@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts"
+          "Extension path does not exist: /Users/dev/dev/pine/baseline/node_modules/@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts"
         ]
       },
       {
@@ -104,7 +104,7 @@
         "value": false
       }
     ],
-    "ms": 9
+    "ms": 6
   },
   {
     "id": "SA4",
@@ -132,10 +132,10 @@
       },
       {
         "label": "stdin left as an open pipe (default for child_process)",
-        "value": "completed in 38 ms"
+        "value": "completed in 37 ms"
       }
     ],
-    "ms": 77
+    "ms": 76
   },
   {
     "id": "SA5",
@@ -144,10 +144,10 @@
     "findings": [
       {
         "label": "threw",
-        "value": "Error: Agent process exited (code=1 signal=null). Stderr: node:internal/modules/cjs/loader:1573\n  throw err;\n  ^\n\nError: Cannot find module '<repo>/baseline/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1569:15)"
+        "value": "Error: Agent process exited (code=1 signal=null). Stderr: node:internal/modules/cjs/loader:1573\n  throw err;\n  ^\n\nError: Cannot find module '/Users/dev/dev/pine/baseline/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1569:15)"
       }
     ],
-    "ms": 102
+    "ms": 103
   },
   {
     "id": "SA6",
@@ -156,9 +156,9 @@
     "findings": [
       {
         "label": "threw",
-        "value": "Error: Agent process exited (code=1 signal=null). Stderr: node:internal/modules/cjs/loader:1573\n  throw err;\n  ^\n\nError: Cannot find module '<repo>/baseline/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1569:15)"
+        "value": "Error: Agent process exited (code=1 signal=null). Stderr: node:internal/modules/cjs/loader:1573\n  throw err;\n  ^\n\nError: Cannot find module '/Users/dev/dev/pine/baseline/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1569:15)"
       }
     ],
-    "ms": 104
+    "ms": 102
   }
 ]

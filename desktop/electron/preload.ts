@@ -1,6 +1,7 @@
 // The bridge between the page and the main process: a short list of things the page may ask
 // for, each by name. The page has no Node, no token and no other way out.
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { AccessChange, AccessState } from "./access/control.ts";
 
 const on = (channel: string) => (fn: (...args: any[]) => void) => {
 	const listener = (_e: unknown, ...args: any[]) => fn(...args);
@@ -15,6 +16,10 @@ const bridge = {
 	retry: () => ipcRenderer.invoke("pine:retry"),
 	/** Whether there is a newer app: what the start found, or with `again` what GitHub says now. Nothing where nobody is asked. */
 	update: (again?: boolean) => ipcRenderer.invoke("pine:update", again),
+	/** Quits and installs the update the app downloaded ("Restart to update"); the pine this app started is stopped first. */
+	installUpdate: () => ipcRenderer.invoke("pine:install-update") as Promise<void>,
+	/** What is said of a newer app, each time the app's own download of it moves on. */
+	onUpdate: on("pine:update-state"),
 	restart: () => ipcRenderer.invoke("pine:restart"),
 	init: () => ipcRenderer.invoke("pine:init"),
 	/** Fetch the browser build this pine drives (`pine browser-install`); what it prints comes as init lines. */
@@ -54,6 +59,31 @@ const bridge = {
 	onTermExit: on("pine:term-exit"),
 	/** A block run with a Run button is still running, or has ended (`RunReport` of terminal.ts). */
 	onTermRun: on("pine:term-run"),
+	/**
+	 * The agent's browser of a conversation (`room` of the browser's state) laid over the panel at `bounds`, its tab
+	 * `index` in front; without a room or bounds nothing is laid over the window. Says whether a page is shown.
+	 */
+	browserShow: (room: string | undefined, index: number, bounds?: { x: number; y: number; width: number; height: number }) => ipcRenderer.invoke("pine:browser-show", room, index, bounds) as Promise<boolean>,
+	/** The keys go to the page in the panel. */
+	browserFocus: () => ipcRenderer.invoke("pine:browser-focus") as Promise<void>,
+	/** A still picture of the page laid over the panel (a data: address), for while something of the app's own covers that place. */
+	browserPicture: () => ipcRenderer.invoke("pine:browser-picture") as Promise<string | undefined>,
+	/** Browser access (Settings > Browser access): its state, as access/control.ts gives it. */
+	access: () => ipcRenderer.invoke("pine:access") as Promise<AccessState>,
+	/** Turns it on or off, names the service's address (empty: the official one), sets open at login. What comes back is the state now. */
+	setAccess: (change: AccessChange) => ipcRenderer.invoke("pine:access-set", change) as Promise<AccessState>,
+	/** Opens a pairing: the link the QR code encodes, and when it stops working (an ISO date). */
+	openPairing: () => ipcRenderer.invoke("pine:access-pair") as Promise<{ link: string; expires: string }>,
+	/** Puts the open pairing's link on the clipboard. */
+	copyPairingLink: () => ipcRenderer.invoke("pine:access-copy") as Promise<void>,
+	/** Closes the open pairing (the dialog was closed). */
+	cancelPairing: () => ipcRenderer.invoke("pine:access-cancel") as Promise<void>,
+	/** The owner's answer to the state's `request` named by its `id`: true allows the device. */
+	answerPairing: (yes: boolean, id: string) => ipcRenderer.invoke("pine:access-answer", yes, id) as Promise<void>,
+	/** Forgets a paired device and cuts its connection. */
+	removeDevice: (id: string) => ipcRenderer.invoke("pine:access-remove", id) as Promise<boolean>,
+	/** The state of browser access, each time it changes. */
+	onAccess: on("pine:access") as (fn: (state: AccessState) => void) => () => void,
 	onService: on("pine:service"),
 	onEvents: on("pine:events"),
 	onConnection: on("pine:connection"),

@@ -67,7 +67,7 @@ export interface Task {
 	error?: string;
 	parent?: number;
 	depth: number;
-	meta: { images?: unknown[]; label?: string; steered?: number; compact?: boolean; chain?: string[]; stats?: Stats; trust?: string };
+	meta: { images?: unknown[]; label?: string; steered?: number; read?: number; compact?: boolean; chain?: string[]; stats?: Stats; trust?: string };
 }
 
 export interface TranscriptEntry {
@@ -154,6 +154,20 @@ export interface WorktreeMade {
 	copied: string[];
 }
 
+/** The swarm of a conversation, as the daemon keeps it (src/swarm.ts in pine). */
+export interface SwarmInfo {
+	agent: string;
+	session: string;
+	objective: string;
+	status: "active" | "waiting" | "done" | "paused" | "limit";
+	round: number;
+	until: number;
+	/** The sub-agent that checks the answer right now. */
+	checking?: number;
+	note: string;
+	event?: string;
+}
+
 export interface GoalInfo {
 	agent: string;
 	session: string;
@@ -184,6 +198,45 @@ export interface Approval {
 export interface Todo {
 	text: string;
 	status: "pending" | "in_progress" | "done";
+}
+
+/** A board (docs/references/boards.md): whom it is for, and how many tasks on it are in which state. */
+export interface BoardBrief {
+	id: number;
+	scope: "local" | "agent" | "global";
+	agent: string;
+	session: string;
+	name: string;
+	counts: { open: number; taken: number; done: number; failed: number; blocked: number; notes: number };
+}
+
+/** A task or a note of a board. Its text is an agent's (or the owner's) and is drawn as plain text. */
+export interface BoardItem {
+	id: number;
+	kind: "task" | "note";
+	text: string;
+	data?: Record<string, unknown>;
+	state: "open" | "taken" | "done" | "failed" | "blocked" | "";
+	by: string;
+	holder?: string;
+	run?: number;
+	/** A sub-agent has it. */
+	sub: boolean;
+	result?: string;
+	after: number[];
+	/** The tasks an open task still waits for. */
+	waits: number[];
+	about?: number;
+	/** It was written by a run that had read outside content. */
+	outside: boolean;
+	created: number;
+	updated: number;
+}
+
+export interface BoardView {
+	board: BoardBrief;
+	tasks: BoardItem[];
+	notes: BoardItem[];
 }
 
 export interface Program {
@@ -319,7 +372,10 @@ export interface ModelServer {
 	name: string;
 	baseUrl: string;
 	key: string;
-	models: Array<{ id: string; contextWindow?: number; images: boolean; reasoning: boolean }>;
+	/** `limit`: how many runs that model takes at a time, where it has a number of its own. */
+	models: Array<{ id: string; contextWindow?: number; images: boolean; reasoning: boolean; limit?: number }>;
+	/** What holds for a model that has no number of its own: pine's limit for all. */
+	runs?: number;
 }
 
 export interface Provider {
@@ -338,6 +394,8 @@ export interface LoginState {
 	done: boolean;
 	error?: string;
 	models?: string[];
+	/** The model the agents run on from now on: pine chose it, since the one before could not answer. */
+	chosen?: string;
 }
 
 export interface Overview {
@@ -399,16 +457,30 @@ export const api = {
 	/** A command of an answer that the owner ran in the app's terminal is still running, or has ended: the conversation is told. */
 	terminalRun: (agent: string, session: string, report: { command: string; state: "running" | "ended"; code?: number; seconds: number; output: string }) => post<{ task: number }>(`${a(agent)}/terminal`, { session, ...report }),
 	stopProgram: (agent: string, session: string, id: number) => post<{ stopped: boolean }>(`${a(agent)}/programs/stop`, { session, id }),
+	swarm: (agent: string, session: string) => get<{ swarm?: SwarmInfo }>(`${a(agent)}/swarm${s(session)}`),
+	setSwarm: (agent: string, session: string, what: { objective: string } | { action: "pause" | "resume" | "clear" }) => post<{ swarm?: SwarmInfo; cleared?: boolean }>(`${a(agent)}/swarm`, { session, ...what }),
 	goal: (agent: string, session: string) => get<{ goal?: GoalInfo }>(`${a(agent)}/goal${s(session)}`),
 	setGoal: (agent: string, session: string, what: { objective: string } | { action: "pause" | "resume" | "clear" }) => post<{ goal?: GoalInfo; cleared?: boolean }>(`${a(agent)}/goal`, { session, ...what }),
 	todos: (agent: string, session: string) => get<Todo[]>(`${a(agent)}/todos${s(session)}`),
+	/** Boards: those a conversation can use (its own first), one with everything on it, and the owner's hand on it. */
+	boards: (agent: string, session: string) => get<BoardBrief[]>(`${a(agent)}/boards${s(session)}`),
+	board: (id: number) => get<BoardView>(`/boards/${id}`),
+	/** Every board, with the runs that hold one of its tasks: for the view of all of pine. */
+	allBoards: () => get<Array<BoardBrief & { runs: number[] }>>("/boards"),
+	boardPost: (where: number | { agent: string; session: string }, text: string, kind: "task" | "note" = "task") =>
+		typeof where === "number" ? post<{ board: number; id: number }>(`/boards/${where}/post`, { text, kind }) : post<{ board: number; id: number }>(`${a(where.agent)}/boards/post`, { session: where.session, text, kind }),
+	boardAct: (item: number, action: "reopen" | "answer" | "done" | "remove", text?: string) => post<{ ok: boolean }>(`/boards/items/${item}`, { action, text }),
+	boardRemove: (id: number) => post<{ removed: boolean }>(`/boards/${id}/remove`),
 	history: (agent: string, session: string, limit = 40) => get<Task[]>(`/tasks${qs({ agent, session, limit })}`),
 	tasks: (agent?: string, limit = 50) => get<Task[]>(`/tasks${qs({ agent, limit })}`),
+	/** One task, as the daemon has it on record. */
+	taskRecord: (task: number) => get<Task>(`/tasks/${task}`),
 	// `via`: the answer is read in this app, where a shell code block has a Run button; the agent is told so. The button runs it
 	// in a terminal of this computer, so an agent of another machine's pine is not told (`runs`: false): it has no terminal here.
 	prompt: (agent: string, prompt: string, session: string, attachments?: Array<{ name: string; data: string }>, whenBusy: "steer" | "queue" = "steer", mentions?: string[], runs = true) => post<{ task: number; steered?: number }>(`${a(agent)}/prompt`, { prompt, session, wait: false, attachments, whenBusy, mentions, ...(runs ? { via: "app" } : {}) }),
 	transcript: (task: number, full = false) => get<{ task: Task; entries: TranscriptEntry[] }>(`/tasks/${task}/transcript${full ? "?full=1" : ""}`),
 	cancel: (task: number) => post<{ cancelled: boolean }>(`/tasks/${task}/cancel`),
+	sendNow: (task: number) => post<{ sent: boolean }>(`/tasks/${task}/now`),
 	reset: (agent: string, session: string) => post<{ reset: boolean }>(`${a(agent)}/reset`, { session }),
 	compact: (agent: string, session: string) => post<{ task: number }>(`${a(agent)}/compact`, { session }),
 	undo: (agent: string, session: string) => post<UndoResult>(`${a(agent)}/undo`, { session }),
@@ -471,6 +543,10 @@ export const api = {
 	setSetting: (key: string, value: unknown) => post<{ key: string; now: string; live: boolean }>("/settings", { key, value }),
 	// The themes of pine's home, as colors (theme.ts), and the one in force. A pine older than themes has none: an empty list.
 	themes: () => get<{ theme: string; chosen: string | null; themes: ThemeEntry[] }>("/themes"),
+	/** The views of the panel (src/views.ts): the one in force, none when there is none or `ui.view` is off. */
+	views: () => get<{ view: string | null; chosen: string | null; views: Array<{ id: string; problem?: string }> }>("/views"),
+	/** A view's code, its types taken away: run only in the view frame (View.tsx). */
+	viewCode: (id: string) => get<{ id: string; code: string } | { id: string; problem: string }>(`/views/${encodeURIComponent(id)}`),
 	agentDetail: (agent: string) => get<AgentDetail>(`${a(agent)}/detail`),
 	// What it is for is the first paragraph of `instructions` (the daemon's `purposeOf`).
 	createAgent: (body: { id: string; instructions: string; model?: string; tools?: string[] }) => post<{ id: string; workspace: string }>("/agents", body),
@@ -489,7 +565,9 @@ export const api = {
 	removeMcp: (name: string, agent?: string) => post<{ ok: boolean }>("/mcp", { name, agent, remove: true }),
 	mcpLogin: (name: string, agent?: string) => post<{ code: number; out: string }>("/mcp/login", { name, agent }),
 	modelServers: () => get<ModelServer[]>("/models/servers"),
-	addModelServer: (body: { name: string; url: string; key?: string; context?: number }) => post<{ models: string[] }>("/models/servers", body),
+	addModelServer: (body: { name: string; url: string; key?: string; context?: number }) => post<{ models: string[]; chosen?: string }>("/models/servers", body),
+	/** How many runs a model takes at a time: a number, or `null` for pine's own limit. */
+	limitModel: (name: string, model: string, limit: number | null) => post<{ name: string; model: string; limit?: number; runs: number }>("/models/servers/limit", { name, model, limit }),
 	removeModelServer: (name: string) => post<{ removed: boolean }>("/models/servers/remove", { name }),
 	providers: () => get<Provider[]>("/models/providers"),
 	login: (provider: string, type?: "api_key" | "oauth") => post<{ id: string }>("/models/login", { provider, type }),
@@ -505,6 +583,10 @@ export interface BrowserState {
 	tabs: Array<{ title: string; url: string }>;
 	current: number;
 	window: boolean;
+	/** How many pixels of the picture make one point of the page: 2, as sharp as a Retina display draws. (1 from a pine before it said.) */
+	scale?: number;
+	/** The browser is the Pine app's own, and these are its tabs there (electron/browser-host.ts): the app lays the page itself over the panel. */
+	room?: string;
 	/** Why the last thing asked for was not done. */
 	error?: string;
 	/** The addresses the agent opened in this conversation, newest first. */

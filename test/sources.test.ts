@@ -408,7 +408,7 @@ test("sources: asked to watch something, an agent sets the source up itself, the
 	assert.match(r.text, /not added \(test\)/);
 	assert.equal(asked.length, 1);
 	assert.equal(asked[0].tool, "add_source");
-	assert.ok(asked[0].summary.includes(`add event source "project" (folder) for agent main (all its conversations), and subscribe to it`) && asked[0].summary.includes(`watch the folder ${project} for new and changed files; let main read the files in that folder`), asked[0].summary);
+	assert.ok(asked[0].summary.includes(`add event source "project" (folder) for agent main (all of that agent's conversations), and subscribe to it`) && asked[0].summary.includes(`watch the folder ${project} for new and changed files; let main read the files in that folder`), asked[0].summary);
 	assert.equal(file().sources.project, undefined);
 	allow = true;
 	r = await run([{ tools: [call("add_source", { scope: "agent", name: "project", type: "folder", options: { dir: project }, description: "changes in the owner's project", note: "Say which file changed.", throttle: "0s" })] }]);
@@ -506,11 +506,11 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	answer = false;
 	r = await run("main", "other", [{ tools: [call("subscribe", { source: "beep", scope: "agent", note: "for the agent", throttle: "1h" })] }]);
 	assert.match(r.text, /not subscribed \(test\)\. Do not retry with this scope\. If your owner meant this conversation only, subscribe without a scope\./);
-	assert.deepEqual(asked.map((a) => [a.tool, a.summary.split("\n")[0], a.why]), [["subscribe", 'subscribe the agent main as such to the event source "beep": its main conversation is woken, not this one, and it stays when this conversation is closed', "asked for in another conversation than the one that will be woken. Deny it if you meant this conversation only"]]);
+	assert.deepEqual(asked.map((a) => [a.tool, a.summary.split("\n")[0], a.why]), [["subscribe", 'subscribe the agent main as such to the event source "beep": the agent\'s main conversation is woken, not this one, and it stays when this conversation is closed', "asked for in another conversation than the one that will be woken. Deny it if you meant this conversation only"]]);
 	assert.deepEqual(h.pine.sources.list()[0].subscribers, ["main/side"]);
 	answer = true;
 	r = await run("main", "other", [{ tools: [call("subscribe", { source: "beep", scope: "agent", note: "for the agent", throttle: "1h" })] }, { tools: [call("sources", {})] }]);
-	assert.match(r.text, /agent: your MAIN conversation is subscribed, NOT this one: its events arrive there and do not wake you here\. Note: for the agent\n    other conversations of yours are subscribed on their own: side/);
+	assert.match(r.text, /agent: your MAIN conversation is subscribed, NOT this one: the source's events arrive there and do not wake you here\. Note: for the agent\n    other conversations of yours are subscribed on their own: side/);
 	await settle();
 	assert.deepEqual(woken(), ["main/main", "main/side"]);
 	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h.home, "agents", "main", "agent.json"), "utf8")).subscribe, [{ source: "beep", note: "only here", throttle: "1h", session: "side" }, { source: "beep", note: "for the agent", throttle: "1h" }]);
@@ -532,7 +532,7 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	assert.ok(itsTool && !JSON.stringify(itsTool.function.parameters.properties.scope).includes("global"), "an agent that cannot do it is not offered it");
 	assert.equal(asked.length, 2);
 	r = await run("main", "main", [{ tools: [call("subscribe", { source: "beep", scope: "global", note: "for everyone", throttle: "1h" })] }]);
-	assert.match(r.text, /Subscribed to beep \(global\)\. .* will wake gonzo, each in its main conversation/);
+	assert.match(r.text, /Subscribed to beep \(global\)\. .* will wake gonzo, each in their main conversation/);
 	assert.deepEqual([asked[2].tool, asked[2].summary.split("\n")[0]], ["subscribe", 'subscribe ALL agents to the event source "beep"']);
 	await settle();
 	assert.deepEqual(woken(), ["gonzo/main", "main/main", "main/side"], "an agent with an entry of its own is not woken twice");
@@ -560,10 +560,10 @@ test("sources: an agent can be woken in a fresh conversation for every event, so
 	});
 	const run = (session: string, steps: any[]) => h.pine.agents.run({ agent: "main", prompt: mockMsg(steps), session, ...owner });
 	let r = await run("main", [{ tools: [call("subscribe", { source: "beep", note: "judge each one by itself", throttle: "150ms", fresh: true })] }, { tools: [call("sources", {})] }]);
-	// The events start conversations of their own at once: the last request to the model may be one of theirs.
-	const ours = h.mock.state.requests.filter((q: any) => h.toolResults(q).some((t: string) => t.startsWith("Subscribed to beep"))).at(-1);
-	assert.match(h.toolResults(ours)[0], /Subscribed to beep \(agent\)\. It is running\. Each event it reports \(source\/beep\/\.\.\.\) will start a conversation of its own, with your instructions and nothing else in it, which is closed when you have answered\. Nothing of one event is there in the next/);
-	assert.match(r.text, /agent: you are subscribed as an agent, and every event is handled in a conversation of its own that starts empty and is closed afterwards\. Its events do not arrive in this conversation\. Note: judge each one by itself/);
+	// The source beeps every 40 ms, so a fresh conversation's request can already be the last one the mock saw.
+	const mine = h.mock.state.requests.filter((q: any) => q.body.messages.some((m: any) => m.role === "tool")).at(-1);
+	assert.match(h.toolResults(mine)[0], /Subscribed to beep \(agent\)\. It is running\. Each event it reports \(source\/beep\/\.\.\.\) will start a separate conversation, with your instructions and nothing else in it, which is closed when you have answered\. Nothing of one event is there in the next/);
+	assert.match(r.text, /agent: you are subscribed as an agent, and every event is handled in a separate conversation that starts empty and is closed afterwards\. The source's events do not arrive in this conversation\. Note: judge each one by itself/);
 	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h.home, "agents", "main", "agent.json"), "utf8")).subscribe, [{ source: "beep", note: "judge each one by itself", throttle: "150ms", session: "new" }]);
 	assert.deepEqual(h.pine.sources.list()[0].subscribers, ["main (a fresh conversation for every event)"]);
 	await until(() => eventTasks(h).filter((t: any) => t.status === "done").length >= 3, 6000, "three events to be handled");

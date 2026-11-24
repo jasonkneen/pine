@@ -127,7 +127,7 @@ export function Composer({ tab }: { tab: Tab }) {
 			bridge.onVoice((m: { type: string; text?: string; state?: string; error?: string }) => {
 				if (!hearing.current) return;
 				if (m.type === "ready") setVoice("listening");
-				else if (m.type === "model") setVoiceNote(m.state === "downloading" ? "the system is fetching its speech model for this language, once" : "");
+				else if (m.type === "model") setVoiceNote(m.state === "downloading" ? "macOS is downloading the speech model for this language, once" : "");
 				else if (m.type === "partial") set(heard(m.text ?? ""));
 				else if (m.type === "done") {
 					hearing.current = false;
@@ -280,9 +280,10 @@ export function Composer({ tab }: { tab: Tab }) {
 	const paused = store.bypassPaused(tab);
 	const tainted = store.taints.get(`${tab.agent}:${tab.session}`);
 	const goal = tab.goal && tab.goal.status !== "met" ? tab.goal : undefined;
+	const swarm = tab.swarm && (tab.swarm.status === "paused" || tab.swarm.status === "limit") ? tab.swarm : undefined;
 
 	const model = info?.model ?? "none";
-	const thinking = info?.thinking ?? "off";
+	const thinking = info?.thinking ?? "medium";
 	// A menu's popup lies elsewhere on the page but inside the Input Group's addon for React, so a
 	// click in it would reach the addon's own handler (a click there puts focus into the input) and
 	// take focus from the button the menu gives it back to.
@@ -295,11 +296,22 @@ export function Composer({ tab }: { tab: Tab }) {
 			{goal && goal.status !== "active" ? (
 				<Alert className="mb-2">
 					<ClockIcon />
-					<AlertTitle>Goal {goal.status === "paused" ? "paused" : goal.status === "blocked" ? "waits for you" : "at its limit"}</AlertTitle>
+					<AlertTitle>Goal {goal.status === "paused" ? "paused" : goal.status === "blocked" ? "waits for you" : "limit reached"}</AlertTitle>
 					<AlertDescription className="truncate">{goal.note}</AlertDescription>
 					<AlertAction>
 						<Button variant="link" size="xs" onClick={() => void store.setGoal(tab, "resume")}>Resume</Button>
 						<Button variant="link" size="xs" onClick={() => void store.setGoal(tab, "clear")}>Clear</Button>
+					</AlertAction>
+				</Alert>
+			) : null}
+			{swarm ? (
+				<Alert className="mb-2">
+					<ClockIcon />
+					<AlertTitle>Swarm {swarm.status === "paused" ? "paused" : "limit reached"}</AlertTitle>
+					<AlertDescription className="truncate">{swarm.note}</AlertDescription>
+					<AlertAction>
+						<Button variant="link" size="xs" onClick={() => void store.setSwarm(tab, "resume")}>Resume</Button>
+						<Button variant="link" size="xs" onClick={() => void store.setSwarm(tab, "clear")}>Clear</Button>
 					</AlertAction>
 				</Alert>
 			) : null}
@@ -310,10 +322,11 @@ export function Composer({ tab }: { tab: Tab }) {
 					<AlertDescription>{voice === "starting" ? "" : "speak · ↩ when you are done · esc to throw it away"}{voiceNote ? ` · ${voiceNote}` : ""}</AlertDescription>
 				</Alert>
 			) : null}
-			{/* The files are pine's own (`attach`: its limits, a folder opened instead, base64 for the daemon). */}
-			<form
+			{/* The files are pine's own (`attach`: its limits, a folder opened instead, base64 for the daemon).
+			    Not a form: the web client's page runs in a frame that may not submit one (no `allow-forms`,
+			    AGENTS.md rule 10), so the Send button sends by its click and Enter by `onKey`. */}
+			<div
 				data-slot="composer"
-				onSubmit={(e) => (e.preventDefault(), void send("steer"))}
 				onDragOver={(e) => {
 					if (![...e.dataTransfer.types].includes("Files")) return;
 					e.preventDefault();
@@ -367,7 +380,7 @@ export function Composer({ tab }: { tab: Tab }) {
 					>
 						<ComboboxPrimitive.Input
 							ref={area as unknown as React.Ref<HTMLInputElement>}
-							render={<InputGroupTextarea rows={1} className="max-h-48 p-3" />}
+							render={<InputGroupTextarea rows={1} className="max-h-48 p-3 leading-snug md:text-base md:leading-snug" />}
 							placeholder={tab.busy ? `Say something to ${tab.agent} while it works…` : `Message ${tab.agent} · / for commands · @ for files`}
 							onChange={(e) => {
 								// A key that types ends the listening: what was heard stays, and nothing more is put into the input.
@@ -461,7 +474,7 @@ export function Composer({ tab }: { tab: Tab }) {
 						<HoverTooltip>
 							<TooltipTrigger render={<InputGroupButton size="sm" className="min-w-0 shrink" onClick={() => void store.pickFolder(tab)} aria-label={tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"} />}>
 								<FolderIcon />
-								<span className="truncate @max-sm/bar:hidden">{tab.folder ? baseName(tab.folder) : "its workspace"}</span>
+								<span className="truncate @max-sm/bar:hidden">{tab.folder ? baseName(tab.folder) : "workspace"}</span>
 							</TooltipTrigger>
 							<TooltipContent>{tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"}</TooltipContent>
 						</HoverTooltip>
@@ -496,16 +509,16 @@ export function Composer({ tab }: { tab: Tab }) {
 							<HoverTooltip>
 								{/* Said as disabled, not disabled: a disabled button inside an InputGroup dims the whole
 								    composer (`has-disabled:`). With nothing to send, `send` does nothing. */}
-								<TooltipTrigger render={<InputGroupButton type="submit" size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" aria-disabled={!text.trim() || undefined} aria-label={tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits its turn` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={!text.trim() || undefined} aria-label={tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
 								<TooltipContent>
-									{tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits its turn` : "Send"}
+									{tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"}
 									<Kbd>{shortcut("↩")}</Kbd>
 								</TooltipContent>
 							</HoverTooltip>
 						)}
 					</InputGroupAddon>
 				</InputGroup>
-			</form>
+			</div>
 			<input ref={picker} type="file" multiple hidden onChange={(e) => (void attach(tab, [...(e.target.files ?? [])]), (e.target.value = ""))} />
 			{tab.folder && !tab.items.length ? <div className="px-1 pt-1.5 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and may read and change what is in it.</div> : null}
 		</>

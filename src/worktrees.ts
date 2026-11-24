@@ -119,7 +119,7 @@ export async function inspect(folder: string): Promise<Place> {
 	const r = await git(f, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]);
 	if (r.code !== 0) throw new Error(`${folder} is not in a git repository. A worktree is a second checkout of a repository: run git init there and commit once, or open a folder that is a repository`);
 	const [top, common] = r.out.trim().split("\n").map((l) => realish(l.trim()));
-	if (!top || !common || path.basename(common) !== ".git") throw new Error("this repository keeps its git folder elsewhere (a bare repository, or one made with --separate-git-dir); pine makes worktrees only for a repository with a .git folder at its top");
+	if (!top || !common || path.basename(common) !== ".git") throw new Error("this repository keeps the git folder elsewhere (a bare repository, or one made with --separate-git-dir); pine makes worktrees only for a repository with a .git folder at the top");
 	const head = await git(top, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
 	if (head.code !== 0) throw new Error("the repository has no commit yet, and a worktree starts from one. Commit once, then try again");
 	const branch = await git(top, ["symbolic-ref", "--quiet", "--short", "HEAD"]);

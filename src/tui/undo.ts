@@ -35,14 +35,14 @@ function fileLines(r: UndoResult, redo: boolean): string[] {
 
 /** After /undo. */
 export function undoText(r: UndoResult): string {
-	if (r.waiting) return `${c.accent("↶ withdrawn before it was worked on:")} ${quoted(r.prompt)}\n  ${c.gray("the message is in the input again, to change and send")}`;
+	if (r.waiting) return `${c.accent("↶ withdrawn before work on it began:")} ${quoted(r.prompt)}\n  ${c.gray("what you wrote is back in the message box: edit it and send it again")}`;
 	return [
 		`${c.accent("↶ taken back:")} ${quoted(r.prompt)}`,
 		...(r.stopped ? [c.gray(`what was still running was stopped first (${r.stopped} task${r.stopped === 1 ? "" : "s"})`)] : []),
 		...fileLines(r, false),
-		c.gray("not taken back: what commands did outside this folder, files git ignores or that are over 2 MB, and anything that was sent out"),
-		c.gray("the message is in the input again, to change and send"),
-		c.gray(`/redo brings it back, until you send a new message${r.more ? " · /undo again takes back the message before it" : ""}`),
+		c.gray("not undone: changes made outside this folder, files git ignores, files over 2 MB, and anything that was sent out"),
+		c.gray("what you wrote is back in the message box: edit it and send it again"),
+		c.gray(`/redo restores it until you send something new${r.more ? " · /undo again to take back the message before it too" : ""}`),
 	].map((line, i) => (i ? `  ${line}` : line)).join("\n");
 }
 

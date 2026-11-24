@@ -96,6 +96,10 @@ test("arguments that are not what a method takes are refused before the bridge s
 		["addHost", [{ host: "me@box" }]],
 		["addHost", ["x".repeat(400)]],
 		["trustHostKey", ["me@box", "MD5:aa"]],
+		["renameHost", ["me@box"]],
+		["renameHost", ["me@box", 7]],
+		["renameHost", [{}, "name"]],
+		["renameHost", ["me@box", "x".repeat(300)]],
 		["state", ["more"]],
 	];
 	bad.forEach(([method, args], id) => parentOfFrame.postMessage({ pine: "call", id, method, args }, "*"));

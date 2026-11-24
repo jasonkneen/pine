@@ -63,7 +63,7 @@ export function readings(raw: unknown): Reading[] {
 		if (!r || typeof r !== "object") throw new Error(`${at} must be an object: {"name": "...", "address": 0}`);
 		const name = String(r.name ?? "");
 		if (!/^[A-Za-z][A-Za-z0-9_.-]{0,39}$/.test(name)) throw new Error(`${at}: "name" is a short word for the value: letters, digits, _ . and -, starting with a letter`);
-		if (names.has(name)) throw new Error(`two values are called "${name}": give each its own name`);
+		if (names.has(name)) throw new Error(`two values are called "${name}": give each a different name`);
 		names.add(name);
 		const kind = String(r.kind ?? "holding");
 		if (!(kind in KINDS)) throw new Error(`${name}: "kind" is holding, input, coil or discrete`);
@@ -129,7 +129,7 @@ export const type: SourceType = {
 				"report each value when it changes. It only reads: nothing on the device is switched or set",
 			],
 			opens: true,
-			tell: "Its first look is the starting point and reports nothing; from then on only a value that moved does. The sources tool shows what it read at the last look.",
+			tell: "The first look is the starting point and reports nothing; from then on only a value that moved does. The sources tool shows what it read at the last look.",
 		};
 	},
 };

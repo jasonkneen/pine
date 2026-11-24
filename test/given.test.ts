@@ -49,7 +49,7 @@ test("given: an MCP server, a skill, an event source and a schedule are each lis
 	assert.match(r.results.at(-1)!, /they are the actions of a tool called "notes"/);
 	await idle();
 	r = await run([call("mcp_servers"), call("mcp__notes__lookup", { q: "rent" })]);
-	assert.match(r.results.at(-2)!, /^Your MCP servers in this conversation:\n- notes \(http[^)]*\): the owner's notes\n    only this conversation has it; connected: your tool "notes" has its 1 tool as actions/);
+	assert.match(r.results.at(-2)!, /^Your MCP servers in this conversation:\n- notes \(http[^)]*\): the owner's notes\n    only this conversation has it; connected: your tool "notes" has the server's 1 tool as actions/);
 	// The tool the agent is told about is the one the model is declared: a model looks for the name it was given.
 	assert.ok(h.toolsOffered(h.mock.state.requests.at(-1)).includes("mcp__notes__lookup"), "its tool is declared as an action of \"notes\"");
 	assert.ok((h.mock.state.requests.at(-1).body.tools ?? []).some((x: any) => (x.function ?? x).name === "notes"), "under the name the agent was told");

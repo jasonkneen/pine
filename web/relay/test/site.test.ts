@@ -22,8 +22,8 @@ const ASSETS = {
 };
 
 const relayed: string[] = [];
-const handle = site(async (request) => (relayed.push(new URL(request.url).pathname), new Response("relayed")));
-const env = { ASSETS, LIMITER: { limit: async () => ({ success: true }) } };
+const handle = site({ relay: async (request) => (relayed.push(new URL(request.url).pathname), new Response("relayed")), upgrade: () => assert.fail("no meeting here") });
+const env = { ASSETS, LIMITER: { limit: async () => ({ success: true }) }, RELAY: "on" };
 const get = (path: string) => handle(new Request(`https://pine.example${path}`), env as any);
 
 test("/ssh goes to the relay, and nothing else does", async () => {

@@ -53,7 +53,7 @@
         "value": false
       }
     ],
-    "ms": 690
+    "ms": 695
   },
   {
     "id": "A2",
@@ -73,7 +73,7 @@
         "value": 1
       }
     ],
-    "ms": 114
+    "ms": 115
   },
   {
     "id": "A3",
@@ -90,7 +90,7 @@
         }
       }
     ],
-    "ms": 13
+    "ms": 16
   },
   {
     "id": "A4",
@@ -99,11 +99,11 @@
     "findings": [
       {
         "label": "session file a",
-        "value": "<agentDir>/sessions/2026-11-10T10-32-45-961Z_01a1c504-7489-758c-a091-0caf772a545a.jsonl"
+        "value": "<agentDir>/sessions/2026-11-21T13-29-42-585Z_01a1fe4c-67b9-763d-b959-7b486c35df95.jsonl"
       },
       {
         "label": "session file b",
-        "value": "<agentDir>/sessions/2026-11-10T10-32-45-962Z_01a1c504-7489-758c-a091-0cb10a937113.jsonl"
+        "value": "<agentDir>/sessions/2026-11-21T13-29-42-585Z_01a1fe4c-67b9-763d-b959-7b4be7efefaf.jsonl"
       },
       {
         "label": "jsonl entry types",
@@ -121,9 +121,9 @@
         "value": {
           "type": "session",
           "version": 3,
-          "id": "01a1c504-7489-758c-a091-0caf772a545a",
-          "timestamp": "2026-11-10T10:32:45.961Z",
-          "cwd": "/private/var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-baseline-tY8X0L/multicwd/repos/persist-a"
+          "id": "01a1fe4c-67b9-763d-b959-7b486c35df95",
+          "timestamp": "2026-11-21T13:29:42.585Z",
+          "cwd": "/private/var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-baseline-vmtJG2/multicwd/repos/persist-a"
         }
       }
     ],
@@ -138,25 +138,25 @@
         "label": "cumulative cost by session count",
         "value": {
           "1": {
-            "ms": 9,
+            "ms": 7,
             "rssMB": 0.1,
             "heapMB": 0
           },
           "10": {
-            "ms": 20,
+            "ms": 19,
             "rssMB": 0.5,
             "heapMB": 0.5
           },
           "50": {
-            "ms": 47,
-            "rssMB": 4.6,
+            "ms": 43,
+            "rssMB": 2.7,
             "heapMB": 2.7
           }
         }
       },
       {
         "label": "50 concurrent prompts wall ms (model delay 200 ms)",
-        "value": 234
+        "value": 235
       },
       {
         "label": "peak concurrent model requests",
@@ -167,7 +167,7 @@
         "value": true
       }
     ],
-    "ms": 288
+    "ms": 285
   },
   {
     "id": "A6",

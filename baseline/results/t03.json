@@ -36,7 +36,7 @@
         "value": {
           "topic": "agent/kevin/said",
           "payload": "hi",
-          "cwd": "/private/var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-baseline-JsMz3G/tools/cwd",
+          "cwd": "/private/var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-baseline-Vr3rBp/tools/cwd",
           "hasUI": false,
           "ctxKeys": [
             "ui",
@@ -66,7 +66,7 @@
         "value": "FINAL:: published agent/kevin/said"
       }
     ],
-    "ms": 59
+    "ms": 66
   },
   {
     "id": "T2",
@@ -172,7 +172,7 @@
         }
       }
     ],
-    "ms": 30
+    "ms": 29
   },
   {
     "id": "T4",
@@ -181,7 +181,7 @@
     "findings": [
       {
         "label": "3 x sleep 1 took ms",
-        "value": 1013
+        "value": 1011
       },
       {
         "label": "tool results",
@@ -194,16 +194,16 @@
       {
         "label": "execution events",
         "value": [
+          "tool_execution_start@1",
           "tool_execution_start@2",
           "tool_execution_start@2",
-          "tool_execution_start@2",
-          "tool_execution_end@1010",
-          "tool_execution_end@1010",
-          "tool_execution_end@1011"
+          "tool_execution_end@1008",
+          "tool_execution_end@1009",
+          "tool_execution_end@1009"
         ]
       }
     ],
-    "ms": 1015
+    "ms": 1012
   },
   {
     "id": "T5",
@@ -253,10 +253,10 @@
       },
       {
         "label": "tail of what the model got",
-        "value": "23456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789\n\n[Showing lines 174472-176471 of 176471. Full output: /var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-bash-8e0b61bb27878ded.log]"
+        "value": "23456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789abcdef\n0123456789\n\n[Showing lines 174472-176471 of 176471. Full output: /var/folders/p_/7h2d2cr50rzbcy7cntnrpsyr0000gn/T/pi-bash-8611bf62e5333b81.log]"
       }
     ],
-    "ms": 32
+    "ms": 22
   },
   {
     "id": "T7",
@@ -284,7 +284,7 @@
       },
       {
         "label": "sleep 20 with timeout:1 took ms",
-        "value": 1011
+        "value": 1007
       },
       {
         "label": "tool result",
@@ -293,7 +293,7 @@
         ]
       }
     ],
-    "ms": 1014
+    "ms": 1010
   },
   {
     "id": "T8",
@@ -315,7 +315,7 @@
         "value": true
       }
     ],
-    "ms": 6
+    "ms": 3
   },
   {
     "id": "T9",
@@ -350,6 +350,6 @@
         ]
       }
     ],
-    "ms": 105
+    "ms": 100
   }
 ]

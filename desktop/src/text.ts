@@ -91,7 +91,7 @@ const rate = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 100
 export const speedText = (s: Speed | undefined) => (s ? [s.read ? `↑ ${rate(s.read)} t/s` : "", s.write ? `↓ ${rate(s.write)} t/s` : ""].filter(Boolean).join(" ") : "");
 
 export const childKind = (kind: string) => (kind === "subagent" ? "sub-agent" : kind === "delegate" ? "delegated task" : kind);
-export const isGoalRound = (kind: unknown, label: unknown) => kind === "notify" && typeof label === "string" && label.startsWith("goal: ");
+export const isGoalRound = (kind: unknown, label: unknown) => kind === "notify" && typeof label === "string" && (label.startsWith("goal: ") || label.startsWith("swarm: "));
 
 /** What an event that woke the agent reported, without the frame pine put around it for the model. */
 export const eventBody = (prompt: string) =>
@@ -113,7 +113,7 @@ const files = (n: number) => plural(n, "file");
  * than it did is worse than none.
  */
 export function undoLines(r: UndoResult, redo: boolean): { head: string; lines: Array<{ text: string; tone?: "good" | "warn" }> } {
-	if (!redo && r.waiting) return { head: `Withdrawn before it was worked on: ${quoted(r.prompt)}`, lines: [{ text: "The message is in the input again, to change and send." }] };
+	if (!redo && r.waiting) return { head: `Withdrawn before work on it began: ${quoted(r.prompt)}`, lines: [{ text: "What you wrote is back in the message box: edit it and send it again." }] };
 	const lines: Array<{ text: string; tone?: "good" | "warn" }> = [];
 	if (!redo && r.stopped) lines.push({ text: `What was still running was stopped first (${plural(r.stopped, "task")}).` });
 	const f = r.restored;
@@ -131,8 +131,8 @@ export function undoLines(r: UndoResult, redo: boolean): { head: string; lines: 
 	if (r.note) lines.push({ tone: "warn", text: r.note });
 	if (redo) lines.push({ text: `Undo takes it back again${r.redo ? `; redo brings back ${r.redo === 1 ? "one more message" : `${r.redo} more messages`}` : ""}.` });
 	else {
-		lines.push({ text: "Not taken back: what commands did outside this folder, files git ignores or that are over 2 MB, and anything that was sent out." });
-		lines.push({ text: `The message is in the input again, to change and send. Redo brings it back, until you send a new message${r.more ? "; undo again takes back the message before it" : ""}.` });
+		lines.push({ text: "Not undone: changes made outside this folder, files git ignores, files over 2 MB, and anything that was sent out." });
+		lines.push({ text: `What you wrote is back in the message box: edit it and send it again. Redo restores it until you send something new${r.more ? ". Undo again to take back the message before it too" : ""}.` });
 	}
 	return { head: `${redo ? "Brought back" : "Taken back"}: ${quoted(r.prompt)}`, lines };
 }
@@ -151,9 +151,9 @@ export function fuzzy(query: string, text: string): number {
 
 export const MODES: Array<{ value: string; label: string; about: string }> = [
 	{ value: "auto", label: "Auto", about: "Works without asking and without a sandbox: your whole account and the network. Critical actions are still asked about." },
-	{ value: "safe", label: "Safe", about: "Works without asking inside its sandbox: its own folders, no network. Asks for what lies outside." },
-	{ value: "plan", label: "Plan", about: "Looks, reads and asks, and changes nothing. Its answer is a plan. Until pine restarts." },
-	{ value: "manual", label: "Manual", about: "In its sandbox, and every command, edit and message waits for your go-ahead." },
+	{ value: "safe", label: "Safe", about: "Works without asking inside a sandbox: the agent's own folders, no network. Asks for what lies outside." },
+	{ value: "plan", label: "Plan", about: "Looks, reads and asks, and changes nothing. The answer is a plan. Until pine restarts." },
+	{ value: "manual", label: "Manual", about: "In a sandbox, and each command, edit and message waits for your go-ahead." },
 	{ value: "bypass", label: "Bypass", about: "No sandbox and no questions. Nothing is checked. Until pine restarts." },
 ];
 

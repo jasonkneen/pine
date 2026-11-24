@@ -1,0 +1,21 @@
+{
+	"about": "The name the phone gives itself when it pairs, which the Pine app shows in Settings > Browser access: \"Pine on\" and the phone's model, cleaned as the Pine app cleans a device's name (cleanName in desktop/electron/access/store.ts): a terminal's escapes and every control and format character removed, spaces trimmed, at most 60 characters (code points). model is the phone's model as the system gives it, or null. expect is the name sent; \"Pine on a phone\" when nothing is left of the model.",
+	"cases": [
+		{"name": "a phone's model", "model": "Pixel 9", "expect": "Pine on Pixel 9"},
+		{"name": "an iPhone", "model": "iPhone 17 Pro", "expect": "Pine on iPhone 17 Pro"},
+		{"name": "spaces around the model", "model": " Pixel 9 ", "expect": "Pine on Pixel 9"},
+		{"name": "no model", "model": null, "expect": "Pine on a phone"},
+		{"name": "an empty model", "model": "", "expect": "Pine on a phone"},
+		{"name": "a model of control characters only", "model": "\u0000\u001b\u007f", "expect": "Pine on a phone"},
+		{"name": "a bell in the model", "model": "Pixel\u00079", "expect": "Pine on Pixel9"},
+		{"name": "a line break in the model", "model": "Pixel\n9", "expect": "Pine on Pixel9"},
+		{"name": "a control character of the second range", "model": "Pixel\u00859", "expect": "Pine on Pixel9"},
+		{"name": "a terminal's colour escape", "model": "Pixel \u001b[31m9", "expect": "Pine on Pixel 9"},
+		{"name": "a right-to-left override", "model": "Pixel\u202e9", "expect": "Pine on Pixel9"},
+		{"name": "a zero-width space", "model": "Pixel\u200b9", "expect": "Pine on Pixel9"},
+		{"name": "a long model is cut at sixty characters", "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expect": "Pine on aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{"name": "a cut that ends in a space leaves no space", "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbb", "expect": "Pine on aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{"name": "a character beyond the first plane counts as one", "model": "\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00", "expect": "Pine on \ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00\ud835\udc00"},
+		{"name": "letters with accents stay", "model": "T\u00e9l\u00e9phone", "expect": "Pine on T\u00e9l\u00e9phone"}
+	]
+}

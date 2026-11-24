@@ -69,7 +69,7 @@ test("conversations: the main agent lists them, reads one of another agent's wit
 
 	// The tab is closed and the pin taken off; the conversation stays.
 	out = await main(call("set_conversation", { agent: "helper", name: "papers", pinned: false, tab: false }));
-	assert.match(out[0], /its pin is off: .*; its tab is closed; the conversation stays in the list\.$/);
+	assert.match(out[0], /the pin is off: .*; the tab is closed; the conversation stays in the list\.$/);
 	assert.deepEqual([conv("helper", "papers").pinned, tabs()], [false, ["main:main"]]);
 	assert.ok(conv("helper", "papers").expires > Date.now());
 
@@ -77,7 +77,7 @@ test("conversations: the main agent lists them, reads one of another agent's wit
 	out = await main(call("set_conversation", { name: "scratch", tab: true }), call("conversations", { agent: "main" }), call("set_conversation", { name: "main", tab: false }), call("set_conversation", { name: "main", rename: "other" }), call("set_conversation", { name: "main", pinned: true }));
 	assert.match(out[0], /^The conversation "scratch" yours: a tab is open on it/);
 	assert.match(out[1], /- scratch: open in a tab · nothing said in it yet/);
-	assert.match(out[2], /This is the conversation you are in, and its tab is your owner's to close/);
+	assert.match(out[2], /This is the conversation you are in, and the tab is your owner's to close/);
 	assert.match(out[3], /This is the conversation you are in, and it cannot get another name/);
 	assert.match(out[4], /it is the agent's own conversation and is always kept: it needs no pin/);
 	assert.deepEqual(tabs(), ["main:main", "main:scratch"]);
@@ -135,7 +135,7 @@ test("conversations: closing a tab that ends a subscription, and removing a conv
 	asked.length = 0;
 	out = await main(call("set_conversation", { agent: "helper", name: "watch", tab: false }));
 	assert.match(out[0], /not changed \(test\)/);
-	assert.match(asked[0].why, /closing its tab ends what it is subscribed to on its own: inbox/);
+	assert.match(asked[0].why, /closing the tab ends what only this conversation is subscribed to: inbox/);
 	assert.deepEqual(tabs(), ["main:main", "helper:watch"]);
 	// The last tab closes too, as it does in the Pine app: the list of tabs is then empty.
 	h.pine.cfg.agents.helper.subscribe.length = 0;
@@ -208,7 +208,7 @@ test("groups: a conversation goes into a group with its branches and is kept the
 	for (const s of ["okapi-api", "okapi-web", "llama"]) await say(s);
 	const branch = (await m.branchSession("helper", "okapi-api")).session;
 
-	// Into a group that is made on the way, with its branch; a branch alone stays where its conversation is.
+	// Into a group that is made on the way, with the conversation; a branch alone stays where its conversation is.
 	assert.deepEqual(await api.setGroup("helper", "okapi-api", "Okapi"), { session: "okapi-api", group: "Okapi", moved: ["okapi-api", branch] });
 	assert.equal(conv("helper", branch).group, "Okapi");
 	await assert.rejects(api.setGroup("helper", branch, "Other"), /"okapi-api-branch" is a branch of "okapi-api" and is where that one is; move "okapi-api"/);
@@ -255,7 +255,7 @@ test("groups: a conversation goes into a group with its branches and is kept the
 	assert.deepEqual(await api.groups("helper"), { order: "name", groups: [{ name: "Later on", conversations: 0 }] });
 	assert.deepEqual(told.map((x) => x.change).sort(), ["group", "remove", "remove", "remove", "remove"]);
 	assert.deepEqual(h.pine.agents.kv.keys("group:helper:").filter((k: string) => h.pine.agents.kv.get(k) != null), []);
-	await assert.rejects(api.post("/agents/helper/groups", { action: "remove", name: "Okapi 2026" }), /helper has no group called "Okapi 2026"\. Its groups: Later on/);
+	await assert.rejects(api.post("/agents/helper/groups", { action: "remove", name: "Okapi 2026" }), /helper has no group called "Okapi 2026"\. Groups of helper: Later on/);
 	await h.close();
 });
 
@@ -273,7 +273,7 @@ test("groups: the main agent lists them, puts a conversation into one, renames o
 	assert.equal(asked.length, 0, "a move takes nothing away: nobody is asked");
 
 	out = await main(call("rename_group", { agent: "helper", name: "ANIMALS", to: "Zoo" }), call("rename_group", { agent: "helper", name: "Plants", to: "Garden" }));
-	assert.match(out[0], /^The group "Animals" of helper is now called "Zoo"; its conversations are in it as before\.$/);
+	assert.match(out[0], /^The group "Animals" of helper is now called "Zoo"; the conversations are in it as before\.$/);
 	assert.match(out[1], /helper has no group called "Plants"\. Groups: Zoo\./);
 	assert.equal(conv("helper", "okapi").group, "Zoo");
 
@@ -357,7 +357,7 @@ test("tui: /group puts the conversation into a group and takes it out, and the l
 	assert.equal(h.pine.agents.groupOf("main", "okapi"), "Zoo");
 	term.type("/sessions");
 	term.type([KEY.enter]);
-	await sees(/okapi\s+▸ Zoo .* kept in its group/);
+	await sees(/okapi\s+▸ Zoo .* kept in a group/);
 	term.type([KEY.esc]);
 	term.type("/group -");
 	term.type([KEY.enter]);

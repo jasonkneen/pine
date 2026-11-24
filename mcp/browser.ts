@@ -66,6 +66,14 @@ interface BrowserOptions {
 	 * for the owner's own window is (startViewDoor). Only an owner's conversation has one.
 	 */
 	viewFile?: string;
+	/**
+	 * Set by pine, not by the owner: a file in pine's home in which the daemon says where the Pine app's
+	 * own browser is (desktop/electron/browser-host.ts), while the app runs on this computer. Where it
+	 * is, this browser is that one: a page in the app's window, beside the conversation.
+	 */
+	hostFile?: string;
+	/** Set by pine with hostFile: the conversation this browser is for, which names its tabs in the app. */
+	room?: string;
 	browser?: string;
 	executablePath?: string;
 	caps?: string;
@@ -311,6 +319,10 @@ export interface ViewState {
 	current: number;
 	/** The browser is a window on the owner's screen as well. */
 	window: boolean;
+	/** How many pixels of the picture make one point of the page: a place in the picture, divided by it, is a place in the page. */
+	scale: number;
+	/** The browser is the Pine app's own, a page in its window (hostFile): the app shows it there itself. */
+	hosted?: boolean;
 	/** Why the last thing the owner asked for was not done. */
 	error?: string;
 }
@@ -456,8 +468,8 @@ export async function startViewDoor(view: BrowserView, file: string): Promise<{ 
 }
 
 export interface BrowserServer {
-	/** Starts Playwright's server, with a window or without. */
-	launch(headed: boolean): ChildProcess;
+	/** Starts Playwright's server, with a window or without, or on the Pine app's browser at `host`. */
+	launch(headed: boolean, host?: string): ChildProcess;
 	/** One message for the client. */
 	send(msg: unknown): void;
 	/** A folder the browser may write into; a login is kept there for the moment of a restart. */
@@ -466,7 +478,21 @@ export interface BrowserServer {
 	refused: string[];
 	/** Playwright's server ended by itself. */
 	ended(): void;
+	/** How many pixels a browser without a window draws for one point of a page (VIEW_SCALE where the owner's window may show it). Default 1. */
+	scale?: number;
+	/** Where the Pine app's own browser is now, if it is there (hostFile, and it answers); looked at again and again. */
+	host?(): Promise<string | undefined>;
 }
+
+/**
+ * Pixels for one point of a page while the owner's own window may show the browser: the picture is
+ * as sharp as a Retina display draws, and on any other display it is drawn smaller. The agent's own
+ * screenshots stay in the page's points (Playwright's default), so its places are the same as without it.
+ */
+export const VIEW_SCALE = 2;
+
+/** Plain letters, digits and signs: each is a key of the browser's own keyboard, and is typed by itself without waiting for the page. */
+const KEYS = /^[\x20-\x7e]{1,40}$/;
 
 /**
  * The conversation between pine and Playwright's server: the tool list is filtered, blocked calls
@@ -475,6 +501,8 @@ export interface BrowserServer {
  */
 export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string): void; close(): void; child(): ChildProcess; view: BrowserView } {
 	let headed = !!o.headed;
+	/** The Pine app's own browser this one is now (io.host), while the app runs: a page in its window, which the owner uses too. */
+	let hosted: string | undefined;
 	/** The owner's own window shows this browser (the Pine app): browser_show opens no other. */
 	let embedded = false;
 	/** The owner's hand was in the browser since the agent last looked. */
@@ -495,7 +523,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 	let inFlight: any;
 
 	const start = (): ChildProcess => {
-		const c = io.launch(headed);
+		const c = io.launch(headed, hosted);
 		c.on("exit", () => {
 			if (retired.delete(c)) return;
 			for (const answer of own.values()) answer({ error: { message: "the browser ended" } });
@@ -562,10 +590,13 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 	};
 	const next = () => {
 		if (inFlight !== undefined || !waiting.length) return;
+		// A picture is taken beside the calls (view.frame). One that may end the page or the browser waits for it:
+		// a picture taken after the browser closed would open it again.
+		if (framing && ends(waiting[0])) return void framing.finally(next);
 		inFlight = waiting.shift();
 		if (inFlight.job) return void inFlight.job().finally(() => ((inFlight = undefined), next()));
 		if (isWindowTool(String(inFlight.params?.name))) return void turn(inFlight);
-		if (headed || shared) return void guarded(inFlight);
+		if (headed || hosted || shared) return void guarded(inFlight);
 		write(inFlight);
 	};
 	/** The local addresses a page reached for by itself and was refused, that the agent has not been told yet: each once, a few at a time. */
@@ -588,7 +619,10 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		}
 		return fresh;
 	};
-	/** Something this server does itself (a picture for the owner, what the owner did): it waits its turn like a call of the agent's. */
+	/** A call of the agent's that may close a tab or the browser, or start the browser anew. */
+	const ends = (msg: any) => !msg.job && (isWindowTool(String(msg.params?.name)) || ["browser_close", "browser_tabs"].includes(String(msg.params?.name)));
+	let framing: Promise<Buffer | undefined> | undefined;
+	/** Something this server does itself (what the owner did, where the browser is): it waits its turn like a call of the agent's. */
 	const between = <T>(job: () => Promise<T>): Promise<T> =>
 		new Promise<T>((resolve, reject) => {
 			waiting.push({ job: () => job().then(resolve, reject) });
@@ -600,8 +634,8 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		next();
 	};
 
-	/** Ends the browser and starts it again, with a window or without. */
-	const restart = async (window: boolean) => {
+	/** Ends the browser and starts it again, with a window or without, or as the app's (`host`). */
+	const restart = async (window: boolean, host: string | undefined) => {
 		const old = child;
 		const gone = new Promise((r) => old.once("exit", r));
 		retired.add(old);
@@ -609,6 +643,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		old.kill();
 		await gone;
 		headed = window;
+		hosted = host;
 		child = start();
 		if (hello) {
 			await ask("initialize", hello.params);
@@ -620,9 +655,11 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 	const turn = async (msg: any) => {
 		const show = msg.params.name === "browser_show";
 		const say = (text: string, isError = false) => answered({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) } });
-		if (headed === show) return say(show ? "The browser is already a window on your owner's screen." : embedded ? "The browser has no window of its own. Your owner sees it in the Pine app, at the right of this conversation's window." : "The browser has no window.");
+		// The app shows the browser beside the conversation, or the browser is the app's own.
+		const inApp = embedded || hosted !== undefined;
+		if (headed === show) return say(show ? "The browser is already a window on your owner's screen." : inApp ? "The browser has no separate window. Your owner sees it in the Pine app, at the right of this conversation's window." : "The browser has no window.");
 		// The owner's own window shows the browser already: nothing is started anew, and no second window opens.
-		if (show && embedded) {
+		if (show && inApp) {
 			if (page !== undefined) seen ??= await tabsNow();
 			shared = true;
 			return say(
@@ -634,7 +671,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		try {
 			const kept = at !== undefined && (await call("browser_storage_state", { filename: state })).ok;
 			const open = async (window: boolean) => {
-				await restart(window);
+				await restart(window, hosted);
 				if (kept) await call("browser_set_storage_state", { filename: state });
 				// A browser that was not told to open anything has no window yet.
 				return call("browser_navigate", { url: at ?? "about:blank" });
@@ -696,7 +733,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		if (!current) return io.send(msg);
 		// What the tabs are after the agent's own call is what it has seen. (A closed browser is not asked: asking would open it again.)
 		// Without a window the agent has now seen what the owner's hand left: nothing is compared again until it moves.
-		if (!headed || closed) return (seen = undefined), (shared = false), answered(msg);
+		if ((!headed && !hosted) || closed) return (seen = undefined), (shared = false), answered(msg);
 		void tabsNow().then((tabs) => ((seen = tabs), answered(msg)));
 	};
 
@@ -707,7 +744,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		const tabs = page === undefined ? undefined : await tabsNow();
 		const front = tabs?.tabs[tabs.current];
 		if (front && front.url !== "about:blank") page = front.url;
-		return { open: page !== undefined, tabs: (tabs?.tabs ?? []).map((t) => ({ title: shown(t.title, 200), url: shown(t.url, 2000) })), current: tabs?.current ?? 0, window: headed, ...(error ? { error: shown(error, 300) } : {}) };
+		return { open: page !== undefined, tabs: (tabs?.tabs ?? []).map((t) => ({ title: shown(t.title, 200), url: shown(t.url, 2000) })), current: tabs?.current ?? 0, window: headed, scale: headed || hosted ? 1 : (io.scale ?? 1), ...(hosted ? { hosted: true } : {}), ...(error ? { error: shown(error, 300) } : {}) };
 	};
 	/** Before the owner's hand moves: what the agent last saw is kept, so that its next call notices. */
 	const touch = async () => {
@@ -716,15 +753,19 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		shared = true;
 	};
 	const failure = (msg: any) => (msg.error || msg.result?.isError ? (textOf(msg).split("\n").find((l) => l.trim() && !l.startsWith("###")) ?? "the browser did not do it").replace(/^Error: /, "") : undefined);
-	let framing: Promise<Buffer | undefined> | undefined;
 	const shot = `pine-view-${process.pid}.jpeg`;
 	const view: BrowserView = {
 		embed: (on) => void (embedded = on),
 		state: () => between(() => where()),
+		// Looking takes no turn: the picture is taken while the agent or the owner's hand is busy (a click waits
+		// for the page to settle), so that what they do is seen as it happens. Not beside a call that may end the
+		// page; one of those that comes meanwhile waits for the picture (next).
 		frame: () =>
-			(framing ??= between(async () => {
-				if (page === undefined) return undefined;
-				const msg = await ask("tools/call", { name: "browser_take_screenshot", arguments: { type: "jpeg", filename: shot } }, 10_000);
+			(framing ??= (async () => {
+				if (page === undefined || (inFlight !== undefined && ends(inFlight))) return undefined;
+				// In the device's pixels: the browser draws io.scale of them for a point (VIEW_SCALE). With a window,
+				// in the page's points, which ViewState.scale says.
+				const msg = await ask("tools/call", { name: "browser_take_screenshot", arguments: { type: "jpeg", filename: shot, scale: headed || hosted ? "css" : "device" } }, 10_000);
 				// The file's path, /… or, on Windows, C:\….
 				const file = failure(msg) ? undefined : textOf(msg).match(/\]\(((?:\/|[A-Za-z]:[\\/])[^)\s#]+)\)/)?.[1];
 				if (!file) return undefined;
@@ -735,30 +776,42 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 				} catch {
 					return undefined;
 				}
-			}).finally(() => (framing = undefined))),
+			})().finally(() => (framing = undefined))),
 		input: (given) =>
 			between(async () => {
-				const ops = cleanOps(given);
+				// The app's own browser has the panel's size already: nothing is laid out for a picture.
+				const ops = cleanOps(given).filter((op) => !(hosted && op.do === "size"));
 				if (page === undefined || !ops.length) return where();
 				// Looking is not touching: the pointer over the page, the wheel and the size of the room leave the agent's page where it was.
 				if (ops.some((op) => !["move", "wheel", "size"].includes(op.do))) await touch();
 				let error: string | undefined;
 				const tool = async (name: string, args: unknown, ms = 10_000) => void (error = failure(await ask("tools/call", { name, arguments: args }, ms)) ?? error);
-				// In the order they were done. What clicks and types goes together, as values into code that is this
-				// server's own and fixed. The wheel and the pointer move often and change no page: they go the
-				// short way, which does not wait for a page to settle.
+				// In the order they were done. The wheel and the pointer move often and change no page; a click, a key
+				// and plain letters are what the owner does most. They go the short way, Playwright's own tools with the
+				// values cleanOps let through, which do not wait for the page to settle (half a second after each, and
+				// longer while it loads): the owner sees the page answer in the pictures, and the next key is not held up.
+				// The rest (a double click, a drag, Enter, other letters, going back, the size) goes together, as values
+				// into code that is this server's own and fixed.
 				let hand: ViewOp[] = [];
 				const done = async () => {
 					if (hand.length) await tool("browser_run_code_unsafe", { code: OWNER_HAND.replace("__OPS__", () => literal(hand)) }, 40_000);
 					hand = [];
 				};
 				for (const op of ops) {
-					if (op.do !== "wheel" && op.do !== "move" && op.do !== "tab" && op.do !== "newtab" && op.do !== "closetab") {
+					const short = (op.do === "click" && op.count === 1) || (op.do === "key" && op.key !== "Enter") || (op.do === "text" && KEYS.test(op.text));
+					if (!short && op.do !== "wheel" && op.do !== "move" && op.do !== "tab" && op.do !== "newtab" && op.do !== "closetab") {
 						hand.push(op);
 						continue;
 					}
 					await done();
-					if (op.do === "wheel") await tool("browser_mouse_wheel", { deltaX: op.dx, deltaY: op.dy });
+					if (op.do === "click") {
+						await tool("browser_mouse_move_xy", { x: op.x, y: op.y });
+						await tool("browser_mouse_down", { button: op.button });
+						await tool("browser_mouse_up", { button: op.button });
+					} else if (op.do === "key") await tool("browser_press_key", { key: op.key });
+					// (A character is a key name only alone: "+" by itself is the key "+".)
+					else if (op.do === "text") for (const c of op.text) await tool("browser_press_key", { key: c });
+					else if (op.do === "wheel") await tool("browser_mouse_wheel", { deltaX: op.dx, deltaY: op.dy });
 					else if (op.do === "move") await tool("browser_mouse_move_xy", { x: op.x, y: op.y });
 					else if (op.do === "newtab") await tool("browser_tabs", { action: "new" });
 					else if (op.do === "closetab" && ((await tabsNow())?.tabs.length ?? 0) <= 1) {
@@ -782,6 +835,43 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 				return where(error && io.refused.length ? `the browser was refused ${io.refused.at(-1)}` : error);
 			}),
 	};
+
+	/**
+	 * The browser becomes the app's own (a host), or the one this server starts when the app is gone. Between two
+	 * calls, like anything this server does itself. The page that was open is opened again there, and the logins go
+	 * along where the browser that is left still answers (an app that quit does not).
+	 */
+	const move = (host: string | undefined) =>
+		between(async () => {
+			if (host === hosted) return;
+			const at = page;
+			const state = path.join(io.scratch, `state-${process.pid}-${Date.now()}.json`);
+			try {
+				const kept = at !== undefined && !failure(await ask("tools/call", { name: "browser_storage_state", arguments: { filename: state } }, 5000));
+				await restart(false, host);
+				page = undefined;
+				if (kept) await ask("tools/call", { name: "browser_set_storage_state", arguments: { filename: state } }, 10_000);
+				if (at !== undefined && !failure(await ask("tools/call", { name: "browser_navigate", arguments: { url: at } }, 60_000))) page = at;
+				// The app's browser is the owner's too: from now on the agent is told when it was moved there.
+				seen = host && page !== undefined ? await tabsNow() : undefined;
+				shared = false;
+			} finally {
+				fs.rmSync(state, { force: true });
+			}
+		});
+	if (io.host) {
+		let moving = false;
+		const look = async () => {
+			if (moving) return;
+			const want = await io.host!();
+			if (want === hosted) return;
+			moving = true;
+			await move(want).catch(() => {});
+			moving = false;
+		};
+		void look();
+		setInterval(() => void look(), 2000).unref();
+	}
 
 	return {
 		view,
@@ -809,6 +899,30 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 	};
 }
 
+/**
+ * Where the Pine app's own browser is, as the daemon wrote it into `file` while the app says so, and if it answers:
+ * an address on the loopback with the word to say. Nothing when the app is gone or says nothing any more.
+ */
+export async function appBrowser(file: string): Promise<string | undefined> {
+	let url: string;
+	try {
+		const said = JSON.parse(fs.readFileSync(file, "utf8"));
+		if (typeof said.url !== "string" || !/^ws:\/\/127\.0\.0\.1:\d{1,5}\/[0-9a-f]{64}$/.test(said.url) || !(Number(said.until) > Date.now())) return undefined;
+		url = said.url;
+	} catch {
+		return undefined;
+	}
+	const port = Number(new URL(url).port);
+	const answers = await new Promise<boolean>((resolve) => {
+		const socket = net.connect(port, "127.0.0.1");
+		const done = (yes: boolean) => (socket.destroy(), resolve(yes));
+		socket.setTimeout(1000, () => done(false));
+		socket.once("connect", () => done(true));
+		socket.once("error", () => done(false));
+	});
+	return answers ? url : undefined;
+}
+
 if (import.meta.main) {
 	const o = options<BrowserOptions>();
 	const cli = path.join(path.dirname(createRequire(import.meta.url).resolve("@playwright/mcp")), "cli.js");
@@ -818,10 +932,14 @@ if (import.meta.main) {
 	// Playwright's server takes switches for the browser from a configuration file only.
 	const sealed = path.join(scratch, "pine-browser.json");
 	fs.writeFileSync(sealed, JSON.stringify({ browser: { launchOptions: { args: NO_WAY_AROUND } } }));
-	const args = (headed: boolean) => [
+	// Without a window, where the owner's own window may show the browser, it draws VIEW_SCALE pixels for a point
+	// (a window keeps the screen's own, and Playwright takes no scale for a window that is as large as it is).
+	const scale = o.viewFile && o.window ? VIEW_SCALE : 1;
+	const dense = path.join(scratch, "pine-browser-dense.json");
+	fs.writeFileSync(dense, JSON.stringify({ browser: { launchOptions: { args: NO_WAY_AROUND }, contextOptions: { deviceScaleFactor: scale } } }));
+	const args = (headed: boolean, host?: string) => [
 		cli,
-		"--config", sealed,
-		"--proxy-server", `http://127.0.0.1:${proxy.port}`,
+		"--config", headed ? sealed : dense,
 		"--output-dir", scratch,
 		"--ignore-roots",
 		"--file-paths", "absolute",
@@ -829,14 +947,19 @@ if (import.meta.main) {
 		// Tools that a page declares are outside content with a name; none of them is offered.
 		"--no-webmcp",
 		"--image-responses", o.images === false ? "omit" : "allow",
+		"--caps", caps,
+		...(o.extraArgs ?? []),
+		// The app's browser: its tabs of this conversation, which the app puts behind this server's guard (the proxy's port goes along).
+		...(host ? ["--cdp-endpoint", `${host}/${encodeURIComponent(o.room!)}?proxy=${proxy.port}`] : own(headed)),
+	];
+	const own = (headed: boolean) => [
+		"--proxy-server", `http://127.0.0.1:${proxy.port}`,
 		...(headed ? [] : ["--headless"]),
 		...(o.profile ? ["--user-data-dir", o.profile] : ["--isolated"]),
 		// Playwright's own Chromium build by default; "chrome" or "msedge" use an installed browser.
 		"--browser", o.browser ?? "chromium",
 		...(o.executablePath ? ["--executable-path", o.executablePath] : []),
-		"--caps", caps,
 		...(o.viewport ? ["--viewport-size", o.viewport] : []),
-		...(o.extraArgs ?? []),
 	];
 	let door: { close(): void } | undefined;
 	const stop = () => {
@@ -846,11 +969,13 @@ if (import.meta.main) {
 		process.exit(0);
 	};
 	const server = relay(o, {
-		launch: (headed) => spawn(process.execPath, args(headed), { cwd: scratch, stdio: ["pipe", "pipe", "inherit"] }),
+		launch: (headed, host) => spawn(process.execPath, args(headed, host), { cwd: scratch, stdio: ["pipe", "pipe", "inherit"] }),
 		send: (msg) => process.stdout.write(`${JSON.stringify(msg)}\n`),
 		scratch,
 		refused: proxy.refused,
 		ended: () => stop(),
+		scale,
+		host: o.hostFile && o.room && o.window && o.viewFile ? () => appBrowser(o.hostFile!) : undefined,
 	});
 	process.on("SIGTERM", stop);
 	process.on("SIGINT", stop);

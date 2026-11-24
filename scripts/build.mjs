@@ -20,6 +20,8 @@ fs.rmSync(path.join(out, "docs", "images"), { recursive: true, force: true });
 for (const dir of ["mcp", "src", path.join("src", "tui"), path.join("src", "sources")]) {
 	for (const name of fs.readdirSync(path.join(root, dir))) if (/\.(swift|cs|py)$/.test(name)) fs.copyFileSync(path.join(root, dir, name), path.join(out, dir, name));
 }
+// What the owner's views import ("pine/view"): pine copies the TypeScript itself into <home>/views for their editor (src/views.ts).
+fs.copyFileSync(path.join(root, "src", "view-kit.ts"), path.join(out, "src", "view-kit.ts"));
 fs.mkdirSync(path.join(out, "bin"), { recursive: true });
 fs.copyFileSync(path.join(root, "bin", "pine.js"), path.join(out, "bin", "pine.js"));
 fs.chmodSync(path.join(out, "bin", "pine.js"), 0o755);
@@ -45,6 +47,6 @@ try {
 }
 fs.writeFileSync(path.join(out, "changes.json"), `${JSON.stringify(changesOf(log, pkg.version), null, "\t")}\n`);
 
-const left = fs.readdirSync(out, { recursive: true }).filter((f) => String(f).endsWith(".ts") && !String(f).endsWith(".d.ts") && !String(f).startsWith("examples") && !String(f).startsWith("docs"));
+const left = fs.readdirSync(out, { recursive: true }).filter((f) => String(f).endsWith(".ts") && !String(f).endsWith(".d.ts") && !String(f).startsWith("examples") && !String(f).startsWith("docs") && String(f) !== path.join("src", "view-kit.ts"));
 if (left.length) throw new Error(`uncompiled sources in the package: ${left.join(", ")}`);
 console.log(`package ${pkg.name}@${pkg.version} is in ${out}`);

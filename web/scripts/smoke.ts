@@ -7,11 +7,21 @@
 //
 // The owner's first visit, as named checks, each of which fails the run: the page cannot reach
 // the bridge's storage, document or the daemon's token; a message to the bridge from another
-// window is ignored; the browser's key is shown; a machine is added and used through the relay;
+// window is ignored; the first screen shows how to pair, and its link to SSH leads to the SSH view
+// (which names the deployment's host as the relay's) and its back control returns; the browser's
+// key is shown; a machine is added and used through the relay;
 // its host key fingerprint is asked about before the key is offered, and trusted; a message is
 // sent and the answer comes back; a picture in an answer shows; a link in an answer opens in a new
 // tab with no hold on the client; after the relay restarts the bridge connects again by itself; a
 // frame that navigates itself away makes the client start anew.
+//
+// Then a computer paired by link, on the same deployment (the meeting service beside the
+// relay): the Pine app's access host under Node beside the same home's real `pine service`, and a
+// second browser that opens the pairing link. Named checks again: the meeting routes answer;
+// pairing completes when the owner allows the four digits the browser shows; the computer is listed
+// under its name; a conversation answers over a data channel and nothing goes through /ssh; the
+// page's policy and the iframe's sandbox are unchanged; after the access host restarts the browser
+// connects again by itself. No STUN server outside this computer is asked.
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -94,7 +104,7 @@ try {
 	cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
 	const home = path.join(dir, "home");
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
-	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, main: "main", defaults: { model: "mock/m", mode: "safe" }, security: { askAccess: false } }));
+	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, main: "main", defaults: { model: "mock/m", mode: "safe", introduce: false }, security: { askAccess: false } }));
 	write(path.join(home, "agents", "main", "agent.json"), JSON.stringify({ description: "The main agent" }));
 	write(path.join(home, "agents", "main", "workspace", "AGENTS.md"), "You are the main agent.\n");
 	mkdirSync(path.join(home, "browsers"), { recursive: true });
@@ -109,13 +119,33 @@ try {
 	// the loopback, with the one switch that lets the relay reach this computer's sshd
 	// (RELAY_ALLOW_LOOPBACK, which no deployed configuration sets). The relay is stopped and
 	// started again on the same port, as a deploy restarts a Worker.
+	//
+	// It is the one configuration of wrangler.jsonc, the one every channel deploys: the relay and the
+	// meeting service side by side, so that a machine added as user@host and a computer paired by link are both tried on one deployment.
+	// Two changes are made to it, in a copy in the smoke's folder: the servers that help a connection
+	// (ICE) are a closed port of the loopback, so that no public STUN server is asked. An empty list
+	// would not do: the service falls back to a public one. And the limit per client address is
+	// raised (below), since every client here has the one loopback address.
 	const relayPort = await freePort();
 	const inspectorPort = await freePort();
 	const wranglerState = path.join(dir, "wrangler");
+	const relayDir = path.join(web, "relay");
+	const config = JSON.parse(readFileSync(path.join(relayDir, "wrangler.jsonc"), "utf8").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n"));
+	assert.ok(config.durable_objects, "the configuration has the meeting service");
+	config.main = path.join(relayDir, config.main);
+	// Paths are read from the copy's folder: the ones that point out of web/relay are made whole.
+	config.assets = { ...config.assets, directory: dist };
+	config.vars = { ...config.vars, ICE: [{ urls: "stun:127.0.0.1:9" }] };
+	// And the limit per client address: every browser, the access host and the relay's connections
+	// here come from the one loopback address, which a minute of reconnecting takes past 20.
+	for (const limit of config.ratelimits) limit.simple = { ...limit.simple, limit: 1000 };
+	delete config.$schema;
+	const configFile = path.join(wranglerState, "wrangler.json");
+	write(configFile, JSON.stringify(config, null, 2));
 	let wrangler: ChildProcess | null = null;
 	let wranglerLog = "";
 	const startRelay = async () => {
-		const running = spawn(path.join(web, "relay", "node_modules", ".bin", "wrangler"), ["dev", "--ip", "127.0.0.1", "--port", String(relayPort), "--inspector-port", String(inspectorPort), "--var", "RELAY_ALLOW_LOOPBACK:1", "--persist-to", path.join(wranglerState, "state"), "--show-interactive-dev-session=false", "--log-level", "warn"], {
+		const running = spawn(path.join(relayDir, "node_modules", ".bin", "wrangler"), ["dev", "--config", configFile, "--ip", "127.0.0.1", "--port", String(relayPort), "--inspector-port", String(inspectorPort), "--var", "RELAY_ALLOW_LOOPBACK:1", "--persist-to", path.join(wranglerState, "state"), "--show-interactive-dev-session=false", "--log-level", "warn"], {
 			cwd: path.join(web, "relay"),
 			// Wrangler's own files (its settings, its logs) go into the smoke's folder, never the owner's; no metrics are sent.
 			env: { ...process.env, XDG_CONFIG_HOME: path.join(wranglerState, "config"), WRANGLER_LOG_PATH: path.join(wranglerState, "logs"), WRANGLER_SEND_METRICS: "false", CI: "1" },
@@ -166,6 +196,11 @@ try {
 	});
 	const errors: string[] = [];
 	page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+	// The page's frame may not submit a form (no allow-forms, rule 10): a button that relied on
+	// one would do nothing, and the browser says so on the console. Kept for the whole run.
+	const blocked: string[] = [];
+	const watchForms = (m: { text(): string }) => /Blocked form submission/i.test(m.text()) && blocked.push(m.text());
+	page.on("console", watchForms);
 	await page.goto(`${origin}/`);
 	const frame = page.frameLocator("iframe");
 	explain = async () => {
@@ -182,7 +217,32 @@ try {
 
 	await check("the page runs in an iframe sandboxed with scripts only", async () => {
 		assert.equal(await page.locator("iframe").getAttribute("sandbox"), "allow-scripts");
-		await frame.locator("[data-slot=device-key]").waitFor({ timeout: 20_000 });
+		await frame.locator("[data-slot=pair-how-to]").waitFor({ timeout: 20_000 });
+	});
+
+	// The deployment has the meeting service and the relay: the first screen shows how to pair, and SSH is behind a link.
+	await check("the first screen shows how to pair first, without the user@host field or the browser's key", async () => {
+		await frame.getByText("Pair this browser with your computer").waitFor({ timeout: 10_000 });
+		assert.equal(await frame.getByPlaceholder("you@server").count(), 0);
+		assert.equal(await frame.locator("[data-slot=device-key]").count(), 0);
+		assert.equal(await frame.locator("[data-slot=back-to-pairing]").count(), 0);
+		assert.equal(await frame.locator("[data-slot=meeting-line]").innerText(), `Found through 127.0.0.1:${relayPort}. The connection is then made between the two devices, directly or through a relay server the computer's owner named.`);
+	});
+
+	await check("the link to SSH shows the SSH view, and its back control returns to pairing", async () => {
+		await frame.getByRole("button", { name: "Or connect to a server over SSH" }).click();
+		await frame.locator("[data-slot=device-key]").waitFor({ timeout: 10_000 });
+		await frame.getByPlaceholder("you@server").waitFor({ timeout: 10_000 });
+		assert.equal(await frame.locator("[data-slot=pair-how-to]").count(), 0);
+		await frame.getByRole("button", { name: "Back to pairing" }).click();
+		await frame.locator("[data-slot=pair-how-to]").waitFor({ timeout: 10_000 });
+		assert.equal(await frame.getByPlaceholder("you@server").count(), 0);
+		await frame.getByRole("button", { name: "Or connect to a server over SSH" }).click();
+		await frame.locator("[data-slot=device-key]").waitFor({ timeout: 10_000 });
+	});
+
+	await check("the SSH view names this deployment's host as the relay's, which carries SSH only and cannot read it", async () => {
+		assert.equal(await frame.locator("[data-slot=relay-line]").innerText(), `Connections go through the relay at 127.0.0.1:${relayPort}. It carries SSH only and cannot read it.`);
 	});
 
 	await check("the page cannot reach the bridge's IndexedDB, its document or its cookies", async () => {
@@ -231,10 +291,30 @@ try {
 		assert.equal(await frame.locator("textarea").count(), 0);
 	});
 
-	await check("trusting the key connects, and the conversation is there", async () => {
+	await check("trusting the key connects, and the conversation is there, on the deployment that has the meeting service too", async () => {
 		await frame.locator(`[data-environment="${host}"] [data-slot=trust-host-key]`).first().click();
 		await frame.locator("textarea").first().waitFor({ timeout: 60_000 });
 		assert.match(machine.log(), /Accepted publickey for \S+ from 127\.0\.0\.1 port \d+ ssh2: ED25519/);
+	});
+
+	// The mouse's checks come before the window opened by the next ones: once that window was open and
+	// closed, headless Chrome hands a click over the sandboxed frame to the bridge's document instead.
+	await check("the Send button sends with a click of the mouse, not only with Enter", async () => {
+		const box = frame.locator("textarea").first();
+		await box.fill('Click it. <<MOCK {"steps":[{"text":"The button sent it."}]}>>');
+		await frame.locator("[data-slot=composer]").getByRole("button", { name: "Send", exact: true }).click();
+		await frame.getByText("The button sent it.", { exact: true }).first().waitFor({ timeout: 60_000 });
+	});
+
+	await check("an event is published from its form with a click on Publish", async () => {
+		const box = frame.locator("textarea").first();
+		await box.fill("/emit");
+		await box.press("Enter");
+		await frame.locator("[data-slot=publish-form]").waitFor({ timeout: 10_000 });
+		await frame.locator("#publish-topic").fill("smoke/clicked");
+		await frame.getByRole("button", { name: /^Publish/ }).click();
+		await frame.locator("[data-slot=publish-form]").waitFor({ state: "detached", timeout: 10_000 });
+		await frame.locator("[data-slot=toast]", { hasText: "on smoke/clicked" }).first().waitFor({ timeout: 10_000 });
 	});
 
 	await check("the page cannot read the bridge's IndexedDB or the daemon's token", async () => {
@@ -400,6 +480,170 @@ try {
 		assert.ok(!heard.some((h) => h.includes(token)), "nor the daemon's token");
 	});
 
+	// ---- A computer paired by link, peer to peer ----------------------------------------------------
+	// The Pine app's access host (desktop/electron/access/host.ts) under Node beside the same
+	// home's real `pine service`, waiting at the meeting service of the deployment, with pairing as
+	// the app wires it and an owner who answers by what the browser shows. A second browser, on a
+	// profile of its own, opens the pairing link as a phone would after scanning the QR code.
+	await check("the meeting routes answer: the configuration, with the relay on and the loopback's servers, and the two sockets", async () => {
+		const said = await fetch(`${origin}/meet/config`).then((r) => r.json());
+		assert.deepEqual(said, { ice: [{ urls: "stun:127.0.0.1:9" }], relay: true });
+		// A browser that asks for a computer nobody waits for is told so by its close code.
+		const code = await new Promise<number>((resolve, reject) => {
+			const ws = new WebSocket(`ws://127.0.0.1:${relayPort}/meet/join?id=${"n".repeat(43)}`);
+			ws.addEventListener("close", (e) => resolve(e.code));
+			ws.addEventListener("error", () => {});
+			setTimeout(() => reject(new Error("the join socket was not closed")), 10_000);
+		});
+		assert.equal(code, 4404);
+	});
+
+	const { connect: connectService } = await import(new URL("../../desktop/electron/service.ts", import.meta.url).href);
+	const service = await connectService({ argv: [process.execPath, path.join(repo, "src", "cli.ts")], env: { ...process.env, PINE_HOME: home }, from: "the smoke" }, { home });
+	cleanups.push(() => service.stop());
+	type AccessHost = { machineId: string; status(): string; store: { devices(): { id: string; name: string }[] }; stop(): Promise<void> };
+	const { startAccessHost } = (await import(new URL("../../desktop/electron/access/host.ts", import.meta.url).href)) as { startAccessHost(options: Record<string, unknown>): Promise<AccessHost> };
+	const { createPairing } = (await import(new URL("../../desktop/electron/access/pairing.ts", import.meta.url).href)) as { createPairing(options: Record<string, unknown>): { open(): { link: string }; admit: unknown } };
+	const accessFolder = path.join(dir, "access");
+	const COMPUTER = "Smoke computer";
+	/** What the owner was asked, and what the browser showed when they answered. */
+	const asked: { name: string; code: string; shown: string }[] = [];
+	let shownCode: () => Promise<string> = async () => "";
+	let pairing: ReturnType<typeof createPairing> | undefined;
+	const startHost = async () => {
+		const started = await startAccessHost({
+			service: origin,
+			folder: accessFolder,
+			daemon: async () => JSON.stringify({ base: service.base, token: service.token, mode: service.mode, started: service.started, home: service.home, version: service.version }),
+			// The owner allows only when the four digits on the computer are the ones the browser shows.
+			admit: (context: Record<string, unknown>) => (pairing = createPairing({ ...context, computerName: () => COMPUTER, ask: async (request: { name: string; code: string }) => {
+				const shown = await shownCode();
+				asked.push({ ...request, shown });
+				return shown === request.code;
+			} })).admit,
+			retry: { firstMs: 200, maxMs: 2000 },
+		});
+		const end = Date.now() + 20_000;
+		while (started.status() !== "waiting") {
+			if (Date.now() > end) throw new Error(`the access host never waited at the meeting service (${started.status()})`);
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		return started;
+	};
+	let computer = await startHost();
+	cleanups.push(() => computer.stop());
+
+	const phone = await headless();
+	cleanups.push(() => phone.stop());
+	const opened: string[] = [];
+	phone.page.on("websocket", (ws) => opened.push(new URL(ws.url()).pathname + new URL(ws.url()).search));
+	const phoneErrors: string[] = [];
+	const phoneSaid: string[] = [];
+	phone.page.on("console", (m) => (phoneSaid.push(`${m.type()}: ${m.text()}`), m.type() === "error" && phoneErrors.push(m.text())));
+	phone.page.on("console", watchForms);
+	const screen = phone.page.frameLocator("iframe");
+	const paired = `paired:${computer.machineId}`;
+	shownCode = async () => (await screen.locator("[data-slot=pairing-code]").innerText({ timeout: 20_000 })).trim();
+	explain = async () => {
+		const shown = await screen.locator("body").innerText({ timeout: 2000 }).catch((e) => String(e));
+		return `--- the paired browser shows:\n${shown.slice(0, 3000)}\n--- it opened: ${opened.join(", ")}\n--- its console: ${phoneSaid.slice(-30).join("\n")}\n--- the owner was asked: ${JSON.stringify(asked)}\n--- the relay (wrangler dev) said:\n${wranglerLog.slice(-3000)}`;
+	};
+
+	await check("pairing by link completes when the owner allows the four digits the browser shows", async () => {
+		const { link } = pairing!.open();
+		assert.ok(link.startsWith(`${origin}/#pair=${computer.machineId}.`), link);
+		await phone.page.goto(link);
+		await screen.locator("textarea").first().waitFor({ timeout: 90_000 });
+		assert.equal(asked.length, 1, "the owner was asked once");
+		assert.match(asked[0].code, /^\d{4}$/);
+		assert.equal(asked[0].shown, asked[0].code);
+		assert.deepEqual(computer.store.devices().map((d) => d.name), [asked[0].name]);
+		// The link's fragment is gone from the address at once: it carried the code.
+		assert.equal(phone.page.url(), `${origin}/`);
+	});
+
+	await check("the paired computer is listed under the name it gave, never its id", async () => {
+		const foot = screen.locator("[data-slot=service-status]");
+		await foot.and(screen.locator(`[aria-label*="${COMPUTER}"]`)).waitFor({ timeout: 30_000 });
+		await foot.click();
+		const item = screen.locator(`[data-host="${paired}"]`);
+		await item.waitFor({ timeout: 10_000 });
+		assert.equal((await item.innerText()).trim(), COMPUTER);
+		await phone.page.keyboard.press("Escape");
+	});
+
+	await check("a conversation answers over a data channel, and no /ssh socket was opened for it", async () => {
+		const box = screen.locator("textarea").first();
+		await box.fill('Say it. <<MOCK {"steps":[{"text":"The answer came back peer to peer."}]}>>');
+		await box.press("Enter");
+		await screen.getByText("The answer came back peer to peer.", { exact: true }).first().waitFor({ timeout: 60_000 });
+		assert.ok(opened.includes(`/meet/join?id=${computer.machineId}`), opened.join(", "));
+		assert.deepEqual(opened.filter((u) => u.startsWith("/ssh")), [], "nothing went through the relay");
+		assert.ok(opened.every((u) => u.startsWith("/meet/join?")), opened.join(", "));
+	});
+
+	await check("the page's policy still equals the desktop page's, and the iframe's sandbox is still scripts only", async () => {
+		assert.equal(await phone.page.locator("iframe").getAttribute("sandbox"), "allow-scripts");
+		const served = await fetch(`${origin}/page/`).then((r) => r.text());
+		assert.equal(metaCsp(served), pageCsp({ media: [] }));
+		const origins = await (async () => {
+			for (;;) {
+				const f = phone.page.frames().find((x) => x.parentFrame() === phone.page.mainFrame() && x.url().includes("/page/"));
+				if (f) return f.evaluate(() => window.origin);
+				await new Promise((r) => setTimeout(r, 50));
+			}
+		})();
+		assert.equal(origins, "null");
+	});
+
+	await check("after the access host restarts, the browser connects again by itself and the conversation goes on", async () => {
+		const joins = opened.length;
+		const foot = screen.locator("[data-slot=service-status]");
+		// As the app does when it quits and opens again: the same key, from the same folder.
+		await computer.stop();
+		await foot.and(screen.locator(`[aria-label*="${COMPUTER} not reached"], [aria-label*="connecting to ${COMPUTER}"], [aria-label*="pine does not answer"]`)).waitFor({ timeout: 30_000 });
+		computer = await startHost();
+		assert.equal(`paired:${computer.machineId}`, paired, "the same computer");
+		await foot.and(screen.locator(`[aria-label*="· ${COMPUTER}"]`)).waitFor({ timeout: 90_000 });
+		assert.ok(opened.length > joins, "a new meeting was joined");
+		const box = screen.locator("textarea").first();
+		await box.fill('Again. <<MOCK {"steps":[{"text":"Still here after the computer came back."}]}>>');
+		await box.press("Enter");
+		await screen.getByText("Still here after the computer came back.", { exact: true }).first().waitFor({ timeout: 60_000 });
+		assert.deepEqual(opened.filter((u) => u.startsWith("/ssh")), []);
+		assert.equal(asked.length, 1, "nobody was asked again");
+		assert.deepEqual(phoneErrors.filter((e) => /Content Security Policy|Refused/.test(e)), [], "the paired browser's page broke no policy");
+	});
+
+	await check("on an iPhone a pairing link waits for the owner's choice: the app's button uses no code, and Continue in this browser pairs", async () => {
+		const iphone = await headless();
+		cleanups.push(() => iphone.stop());
+		await iphone.page.addInitScript(() => {
+			Object.defineProperty(navigator, "userAgent", { get: () => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1" });
+		});
+		const its = iphone.page.frameLocator("iframe");
+		shownCode = async () => (await its.locator("[data-slot=pairing-code]").innerText({ timeout: 20_000 })).trim();
+		const before = asked.length;
+		const { link } = pairing!.open();
+		await iphone.page.goto(link);
+		const app = iphone.page.locator('.choice button[data-choice="app"]');
+		await app.waitFor({ timeout: 20_000 });
+		// The link's fragment left the address before the choice was drawn.
+		assert.equal(iphone.page.url(), `${origin}/`);
+		await app.click();
+		await iphone.page.locator(".choice .note").waitFor({ timeout: 5000 });
+		await new Promise((r) => setTimeout(r, 500));
+		assert.equal(asked.length, before, "the computer was asked nothing before the owner chose the browser");
+		await iphone.page.locator('.choice button[data-choice="browser"]').click();
+		await its.locator("textarea").first().waitFor({ timeout: 90_000 });
+		assert.equal(asked.length, before + 1, "the owner was asked once");
+		assert.equal(asked.at(-1)!.name, "Safari on iPhone");
+		assert.equal(asked.at(-1)!.shown, asked.at(-1)!.code);
+		assert.equal(await iphone.page.locator(".choice").count(), 0, "the choice is gone");
+		assert.equal(await iphone.page.locator("iframe").getAttribute("sandbox"), "allow-scripts");
+		await iphone.stop();
+	});
+
 	await check("a browser without Ed25519 in WebCrypto is told which browsers work, and nothing else starts", async () => {
 		const other = await browser.context.newPage();
 		await other.addInitScript(() => {
@@ -414,6 +658,10 @@ try {
 		assert.equal(await other.locator("iframe").count(), 0);
 		assert.deepEqual(tries, []);
 		await other.close();
+	});
+
+	await check("no form submission was blocked in the sandboxed frame during the whole run", async () => {
+		assert.deepEqual(blocked, []);
 	});
 
 	assert.deepEqual(errors.filter((e) => /Content Security Policy|Refused/.test(e)), [], "the page broke no policy");

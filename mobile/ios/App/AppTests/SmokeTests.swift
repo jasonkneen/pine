@@ -31,6 +31,8 @@ final class SmokeTests: XCTestCase {
 		guard let path = ProcessInfo.processInfo.environment["PINE_SMOKE_DIR"] else { throw XCTSkip("Run by npm run smoke:ios in mobile/.") }
 		dir = URL(fileURLWithPath: path)
 		machine = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("machine.json"))) as! [String: String]
+		// The Mac numbers what it is asked across the run: a later test goes on from where an earlier one stopped.
+		asked = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix("ask-") }.count
 	}
 
 	// ---- the first start, the machine, the hardening, the app's life, the status bar ----------------
@@ -43,7 +45,9 @@ final class SmokeTests: XCTestCase {
 		var opened: [String] = []
 		plugin.opener = { opened.append($0.absoluteString) }
 
-		step("the first start: the page asks for a machine and shows the phone's key")
+		step("the first start: pairing first, and SSH behind a link, which shows the phone's key")
+		try await until("the pairing view", "document.body.innerText.includes('Pair this phone with your computer') && !!document.querySelector('[data-slot=pair-link-field]')")
+		try await js("document.querySelector('[data-slot=ssh-instead]').click(); return true")
 		try await until("the Gate's Choose a machine", "document.body.innerText.includes('Choose a machine')")
 		let key = try await until("the phone's key", "document.body.innerText.match(/ssh-ed25519 \\S+ pine-ios/)?.[0] ?? ''") as! String
 		try (key + "\n").write(to: URL(fileURLWithPath: machine["keys"]!), atomically: true, encoding: .utf8)
@@ -212,6 +216,115 @@ final class SmokeTests: XCTestCase {
 		let web = try XCTUnwrap(vc.webView)
 		check("inspector off in a release build", web.isInspectable, false)
 		#endif
+	}
+
+	// ---- pairing with a computer, by a pasted link and by a pine: address ---------------------------
+
+	/**
+	 * Run on fresh data, the run's authority trusted, against the Pine app's real access host (its
+	 * meeting service at `service`, https in front of the helper's http one), whose daemon is the
+	 * run's pine: main and scout.
+	 */
+	func testPairing() async throws {
+		let vc = try await bridge()
+		let plugin = try XCTUnwrap(vc.plugin)
+		var opened: [String] = []
+		plugin.opener = { opened.append($0.absoluteString) }
+		let service = machine["service"]!
+		let serviceHost = URL(string: service)!.host! + ":" + String(URL(string: service)!.port!)
+		let here = "return location.href"
+		let home = try await js(here) as? String ?? "none"
+
+		step("the first start: pairing first, with a field for a link")
+		try await until("the pairing view", "document.body.innerText.includes('Pair this phone with your computer') && !!document.querySelector('[data-slot=pair-link-field] input')")
+		check("pairing first: the pairing view, its field for a link, SSH behind a link", try await js("return !!document.querySelector('[data-slot=pair-how-to]') && !!document.querySelector('[data-slot=ssh-instead]') && !document.querySelector('input[placeholder=\"you@server\"]')") as? Bool, true)
+		check("state: this app says it pairs", try await js("return (await Capacitor.Plugins.Pine.state()).canPair") as? Bool, true)
+
+		step("a pasted link: confirmed in the page, then the four digits, then Allow at the computer")
+		let link = try await pairLink()
+		try await js("""
+			const i = document.querySelector('[data-slot=pair-link-field] input');
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, \(quoted(link)));
+			i.dispatchEvent(new Event('input', { bubbles: true }));
+			return true;
+			""")
+		try await until("the field's Pair button", "(() => { const b = [...document.querySelectorAll('[data-slot=pair-link-field] button')].find((b) => b.textContent.trim() === 'Pair' && !b.disabled); b?.click(); return !!b; })()")
+		try await confirmed("pasted link", serviceHost)
+		try await paired("pasted link")
+
+		step("back from the background, the computer having cut the phone's connection meanwhile")
+		try await mac("background-cut")
+		try await waitFor("the app in front again") { UIApplication.shared.applicationState == .active }
+		try await connected(seconds: 90)
+		check("pasted link: reached again after the background, its connection cut meanwhile", try await js("return (await window.pine.call('GET', '/agents')).ok") as? Bool, true)
+		check("pasted link: the paired computer is the machine in use", (plugin.pines?.inUse ?? "").hasPrefix("paired:"), true, detail: plugin.pines?.inUse ?? "none")
+
+		step("pine: addresses that are not a pairing link this phone takes: said, and nothing starts")
+		try await system("pine://pair?service=https%3A%2F%2Flocalhost&id=short&code=short")
+		let bad = try await until("the page says it is not a pairing link", "document.body.innerText.includes('That is not a pairing link')")
+		check("pine: address: a malformed one is ignored and says so", [(bad as? NSNumber)?.boolValue ?? false, try await js("return !document.querySelector('[data-slot=pair-confirm]')") as? Bool ?? false], [true, true])
+		let next = try await pairLink()
+		let fresh = try XCTUnwrap(pairLink(from: next))
+		let plain = "pine://pair?service=\(escaped(machine["plainService"]!))&id=\(fresh.id)&code=\(fresh.code)"
+		try await system(plain)
+		let http = try await until("the page says http is refused", "document.body.innerText.includes('over http')")
+		check("pine: address: a service on http is refused and said plainly", [(http as? NSNumber)?.boolValue ?? false, try await js("return !document.querySelector('[data-slot=pair-confirm]')") as? Bool ?? false], [true, true])
+
+		step("a pine: address in the page itself leads nowhere")
+		let address = "pine://pair?service=\(escaped(service))&id=\(fresh.id)&code=\(fresh.code)"
+		try await js("location.href = \(quoted(address)); return true")
+		try await settle()
+		check("navigation: a pine: address leads nowhere and starts nothing", [try await js(here) as? String ?? "", opened.joined(), try await js("return document.querySelector('[data-slot=pair-confirm]') ? 'asked' : 'not asked'") as? String ?? ""], [home, "", "not asked"])
+
+		step("a pine: address the system opens the app with: the confirmation for that link, then pairing")
+		try await system(address)
+		try await confirmed("pine: address", serviceHost)
+		try await paired("pine: address")
+	}
+
+	/**
+	 * The system opens the app with an address of its scheme, through the same road as after Safari's
+	 * "Open in the Pine app" (the scene's `openURLContexts`). Asked from the app itself: asked from
+	 * outside (`simctl openurl`), SpringBoard first puts "Open in Pine?" to the owner, which a hosted
+	 * test cannot answer.
+	 */
+	private func system(_ address: String) async throws {
+		let url = try XCTUnwrap(URL(string: address))
+		let handed = await UIApplication.shared.open(url)
+		XCTAssert(handed, "the system did not take \(address)")
+	}
+
+	/** A new pairing link from the computer, as its QR code carries it. */
+	private func pairLink() async throws -> String {
+		try await mac("pair-open")
+		return try String(contentsOf: dir.appendingPathComponent("pair-link.txt"), encoding: .utf8)
+	}
+
+	private func pairLink(from link: String) -> (id: String, code: String)? {
+		guard let hash = link.split(separator: "#").last, hash.hasPrefix("pair=") else { return nil }
+		let parts = hash.dropFirst(5).split(separator: ".")
+		return parts.count == 2 ? (String(parts[0]), String(parts[1])) : nil
+	}
+
+	private func escaped(_ s: String) -> String { s.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? s }
+
+	/** The page's question before the code is used, naming the run's service (not Pine's own): answered yes. */
+	private func confirmed(_ how: String, _ serviceHost: String) async throws {
+		let named = try await until("the confirmation", "document.querySelector('[data-slot=pair-confirm]') && (document.querySelector('[data-slot=pair-service]')?.textContent ?? 'no service named')") as? String ?? ""
+		check("\(how): the owner is asked first, the service named", named.contains(serviceHost), true, detail: named)
+		try await js("document.querySelector('[data-slot=pair-confirm-yes]').click(); return true")
+	}
+
+	/** The four digits, the computer's Allow, and the paired computer's pine: its agents. */
+	private func paired(_ how: String) async throws {
+		let code = try await until("the four digits", "document.querySelector('[data-slot=pairing-code]')?.textContent ?? ''") as? String ?? ""
+		try await mac("pair-allow")
+		let asked = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("pair-asked.json"))) as? [String: Any] ?? [:]
+		check("\(how): the digits shown are the computer's", code, asked["code"] as? String ?? "none")
+		check("\(how): the computer is told the phone's name", asked["name"] as? String, "Pine on \(UIDevice.current.model)")
+		try await connected(seconds: 120)
+		seen("\(how): after Allow the paired computer answers: main and scout are in the side bar", try await agentsShown(), true)
+		try await until("the side bar put away", "(() => { const open = document.querySelector('[data-slot=sidebar][data-mobile]'); open && document.querySelector('[aria-label=\"Hide the sidebar\"]')?.click(); return !open; })()")
 	}
 
 	// ---- helpers --------------------------------------------------------------------------------------

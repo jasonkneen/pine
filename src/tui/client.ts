@@ -37,6 +37,55 @@ export interface WorktreeInfo {
 	gone?: boolean;
 }
 
+/** The swarm of a conversation, as the daemon keeps it (src/swarm.ts). */
+export interface SwarmInfo {
+	agent: string;
+	session: string;
+	objective: string;
+	status: "active" | "waiting" | "done" | "paused" | "limit";
+	round: number;
+	until: number;
+	/** The sub-agent that checks the answer right now. */
+	checking?: number;
+	note: string;
+}
+
+/** A board (docs/references/boards.md): whom it is for, and how many of its tasks are in which state. */
+export interface BoardBrief {
+	id: number;
+	scope: "local" | "agent" | "global";
+	agent: string;
+	session: string;
+	name: string;
+	counts: { open: number; taken: number; done: number; failed: number; blocked: number; notes: number };
+}
+/** A task or a note of a board. Its text is an agent's or the owner's: shown as plain text, never taken for anything else. */
+export interface BoardItem {
+	id: number;
+	kind: "task" | "note";
+	text: string;
+	data?: Record<string, unknown>;
+	state: "open" | "taken" | "done" | "failed" | "blocked" | "";
+	by: string;
+	holder?: string;
+	/** A sub-agent has it. */
+	sub: boolean;
+	result?: string;
+	after: number[];
+	/** The tasks an open task still waits for. */
+	waits: number[];
+	about?: number;
+	/** It was written by a run that had read outside content. */
+	outside: boolean;
+	created: number;
+	updated: number;
+}
+export interface BoardView {
+	board: BoardBrief;
+	tasks: BoardItem[];
+	notes: BoardItem[];
+}
+
 /** The goal of a conversation, as the daemon keeps it (src/goals.ts). `reason` is the judge's line: text to show, nothing more. */
 export interface GoalInfo {
 	agent: string;
@@ -58,6 +107,8 @@ export interface AgentInfo {
 	mode: "manual" | "safe" | "auto" | "bypass" | "plan";
 	thinking: string;
 	delegates: string[];
+	/** Why its model cannot answer, when it cannot. */
+	modelProblem?: string;
 }
 
 /** Talks to a pine daemon over its control API. */
@@ -121,6 +172,12 @@ export class Client {
 	folder = (agent: string, session: string) => this.get<{ folder?: string; workspace: string }>(`/agents/${agent}/folder?session=${encodeURIComponent(session)}`);
 	programs = (agent: string, session: string) => this.get<Array<{ id: number; command: string; processes: number; ports: number[]; seconds: number; background?: boolean; output?: string }>>(`/agents/${agent}/programs?session=${encodeURIComponent(session)}`);
 	goal = (agent: string, session: string) => this.get<{ goal?: GoalInfo }>(`/agents/${agent}/goal?session=${encodeURIComponent(session)}`);
+	/** The boards a conversation can use (its own first), and one board with everything on it. */
+	boards = (agent: string, session: string) => this.get<BoardBrief[]>(`/agents/${agent}/boards?session=${encodeURIComponent(session)}`);
+	board = (id: number) => this.get<BoardView>(`/boards/${id}`);
+	swarm = (agent: string, session: string) => this.get<{ swarm?: SwarmInfo }>(`/agents/${agent}/swarm?session=${encodeURIComponent(session)}`);
+	/** Start a swarm on a job (`objective`), or pause, resume or clear the one there is (`action`). */
+	setSwarm = (agent: string, session: string, what: { objective: string } | { action: "pause" | "resume" | "clear" }) => this.post<{ swarm?: SwarmInfo; cleared?: boolean }>(`/agents/${agent}/swarm`, { session, ...what });
 	/** Set a goal (`objective`), or pause, resume or clear the one there is (`action`). */
 	setGoal = (agent: string, session: string, what: { objective: string } | { action: "pause" | "resume" | "clear" }) => this.post<{ goal?: GoalInfo; cleared?: boolean }>(`/agents/${agent}/goal`, { session, ...what });
 	stopProgram = (agent: string, session: string, id: number) => this.post<{ stopped: boolean }>(`/agents/${agent}/programs/stop`, { session, id });

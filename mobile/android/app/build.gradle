@@ -4,6 +4,7 @@ apply plugin: 'org.jetbrains.kotlin.android'
 android {
     namespace = "dev.pmndre.pine"
     compileSdk = rootProject.ext.compileSdkVersion
+    ndkVersion = rootProject.ext.ndkVersion
     defaultConfig {
         applicationId "dev.pmndre.pine"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -34,9 +35,40 @@ android {
     buildTypes {
         release {
             if (keystore) signingConfig signingConfigs.release
+            // Phones are arm: the release packs libwebrtc for those two ABIs alone (x86 and x86_64,
+            // for emulators, stay in debug builds).
+            ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+// The authority a debug build trusts besides the system's, for the smoke run alone: its meeting
+// service is https on this computer, with a certificate of the run's own (scripts/smoke.mjs passes
+// -PpineSmokeAuthority=<its CA, PEM>). Written as the raw resource that src/debug's network security
+// config names under debug-overrides, which Android applies to a debuggable app only; a release
+// build has neither. Without the property it is smoke-authority-nobody.pem, an authority whose
+// private key was thrown away when it was made: a debug build then trusts the system's alone.
+abstract class SmokeAuthority extends DefaultTask {
+    @InputFile abstract RegularFileProperty getAuthority()
+    @OutputDirectory abstract DirectoryProperty getOutputDir()
+
+    @TaskAction
+    void write() {
+        def raw = outputDir.get().dir("raw").asFile
+        raw.mkdirs()
+        new File(raw, "smoke_authority.pem").bytes = authority.get().asFile.bytes
+    }
+}
+
+def smokeAuthority = tasks.register("smokeAuthority", SmokeAuthority) {
+    authority = file(project.findProperty("pineSmokeAuthority") ?: "smoke-authority-nobody.pem")
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.sources.res.addGeneratedSourceDirectory(smokeAuthority, SmokeAuthority::getOutputDir)
     }
 }
 
@@ -63,8 +95,15 @@ dependencies {
     implementation 'pine.mobile:pine-mobile-core'
     // The full BouncyCastle the core's SSH needs, put in place of Android's cut-down one (PinePlugin.load).
     implementation 'org.bouncycastle:bcprov-jdk18on:1.84'
+    // The WebRTC library under a paired computer's data channel (LibWebRtc.kt, handed to the core):
+    // Google's libwebrtc as LiveKit builds it without video codecs (BSD-3-Clause), its classes under
+    // livekit.org.webrtc. Published stripped, its 64-bit natives aligned for 16 KB pages; its
+    // manifest asks for no permission. It depends on nothing else.
+    implementation 'io.github.webrtc-sdk:android-prefixed-stripped:150.7871.08'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    // The emulator check of LibWebRtc.kt asks the run's meeting service first, as the core does (../core).
+    androidTestImplementation 'com.squareup.okhttp3:okhttp:5.3.2'
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
 }

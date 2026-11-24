@@ -197,7 +197,7 @@ const write = (file: string, content: string) => {
 function ownHome(modelServer: string, port: number): string {
 	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-preview-own-")));
 	write(path.join(dir, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: modelServer, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
-	write(path.join(dir, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port }, main: "keeper", defaults: { model: "mock/m", mode: "safe" }, security: { askAccess: false } }));
+	write(path.join(dir, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port }, main: "keeper", defaults: { model: "mock/m", mode: "safe", introduce: false }, security: { askAccess: false } }));
 	write(path.join(dir, "agents", "keeper", "agent.json"), JSON.stringify({}));
 	write(path.join(dir, "agents", "keeper", "workspace", "AGENTS.md"), "The only agent of this home.\n\nYou are keeper.\n");
 	return dir;

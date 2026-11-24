@@ -15,7 +15,7 @@ export const AGENT_ID = /^[a-z][a-z0-9_-]{1,30}$/;
  * color away). `trigger` is what opens it: the avatar as a button on the agent's settings page; in the side
  * bar, where the avatar lies inside the button that folds the group, a mark over it that only the menu opens.
  */
-export function AgentColorPicker({ agent, onChange, trigger, nativeButton = true, open, onOpenChange, children }: { agent: { id: string; color?: string }; onChange: (color: string) => void; trigger: ReactElement; nativeButton?: boolean; open?: boolean; onOpenChange?: (open: boolean) => void; children?: ReactNode }) {
+export function AgentColorPicker({ agent, onChange, trigger, nativeButton = true, open, onOpenChange, children }: { agent: { id: string; color?: string; main?: boolean }; onChange: (color: string) => void; trigger: ReactElement; nativeButton?: boolean; open?: boolean; onOpenChange?: (open: boolean) => void; children?: ReactNode }) {
 	const field = useId();
 	const color = isHex(agent.color) ? agent.color.toLowerCase() : undefined;
 	const choice = !color ? "none" : AGENT_COLORS.some((c) => c.hex === color) ? color : "other";
@@ -27,13 +27,13 @@ export function AgentColorPicker({ agent, onChange, trigger, nativeButton = true
 			<PopoverContent align="start" className="w-auto" data-slot="agent-color">
 				<PopoverHeader>
 					<PopoverTitle>Color of {agent.id}</PopoverTitle>
-					<PopoverDescription>Its avatar, and the window while its conversation is in front.</PopoverDescription>
+					<PopoverDescription>Used for the agent's avatar, and for the window while one of the agent's conversations is in front.</PopoverDescription>
 				</PopoverHeader>
 				<ToggleGroup aria-label={`Color of ${agent.id}`} variant="outline" size="sm" className="flex-wrap" value={[choice]} onValueChange={(v) => v[0] && v[0] !== "other" && onChange(v[0])}>
 					<ToggleGroupItem value="none">None</ToggleGroupItem>
 					{AGENT_COLORS.map((c) => (
 						<ToggleGroupItem key={c.hex} value={c.hex} aria-label={c.name} title={c.name}>
-							<AgentAvatar agent={{ id: agent.id, color: c.hex }} size="sm" />
+							<AgentAvatar agent={{ id: agent.id, color: c.hex, main: agent.main }} size="sm" />
 						</ToggleGroupItem>
 					))}
 				</ToggleGroup>

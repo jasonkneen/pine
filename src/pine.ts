@@ -2,10 +2,12 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Agent, Pool, setGlobalDispatcher } from "undici";
-import { AgentManager } from "./agents.ts";
+import { AgentManager, NO_MODEL } from "./agents.ts";
+import { Boards } from "./boards.ts";
 import { loadConfig, PINE_ROOT, type PineConfig, sharedFiles } from "./config.ts";
 import { modelOrigins } from "./models.ts";
 import { HttpServer } from "./http.ts";
+import { settleModel } from "./owner.ts";
 import type { CompleteOptions } from "./router.ts";
 import { Router } from "./router.ts";
 import { SourceHost } from "./sources.ts";
@@ -13,6 +15,7 @@ import { Approvals, audit, Redactor } from "./security.ts";
 import { Bus, Kv, openDb, State, TaskStore } from "./store.ts";
 import { Scheduler } from "./timers.ts";
 import { seedThemes, themesDir } from "./themes.ts";
+import { seedViews, viewsDir } from "./views.ts";
 import { createLogger, errText, type Logger } from "./util.ts";
 
 export interface Pine {
@@ -87,6 +90,12 @@ export async function startPine(opts: { home?: string; config?: PineConfig; log?
 	} catch (e) {
 		log.warn(`could not put pine's themes into ${themesDir(cfg.home)}: ${errText(e)}`);
 	}
+	// The views of the app's panel, likewise; and the module views import, brought up to date for the owner's editor.
+	try {
+		seedViews(cfg.home);
+	} catch (e) {
+		log.warn(`could not put pine's views into ${viewsDir(cfg.home)}: ${errText(e)}`);
+	}
 	installModelTimeouts(cfg);
 
 	const db = openDb(cfg.dataDir);
@@ -97,13 +106,22 @@ export async function startPine(opts: { home?: string; config?: PineConfig; log?
 	const state = new State(db, bus);
 	const kv = new Kv(db);
 	const tasks = new TaskStore(db);
+	const boards = new Boards(db);
+	// A secret that was typed into a conversation is taken out of the boards too.
+	const scrubEvents = bus.scrub.bind(bus);
+	bus.scrub = (secret) => {
+		scrubEvents(secret);
+		boards.scrub(secret);
+	};
 	const approvals = new Approvals(bus, log.child("approvals"), cfg.security.approvalTimeoutMs);
-	const agents = new AgentManager({ cfg, bus, state, kv, tasks, approvals, log: log.child("agents") });
+	const agents = new AgentManager({ cfg, bus, state, kv, tasks, boards, approvals, log: log.child("agents") });
 
 	const complete = async (o: CompleteOptions): Promise<string> => {
-		const model = agents.resolveModel(o.model ?? cfg.defaults.model ?? Object.values(cfg.agents)[0].model!);
+		const ref = o.model ?? cfg.defaults.model ?? Object.values(cfg.agents)[0].model;
+		if (!ref) throw new Error(NO_MODEL);
+		const model = agents.resolveModel(ref);
 		const content: any[] = [{ type: "text", text: o.prompt }, ...(o.images ?? []).map((i) => ({ type: "image", data: i.data, mimeType: i.mimeType }))];
-		const slot = await agents.limiter.acquire(5);
+		const slot = await agents.limiterOf(ref).acquire(5);
 		try {
 			const msg: any = await agents.models.completeSimple(model, { systemPrompt: o.system, messages: [{ role: "user", content, timestamp: Date.now() }] } as any, { signal: o.signal, sessionId: "pine-call" } as any);
 			if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage ?? `model call ${msg.stopReason}`);
@@ -146,6 +164,10 @@ export async function startPine(opts: { home?: string; config?: PineConfig; log?
 		http = new HttpServer({ cfg, bus, state, tasks, manager: agents, approvals, sources, schedules: timers, router, log: log.child("http"), token });
 		await http.start();
 	}
+
+	// A home whose model cannot answer while another one can (a sign-in with `pine login`, or a new home with no model yet):
+	// it runs on that one. That does not hold up the start: asking for the models can take a moment.
+	void settleModel(cfg, agents, log.child("agents"));
 
 	const warnings = audit(cfg);
 	for (const w of warnings) log.warn(`security: ${w}`);

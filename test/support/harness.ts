@@ -137,7 +137,9 @@ export async function harness(spec: { pine?: Record<string, unknown>; agents: Re
 	// run in auto mode, as an agent's would whose mode nobody chose. They are the tests' own (echo,
 	// sleep, a small server), and nothing from outside.
 	const mode = process.platform === "win32" && !sandboxAvailable() ? "auto" : "safe";
-	const defaults = { model: "mock/m", mode, ...((spec.pine?.defaults as Record<string, unknown> | undefined) ?? {}) };
+	// And no agent introduces itself (src/hatch.ts): its note would change what the mock echoes.
+	// test/hatch.test.ts turns it on.
+	const defaults = { model: "mock/m", mode, introduce: false, thinking: "off", ...((spec.pine?.defaults as Record<string, unknown> | undefined) ?? {}) };
 	// For the question pine asks itself when a call needs something outside the sandbox: a
 	// test that is not about it gets the plain refusal, which is what it is about (test/access.test.ts asks for it).
 	const security = { askAccess: false, ...((spec.pine?.security as Record<string, unknown> | undefined) ?? {}) };

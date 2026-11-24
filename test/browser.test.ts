@@ -282,14 +282,19 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 		const ops = JSON.parse(a.code.match(/const ops = (.*);\\n/)[1]);
 		note("hand " + JSON.stringify(ops));
 		if (ops.some((o) => o.do === "key" && o.key === "Enter")) tabs[at] = "https://moved.example/";
+		// Like the real server, which waits for the page to settle after the code: here only for a reload, and longer.
+		if (ops.some((o) => o.do === "reload")) return setTimeout(() => (note("reloaded"), reply("### Result\\ntrue")), 400);
 		return reply("### Result\\ntrue");
 	}
 	if (m.params.name === "browser_take_screenshot" && a.filename) {
-		note(m.params.name);
+		note(m.params.name + " " + a.scale);
 		const file = log.slice(0, Math.max(log.lastIndexOf("/"), log.lastIndexOf("\\\\"))) + "/" + a.filename;
-		fs.writeFileSync(file, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("picture of " + tabs[at])]));
-		return reply("### Result\\n- [Screenshot of viewport](" + file + ")");
+		const url = tabs[at];
+		fs.writeFileSync(file, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("picture of " + url)]));
+		return setTimeout(() => (url.includes("slow.") && note("picture taken"), reply("### Result\\n- [Screenshot of viewport](" + file + ")")), url.includes("slow.") ? 300 : 0);
 	}
+	if (m.params.name === "browser_mouse_down" || m.params.name === "browser_mouse_up") return note(m.params.name + " " + a.button), reply("ok");
+	if (m.params.name === "browser_press_key") return note(m.params.name + " " + a.key), reply("ok");
 	if (m.params.name === "browser_mouse_wheel") return note(m.params.name + " " + a.deltaX + "," + a.deltaY), reply("ok");
 	if (m.params.name === "browser_mouse_move_xy") return note(m.params.name + " " + a.x + "," + a.y), reply("ok");
 	if (m.params.name !== "browser_tabs" || a.action !== "list") note(m.params.name + (a.url ? " " + a.url : "") + (a.action ? " " + a.action + (a.index ?? "") : ""));
@@ -332,11 +337,13 @@ async function fakeBrowser(t: { after(fn: () => void): void }, o: Record<string,
 	let ended = false;
 	const refused: string[] = [];
 	const server = relay(o as any, {
-		launch: (headed) => spawn(process.execPath, [script, headed ? "headed" : "hidden", log, ...flags], { stdio: ["pipe", "pipe", "inherit"] }),
+		launch: (headed, host) => spawn(process.execPath, [script, host ? "hosted" : headed ? "headed" : "hidden", log, ...flags], { stdio: ["pipe", "pipe", "inherit"] }),
 		send: (msg: any) => void got.set(msg.id, msg),
 		scratch,
 		refused,
 		ended: () => void (ended = true),
+		// The Pine app's own browser, while a test says it is there (`app`).
+		host: o.app ? async () => (fs.existsSync(path.join(scratch, "app")) ? fs.readFileSync(path.join(scratch, "app"), "utf8") : undefined) : undefined,
 	});
 	t.after(() => (server.child().kill(), fs.rmSync(scratch, { recursive: true, force: true })));
 	let id = 0;
@@ -351,7 +358,8 @@ async function fakeBrowser(t: { after(fn: () => void): void }, o: Record<string,
 		return { text: r.content.map((p: any) => p.text).join("\n") as string, failed: r.isError === true };
 	};
 	await rpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "0" } });
-	return { rpc, call, scratch, refused, view: server.view, log: () => fs.readFileSync(log, "utf8").trim().split("\n"), raw: () => fs.readFileSync(`${log}.raw`, "utf8").trim().split("\n"), ended: () => ended, owner: (...lines: string[]) => fs.writeFileSync(`${log}.owner`, lines.join("\n")) };
+	const app = (url?: string) => (url ? fs.writeFileSync(path.join(scratch, "app"), url) : fs.rmSync(path.join(scratch, "app"), { force: true }));
+	return { rpc, call, app, scratch, refused, view: server.view, log: () => fs.readFileSync(log, "utf8").trim().split("\n"), raw: () => fs.readFileSync(`${log}.raw`, "utf8").trim().split("\n"), ended: () => ended, owner: (...lines: string[]) => fs.writeFileSync(`${log}.owner`, lines.join("\n")) };
 }
 
 test("browser: with a window the owner uses it too: the agent is moved to the page they opened and does not leave a page it has not seen", async (t) => {
@@ -443,11 +451,16 @@ test("browser: the bundled server is configured like the others and marks sessio
 	assert.deepEqual(JSON.parse(pi.env.PINE_MCP_OPTIONS), { headed: true });
 	// What pine adds for a conversation wins over the options: a run started from outside gets no window and no local addresses.
 	const set = { ...server, options: { window: true, localFile: "/tmp/anything" } };
-	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(false, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: false, localFile: null, viewFile: null });
-	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(true, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: true, localFile: "/home/allowed.json", viewFile: null });
+	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(false, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: false, localFile: null, viewFile: null, hostFile: null, room: null });
+	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(true, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: true, localFile: "/home/allowed.json", viewFile: null, hostFile: null, room: null });
 	// The door for the owner's own window: only in an owner's conversation, and a run from outside loses one that the options name.
 	assert.equal(JSON.parse((toPiMcp("browser", set, browserSession(true, "/home/allowed.json", "/home/view.json")) as any).env.PINE_MCP_OPTIONS).viewFile, "/home/view.json");
 	assert.equal(JSON.parse((toPiMcp("browser", { ...set, options: { ...(set as any).options, viewFile: "/tmp/mine.json", window: true } } as any, browserSession(false, "/home/allowed.json", "/home/view.json")) as any).env.PINE_MCP_OPTIONS).viewFile, null);
+	// The Pine app's own browser: only for a conversation with a door, and never for a run from outside, whatever the options name.
+	const hosted = (o: Record<string, unknown>) => ((x) => ({ hostFile: x.hostFile, room: x.room }))(JSON.parse((toPiMcp("browser", { ...set, options: { ...(set as any).options, hostFile: "/tmp/mine.json", room: "x:y" } } as any, o) as any).env.PINE_MCP_OPTIONS));
+	assert.deepEqual(hosted(browserSession(true, "/home/allowed.json", "/home/view.json", "/home/host.json", "main:main")), { hostFile: "/home/host.json", room: "main:main" });
+	assert.deepEqual(hosted(browserSession(true, "/home/allowed.json", undefined, "/home/host.json", "main:main")), { hostFile: null, room: null });
+	assert.deepEqual(hosted(browserSession(false, "/home/allowed.json", "/home/view.json", "/home/host.json", "main:main")), { hostFile: null, room: null });
 	await h.close();
 });
 
@@ -530,32 +543,35 @@ test("browser view: what the owner did is taken piece by piece, and an address i
 test("browser view: a picture only while a page is open, the owner's hand in order and as values, and the agent told that the browser moved", async (t) => {
 	const b = await fakeBrowser(t, { window: true });
 	// Nothing is open: no picture, and nobody asked the browser, which would have opened one.
-	assert.deepEqual(await b.view.state(), { open: false, tabs: [], current: 0, window: false });
+	assert.deepEqual(await b.view.state(), { open: false, tabs: [], current: 0, window: false, scale: 1 });
 	assert.equal(await b.view.frame(), undefined);
-	assert.deepEqual(await b.view.input([{ do: "click", x: 1, y: 1 }]), { open: false, tabs: [], current: 0, window: false });
+	assert.deepEqual(await b.view.input([{ do: "click", x: 1, y: 1 }]), { open: false, tabs: [], current: 0, window: false, scale: 1 });
 	assert.deepEqual(b.log(), ["start hidden"]);
 
 	await b.call("browser_navigate", { url: "https://shop.example/" });
-	assert.deepEqual(await b.view.state(), { open: true, tabs: [{ title: "Page 0", url: "https://shop.example/" }], current: 0, window: false });
+	assert.deepEqual(await b.view.state(), { open: true, tabs: [{ title: "Page 0", url: "https://shop.example/" }], current: 0, window: false, scale: 1 });
 	// The picture is the one this server asked for, read from where it asked for it.
 	const picture = await b.view.frame();
 	assert.ok(picture && picture[0] === 0xff && picture[1] === 0xd8 && picture.toString("latin1").includes("picture of https://shop.example/"));
 	// Two that are asked for at once are one question.
-	const before = b.log().filter((l) => l === "browser_take_screenshot").length;
+	const before = b.log().filter((l) => l === "browser_take_screenshot device").length;
 	const [one, two] = await Promise.all([b.view.frame(), b.view.frame()]);
 	assert.ok(one && one === two);
-	assert.equal(b.log().filter((l) => l === "browser_take_screenshot").length, before + 1);
+	assert.equal(b.log().filter((l) => l === "browser_take_screenshot device").length, before + 1);
 
 	// Looking leaves the agent's page where it was: the pointer, the wheel and the size of the room go the short way.
 	await b.view.input([{ do: "move", x: 5, y: 6 }, { do: "wheel", dx: 0, dy: 300 }, { do: "size", w: 600, h: 500 }]);
 	assert.deepEqual(b.log().slice(-3), ["browser_mouse_move_xy 5,6", "browser_mouse_wheel 0,300", 'hand [{"do":"size","w":600,"h":500}]']);
 	assert.ok(!(await b.call("browser_snapshot")).text.includes("has changed"), "nothing to tell the agent about");
 
-	// What is clicked and typed goes together, in the order it was done, as values in code that is this server's own.
+	// A click, a key and plain letters go the short way, one key at a time, in the order they were done; the rest
+	// goes together, as values in code that is this server's own.
+	await b.view.input([{ do: "text", text: "Hi +" }, { do: "key", key: "Shift+Tab" }, { do: "click", x: 3, y: 4, count: 2 }, { do: "drag", x: 1, y: 1, x2: 9, y2: 9 }]);
+	assert.deepEqual(b.log().slice(-6), ["browser_press_key H", "browser_press_key i", "browser_press_key  ", "browser_press_key +", "browser_press_key Shift+Tab", `hand ${JSON.stringify([{ do: "click", x: 3, y: 4, button: "left", count: 2 }, { do: "drag", x: 1, y: 1, x2: 9, y2: 9 }])}`]);
 	const nasty = `"); process.exit(1); ("\u2028 \\`;
 	await b.view.input([{ do: "click", x: 10, y: 20 }, { do: "text", text: nasty }, { do: "wheel", dx: 0, dy: 50 }, { do: "key", key: "Enter" }, { do: "eval", code: "x" }]);
 	const lines = b.log();
-	assert.deepEqual(lines.slice(-3), [`hand ${JSON.stringify([{ do: "click", x: 10, y: 20, button: "left", count: 1 }, { do: "text", text: nasty }])}`, "browser_mouse_wheel 0,50", 'hand [{"do":"key","key":"Enter"}]']);
+	assert.deepEqual(lines.slice(-6), ["browser_mouse_move_xy 10,20", "browser_mouse_down left", "browser_mouse_up left", `hand ${JSON.stringify([{ do: "text", text: nasty }])}`, "browser_mouse_wheel 0,50", 'hand [{"do":"key","key":"Enter"}]']);
 	// The fixed text, and nothing of the owner's outside the one value.
 	const code = fs.readFileSync(path.join(b.scratch, "last-code.txt"), "utf8");
 	assert.ok(code.startsWith("async (page) => {\n\tconst ops = [{") && code.includes("await page.keyboard.type(o.text)") && !/[\u2028\u2029]/.test(code) && !code.includes("__OPS__"), code.slice(0, 200));
@@ -573,7 +589,7 @@ test("browser view: a picture only while a page is open, the owner's hand in ord
 	assert.equal(b.raw().filter((l) => l === "browser_tabs list").length, tabsAsked, "a browser nobody else touched is not asked about its tabs");
 
 	// An address the owner types is opened like any other, and what is none is said.
-	assert.deepEqual(await b.view.open("shop.example/cart"), { open: true, tabs: [{ title: "Page 0", url: "https://shop.example/cart" }], current: 0, window: false });
+	assert.deepEqual(await b.view.open("shop.example/cart"), { open: true, tabs: [{ title: "Page 0", url: "https://shop.example/cart" }], current: 0, window: false, scale: 1 });
 	assert.equal((await b.view.open("file:///etc/passwd")).error, "That is no web address.");
 	assert.ok(!b.log().some((l) => l.includes("file:")));
 	const told = await b.call("browser_snapshot");
@@ -582,10 +598,10 @@ test("browser view: a picture only while a page is open, the owner's hand in ord
 	// Tabs are the owner's to open, choose and close, and the agent's next look says where the browser is then.
 	assert.deepEqual((await b.view.input([{ do: "newtab" }])).tabs.map((x) => x.url), ["https://shop.example/cart", "about:blank"]);
 	assert.equal((await b.view.state()).current, 1);
-	assert.deepEqual(await b.view.input([{ do: "tab", index: 0 }, { do: "closetab", index: 1 }]), { open: true, tabs: [{ title: "Page 0", url: "https://shop.example/cart" }], current: 0, window: false });
+	assert.deepEqual(await b.view.input([{ do: "tab", index: 0 }, { do: "closetab", index: 1 }]), { open: true, tabs: [{ title: "Page 0", url: "https://shop.example/cart" }], current: 0, window: false, scale: 1 });
 	assert.deepEqual(b.log().slice(-3), ["browser_tabs new", "browser_tabs select0", "browser_tabs close1"]);
 	// The last tab is emptied, not closed: the browser stays up, and there is no page to show any more.
-	assert.deepEqual(await b.view.input([{ do: "closetab", index: 0 }]), { open: false, tabs: [], current: 0, window: false });
+	assert.deepEqual(await b.view.input([{ do: "closetab", index: 0 }]), { open: false, tabs: [], current: 0, window: false, scale: 1 });
 	assert.equal(b.log().at(-1), "browser_navigate about:blank");
 	assert.ok(!b.log().includes("browser_tabs close0") && !b.log().includes("browser_close"));
 	assert.equal(await b.view.frame(), undefined);
@@ -600,13 +616,64 @@ test("browser view: a picture only while a page is open, the owner's hand in ord
 	assert.ok((await b.call("browser_snapshot")).text.includes("heading of https://sep.example/ with \u2028 inside"));
 });
 
+test("browser view: a picture is taken while the owner's hand waits for the page, and a call that closes the browser waits for the picture", async (t) => {
+	const b = await fakeBrowser(t, { window: true });
+	await b.call("browser_navigate", { url: "https://shop.example/" });
+	// The owner reloads; the page takes its time to settle. The picture does not wait for that.
+	const reloading = b.view.input([{ do: "reload" }]);
+	await until(() => b.log().includes('hand [{"do":"reload"}]'), 5000, "the reload");
+	assert.ok(await b.view.frame());
+	assert.ok(!b.log().includes("reloaded"), "the picture came before the page had settled");
+	await reloading;
+
+	// A picture of a slow page is being taken when the agent closes the browser: the close waits for it,
+	// since a picture asked of a closed browser would open it again.
+	await b.call("browser_navigate", { url: "https://slow.example/" });
+	const picture = b.view.frame();
+	await until(() => b.log().includes("browser_take_screenshot device"), 5000, "the picture");
+	const closed = b.call("browser_close");
+	await Promise.all([picture, closed]);
+	const log = b.log();
+	assert.ok(log.indexOf("picture taken") < log.indexOf("browser_close"), log.join("\n"));
+	// And while it closes, or after, no picture is asked for.
+	assert.equal(await b.view.frame(), undefined);
+});
+
+test("browser view: while the Pine app runs, the browser is the app's own, and when it is gone the one pine starts again, with the page that was open", async (t) => {
+	const b = await fakeBrowser(t, { window: true, app: true });
+	await b.call("browser_navigate", { url: "https://shop.example/" });
+	// The app comes: the browser moves into it, the logins go along, and the page is opened there again.
+	b.app("ws://127.0.0.1:9/word");
+	await until(() => b.log().includes("start hosted"), 5000, "the move into the app");
+	await until(() => b.log().filter((l) => l === "browser_navigate https://shop.example/").length === 2, 5000, "the page opened again");
+	const log = b.log();
+	assert.ok(log.indexOf("browser_storage_state") < log.indexOf("start hosted") && log.indexOf("start hosted") < log.indexOf("browser_set_storage_state"), log.join("\n"));
+	// The app shows it itself: in the page's points, and no room is laid out for a picture there.
+	assert.deepEqual(await b.view.state(), { open: true, tabs: [{ title: "Page 0", url: "https://shop.example/" }], current: 0, window: false, scale: 1, hosted: true });
+	await b.view.frame();
+	assert.ok(b.log().includes("browser_take_screenshot css"));
+	await b.view.input([{ do: "size", w: 600, h: 500 }]);
+	assert.ok(!b.log().some((l) => l.startsWith("hand")), "nothing laid out for a picture");
+	// The owner uses the page there at any time: the agent's next call that would act is not carried out on a page it has not seen.
+	b.owner("goto https://shop.example/cart");
+	const acted = await b.call("browser_navigate", { url: "https://elsewhere.example/" });
+	assert.ok(acted.text.startsWith("Not done: the browser is not where you left it") && acted.text.includes("https://shop.example/cart"), acted.text);
+	assert.match((await b.call("browser_show")).text, /^Your owner sees the browser in the Pine app/);
+	assert.ok(!b.log().includes("start headed"), "no window of its own");
+	// The app is gone: the browser pine starts itself again, on the page that was open.
+	b.app();
+	await until(() => b.log().filter((l) => l.startsWith("start")).at(-1) === "start hidden", 5000, "the move out of the app").catch((e) => assert.fail(`${e.message}\n${b.log().join("\n")}`));
+	await until(() => b.log().at(-1) === "browser_navigate https://shop.example/cart", 5000, "the page opened again");
+	assert.equal((await b.view.state()).hosted, undefined);
+});
+
 test("browser view: where the owner's own window shows the browser, showing it opens no other window", async (t) => {
 	const b = await fakeBrowser(t, { window: true });
 	await b.call("browser_navigate", { url: "https://shop.example/" });
 	b.view.embed(true);
 	const shown = await b.call("browser_show");
 	assert.ok(!shown.failed && shown.text.startsWith("Your owner sees the browser in the Pine app, in the browser at the right of this conversation's window"), shown.text);
-	assert.match((await b.call("browser_hide")).text, /no window of its own\. Your owner sees it in the Pine app/);
+	assert.match((await b.call("browser_hide")).text, /no separate window\. Your owner sees it in the Pine app/);
 	assert.deepEqual(b.log().filter((l) => l.startsWith("start")), ["start hidden"], "the browser was not started anew");
 	// From then on the owner uses it too: what they open is noticed.
 	await b.view.open("https://other.example/");
@@ -625,7 +692,7 @@ test("browser view: the door answers the daemon and nobody else", async (t) => {
 	t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 	const file = path.join(dir, "views", "main%3Amain.json");
 	const asked: string[] = [];
-	const state = { open: true, tabs: [{ title: "T", url: "https://a.example/" }], current: 0, window: false };
+	const state = { open: true, tabs: [{ title: "T", url: "https://a.example/" }], current: 0, window: false, scale: 1 };
 	const door = await startViewDoor(
 		{
 			state: async () => state,
@@ -676,7 +743,7 @@ test("browser view: the owner reaches a conversation's browser through the contr
 		const type = res.headers.get("content-type") ?? "";
 		return { status: res.status, type, body: type.startsWith("application/json") ? await res.json() : Buffer.from(await res.arrayBuffer()) } as { status: number; type: string; body: any };
 	};
-	const closed = { open: false, tabs: [], current: 0, window: false };
+	const closed = { open: false, tabs: [], current: 0, window: false, scale: 1 };
 	// A conversation without a browser: nothing to show, and nothing is started to show something.
 	assert.deepEqual((await api("GET", "/agents/main/browser?session=main")).body, closed);
 	assert.equal((await api("GET", "/agents/main/browser/frame?session=main")).status, 404);
@@ -691,7 +758,7 @@ test("browser view: the owner reaches a conversation's browser through the contr
 
 	// A stand-in for the browser's door, where the browser of main's conversation "talk" would have said it is.
 	const got: string[] = [];
-	const page = { open: true, tabs: [{ title: "A\u2028title\nof two lines", url: "https://shop.example/" }, { title: 7, url: "x".repeat(5000) }], current: 9, window: "yes", error: "", more: { deep: true } };
+	const page = { open: true, tabs: [{ title: "A\u2028title\nof two lines", url: "https://shop.example/" }, { title: 7, url: "x".repeat(5000) }], current: 9, window: "yes", scale: 9, error: "", more: { deep: true } };
 	const word = "ab".repeat(32);
 	const door = http.createServer(async (req, res) => {
 		if (req.headers.authorization !== `Bearer ${word}`) return void res.writeHead(401).end();
@@ -709,7 +776,7 @@ test("browser view: the owner reaches a conversation's browser through the contr
 
 	// What the door says is handed on as what it has to be and nothing more: lines of text, a place that exists.
 	const state = (await api("GET", "/agents/main/browser?session=talk")).body;
-	assert.deepEqual(state, { open: true, tabs: [{ title: "A title of two lines", url: "https://shop.example/" }, { title: "", url: "x".repeat(2000) }], current: 0, window: false });
+	assert.deepEqual(state, { open: true, tabs: [{ title: "A title of two lines", url: "https://shop.example/" }, { title: "", url: "x".repeat(2000) }], current: 0, window: false, scale: 1 });
 	const picture = await api("GET", "/agents/main/browser/frame?session=talk");
 	assert.deepEqual([picture.status, picture.type, picture.body.length], [200, "image/jpeg", 6]);
 	assert.equal((await api("GET", "/agents/main/browser/frame?session=talk")).status, 404, "what is no picture is not passed on as one");
@@ -772,7 +839,7 @@ test("browser view: the addresses an agent opened are kept for its owner, and op
 
 	// After a restart the conversation is not up and has no browser. What it opened is still said, and asking starts nothing.
 	await h.restart();
-	assert.deepEqual(await api("GET", "/agents/main/browser?session=talk"), { open: false, tabs: [], current: 0, window: false, visited: ["https://shop.example/", "http://127.0.0.1:4173/"] });
+	assert.deepEqual(await api("GET", "/agents/main/browser?session=talk"), { open: false, tabs: [], current: 0, window: false, scale: 1, visited: ["https://shop.example/", "http://127.0.0.1:4173/"] });
 	assert.ok(!fs.existsSync(door("talk")));
 	assert.equal(h.pine.agents.status().sessions.length, 0);
 
@@ -821,7 +888,8 @@ test("browser view: while a UI of the owner's shows the browser, the agent's bro
 	const file = path.join(h.home, "data", "browser-view", `${encodeURIComponent("main:watched")}.json`);
 	assert.ok(fs.existsSync(file));
 	const state = await (await fetch(`http://127.0.0.1:${h.pine.http!.port}/agents/main/browser?session=watched`, { headers: { authorization: `Bearer ${token}` } })).json();
-	assert.deepEqual(state, { open: false, tabs: [], current: 0, window: false });
+	// Without a window it draws two pixels for a point, for a picture as sharp as a Retina display draws.
+	assert.deepEqual(state, { open: false, tabs: [], current: 0, window: false, scale: 2 });
 	// A run started from outside has no door and no such tool.
 	await h.pine.agents.run({ agent: "main", session: "door", prompt: mockMsg([{ tools: [{ name: "mcp__browser__browser_show", args: {} }] }, { text: "ok" }]), trust: "untrusted" });
 	assert.ok(!fs.readdirSync(path.dirname(file)).some((f) => decodeURIComponent(f).includes("door")));

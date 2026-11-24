@@ -213,8 +213,8 @@ function inPlaceOf(pixels: Pixels | undefined, cols: number, rows: number): stri
  * text instead. `covered` gets the picture's place: its first line and column, its width and height.
  * Returns the same array when no picture is covered.
  */
-export function picturesAsText(lines: string[], covered: (row: number, col: number, width: number, height: number) => boolean): string[] {
-	let out = lines;
+export function picturesAsText(lines: readonly string[], covered: (row: number, col: number, width: number, height: number) => boolean): readonly string[] {
+	let out: string[] | undefined;
 	for (let row = 0; row < lines.length; row++) {
 		if (!lines[row].includes("\x1b_G")) continue;
 		const controls = /\x1b_G([^;]*);/.exec(lines[row])?.[1];
@@ -229,10 +229,11 @@ export function picturesAsText(lines: string[], covered: (row: number, col: numb
 		const whole = drawn.get(value("i") ?? 0)?.deref()?.blocks(value("i") ?? 0, cols) ?? [];
 		// A picture that the top of the view cuts off shows its lower lines, any other its upper ones.
 		const text = (value("y") ?? 0) > 0 ? whole.slice(-rows) : whole.slice(0, rows);
-		if (out === lines) out = [...lines];
+		// The lines may be a component's cached render: write into a copy.
+		out ??= [...lines];
 		for (let i = 0; i < rows && row + i < out.length; i++) out[row + i] = text[i] ?? "";
 	}
-	return out;
+	return out ?? lines;
 }
 
 /** One picture in the conversation: a thumbnail that a click enlarges and a second click shrinks again. */
@@ -261,7 +262,7 @@ export class Picture implements Component {
 	}
 
 	/** The drawing itself, without a caption: the real picture where the terminal can show one, half blocks otherwise, nothing if neither works. */
-	body(width: number, large = this.large): string[] {
+	body(width: number, large = this.large): readonly string[] {
 		const caps = getCapabilities();
 		const maxCols = Math.max(4, Math.min(width - 2, large ? 140 : 44));
 		const maxRows = large ? 48 : 14;
@@ -283,7 +284,7 @@ export class Picture implements Component {
 		return inPlaceOf(this.p.pixels, cols, (image as any)?.cachedLines?.length ?? 0);
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		const caps = getCapabilities();
 		const key = `${width}:${this.large}:${caps.images}`;
 		if (this.cache?.key === key) return this.cache.lines;
@@ -305,7 +306,7 @@ export class Slot implements Component {
 	handleMouse(e: any) {
 		return this.inner?.handleMouse?.(e);
 	}
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		return this.inner ? this.inner.render(width) : [];
 	}
 }
@@ -577,7 +578,7 @@ export class Video implements Component {
 		return inPlaceOf(this.frame, cols, this.shownRows);
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		this.width = width;
 		if (this.shown) drawsAsText(this.imageId, this);
 		const body = this.shown ? this.shown.render(width) : this.frame ? halfBlocks(this.frame, this.frame.width, this.frame.height / 2, getCapabilities().trueColor) : this.still.body(width, this.large);
@@ -888,7 +889,7 @@ export class Sound implements Component {
 		return { handled: true, render: true };
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		const control = !this.player ? "" : this.state === "playing" ? "‖ pause" : "▶ play";
 		const total = this.s.seconds ? clock(this.s.seconds) : "";
 		const at = this.s.seconds ? Math.min(this.played() / 1000, this.s.seconds) : this.played() / 1000;

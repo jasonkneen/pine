@@ -50,7 +50,7 @@ export function modelKeys(home: string): { keys: Record<string, string>; problem
 		if (!names.length) continue;
 		const missing = names.filter((name) => !known(name));
 		if (missing.length) {
-			problems.push(`models.json: provider "${id}" takes its key from ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not in ${envFile}. Its models are not available until you add ${missing.length === 1 ? "a line" : "lines"} ${missing.map((name) => `${name}=...`).join(", ")} there`);
+			problems.push(`models.json: provider "${id}" takes the key from ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not in ${envFile}. The provider's models are not available until you add ${missing.length === 1 ? "a line" : "lines"} ${missing.map((name) => `${name}=...`).join(", ")} there`);
 			continue;
 		}
 		// pi fills in what the environment alone answers.
@@ -171,7 +171,7 @@ export async function lookAt(baseUrl: string, key?: string): Promise<Look> {
 	if (res.status === 401 || res.status === 403) return { locked: true };
 	const body: any = res.ok ? await res.json().catch(() => undefined) : undefined;
 	const list: any[] | undefined = Array.isArray(body?.data) ? body.data : undefined;
-	if (!list) throw new Error(`${baseUrl}/models did not answer with a list of models${res.ok ? "" : ` (HTTP ${res.status})`}. A server that speaks OpenAI's API has one there; check the address and its path`);
+	if (!list) throw new Error(`${baseUrl}/models did not answer with a list of models${res.ok ? "" : ` (HTTP ${res.status})`}. A server that speaks OpenAI's API has one there; check the address and the path`);
 
 	// llama.cpp says in /props what one request really gets: the context of a slot, and whether it reads pictures.
 	let props: any;
@@ -223,7 +223,7 @@ function editModels(home: string, change: (providers: Record<string, any>) => vo
 /** Write a server into models.json, and its key into .env. Returns its models as "provider/id". */
 export function addModelServer(home: string, server: NewServer): string[] {
 	const unsized = server.models.filter((m) => !m.contextWindow && !server.context).map((m) => m.id);
-	if (unsized.length) throw new Error(`the server does not say how much context ${unsized.length === 1 ? `its model ${unsized[0]} gets` : "its models get"}. Give it: the number of tokens one request may use (what the server was started with)`);
+	if (unsized.length) throw new Error(`the server does not say how much context ${unsized.length === 1 ? `the model ${unsized[0]} gets` : "the models get"}. Give it: the number of tokens one request may use (what the server was started with)`);
 	if (server.context !== undefined && !positive(server.context)) throw new Error("the context is a whole number of tokens, for example 65536");
 	const entry = {
 		name: `${server.name} (${new URL(server.baseUrl).host})`,
@@ -263,13 +263,14 @@ export function addModelServer(home: string, server: NewServer): string[] {
 	return entry.models.map((m) => `${server.name}/${m.id}`);
 }
 
-/** Who has a model of this server set: agents, the default, the judge of goals. */
+/** Who has a model of this server set: agents, the default, the judge of goals, the check of a swarm's answer. */
 export function modelServerUsers(cfg: PineConfig, name: string): string[] {
 	const of = (ref: string | undefined) => typeof ref === "string" && ref.startsWith(`${name}/`);
 	return [
 		...Object.values(cfg.agents).filter((a) => of(a.model)).map((a) => `agent ${a.id}`),
 		...(of(cfg.defaults.model) ? [`the default model (${Object.values(cfg.agents).filter((a) => !a.model).map((a) => a.id).join(", ") || "no agent right now"})`] : []),
 		...(of(cfg.defaults.judge) ? ["the judge of goals (defaults.judge)"] : []),
+		...(of(cfg.defaults.checker) ? ["the check of a swarm's answer (defaults.checker)"] : []),
 	];
 }
 
@@ -286,6 +287,18 @@ export function removeModelServer(cfg: PineConfig, name: string): boolean {
 		delete all[name];
 	});
 	if (ours) unsetEnv(cfg.home, [key]);
+	// The numbers of runs at a time that the owner gave its models go with it: the next server of that name starts without.
+	const mine = Object.keys(cfg.limits.models).filter((ref) => ref.startsWith(`${name}/`));
+	if (mine.length) {
+		const file = path.join(cfg.home, "pine.json");
+		const json = read(() => JSON.parse(fs.readFileSync(file, "utf8")), undefined);
+		if (json?.limits?.models && typeof json.limits.models === "object") {
+			for (const k of mine) delete json.limits.models[k];
+			if (!Object.keys(json.limits.models).length) delete json.limits.models;
+			fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
+		}
+		for (const ref of mine) delete cfg.limits.models[ref];
+	}
 	return true;
 }
 
@@ -294,7 +307,8 @@ export interface ServerInfo {
 	baseUrl: string;
 	/** Where its key comes from, in words. */
 	key: string;
-	models: Array<{ id: string; contextWindow?: number; images: boolean; reasoning: boolean }>;
+	/** `limit`: how many runs that model takes at a time, where the owner gave it a number of its own (`limits.models`). */
+	models: Array<{ id: string; contextWindow?: number; images: boolean; reasoning: boolean; limit?: number }>;
 }
 
 /** The model servers in models.json. */
@@ -310,4 +324,34 @@ export function listModelServers(home: string): ServerInfo[] {
 			models: (Array.isArray(p.models) ? p.models : []).filter((m: any) => typeof m?.id === "string").map((m: any) => ({ id: m.id, contextWindow: positive(m.contextWindow), images: Array.isArray(m.input) && m.input.includes("image"), reasoning: m.reasoning === true })),
 		};
 	});
+}
+
+/**
+ * pi's own choice of model for each provider (`defaultModelPerProvider`), which pi uses when it
+ * starts without one. pi does not export it, so it is read from pi's file; after an upgrade that
+ * moves it, nothing is found and the provider's first model is taken instead (`suggestModel`).
+ */
+let piChoices: Promise<Record<string, string>> | undefined;
+export function piDefaults(): Promise<Record<string, string>> {
+	piChoices ??= (async () => {
+		try {
+			const index = new URL(import.meta.resolve("@earendil-works/pi-coding-agent"));
+			const table = (await import(new URL("./core/model-resolver.js", index).href)).defaultModelPerProvider;
+			return table && typeof table === "object" ? (table as Record<string, string>) : {};
+		} catch {
+			return {};
+		}
+	})();
+	return piChoices;
+}
+
+/**
+ * The model to run on, among those that answer (`usable`, as "provider/id"): pi's choice for a
+ * provider, the providers in pi's order; else the first. With `provider`, only its models (the one
+ * just signed in to, or the model server just added).
+ */
+export function suggestModel(usable: string[], choices: Record<string, string>, provider?: string): string | undefined {
+	const among = provider ? usable.filter((m) => m.startsWith(`${provider}/`)) : usable;
+	for (const [p, id] of Object.entries(choices)) if (among.includes(`${p}/${id}`)) return `${p}/${id}`;
+	return among[0];
 }

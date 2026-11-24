@@ -164,12 +164,12 @@ test("http with render: a failed look says why, is down after three and up again
 	const h = await harness({ pine: { sources: Object.fromEntries(["no", "junk", "mute", "much", "away", "odd", "typed"].map((n) => [n, { ...fast, url: `https://shop.example/${n}` }])) }, agents: { main: {} } });
 	const failing = (name: string, why: RegExp) => until(() => /^failing since \d\d:\d\d:\d\d \(\d+ looks?\): /.test(info(h, name).status ?? "") && why.test(info(h, name).status), 10_000, `${name} to fail with ${why}`);
 	await failing("no", /: the page did not finish loading within 45 s$/);
-	await failing("junk", /: its browser gave an answer that cannot be read$/);
-	await failing("mute", /: its browser ended without an answer$/);
-	await failing("much", /: its browser answered with more than a page's text can be$/);
+	await failing("junk", /: the browser gave an answer that cannot be read$/);
+	await failing("mute", /: the browser ended without an answer$/);
+	await failing("much", /: the browser answered with more than a page's text can be$/);
 	await failing("away", /: it sends on to other\.example, which is not the address that was confirmed\. If that is the right one, set the source up with it/);
-	await failing("odd", /: its browser gave an answer that cannot be read$/);
-	await failing("typed", /: its browser gave an answer that cannot be read$/);
+	await failing("odd", /: the browser gave an answer that cannot be read$/);
+	await failing("typed", /: the browser gave an answer that cannot be read$/);
 	assert.equal(info(h, "no").running, true, "a source that cannot look right now is still there");
 	// The one that would not stop writing was ended.
 	await until(() => notes("pids.log").length > 0 && notes("pids.log").every((pid) => !alive(pid)) , 4000, "the flood to be ended");
@@ -280,7 +280,7 @@ test("http with render by asking: what does not go with it is refused, the owner
 		/"method" and "body" do not go with "render": a rendered page is asked the way a reader's browser asks it, and a token or a header would go to every address the page loads from\. Leave them out, or leave "render" out and watch the address that needs them/,
 		/"headers" does not go with "render"/,
 		/"token" and "tokenHeader" do not go with "render"/,
-		/"render" does not go with "local": true\. A browser is let onto your network only at an address that says by itself that it is local: localhost, a \.local name or an IP address\. Give nas\.home by its IP address, or leave "render" out/,
+		/"render" does not go with "local": true\. A browser is let onto your network only at an address that says by itself that it is local: localhost, a \.local name or an IP address\. Give the IP address of nas\.home, or leave "render" out/,
 		new RegExp(`127\\.0\\.0\\.1:${control} is pine's own control port\\. No page is opened there`),
 		/"attr" goes with "select"/,
 	];
@@ -427,7 +427,7 @@ test("live: a browser whose helper is killed outright is found and ended, and on
 	await until(() => waiting === 1 && running(path.join(folder, "browser")).length > 1, 20_000, "the browser to be on the page");
 	const helper = execFileSync("pgrep", ["-f", "mcp/render"], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number);
 	for (const pid of helper) process.kill(pid, "SIGKILL");
-	assert.equal(await look, "its browser ended without an answer");
+	assert.equal(await look, "the browser ended without an answer");
 	await until(() => running(path.join(folder, "browser")).length === 0, 3000, "the browser to be gone");
 	assert.ok(!fs.existsSync(path.join(folder, "browser")));
 

@@ -190,8 +190,10 @@ test("a run started by an outside event gets a reduced tool set and its own sess
 	h.pine.bus.publish("hook/mail", { text: inject }, { source: "http" });
 	await until(() => h.pine.tasks.list({ status: "done" }).length === 2);
 	const [ownerReq, outsideReq] = [h.mock.state.requests[0], h.mock.state.requests[1]];
-	assert.deepEqual(h.toolsOffered(ownerReq).filter((t) => !["conversations", "read_conversation", "set_conversation", "remove_conversation", "rename_group", "remove_group", "find_tools", "question", "todo", "request_access", "stop_program", "mcp_servers", "add_mcp_server", "remove_mcp_server", "subscribe", "unsubscribe", "add_source", "read_source", "remove_source", "add_source_type", "remove_source_type", "skills", "add_skill", "remove_skill", "schedules", "add_schedule", "remove_schedule", "manual", "send", "models", "create_agent", "agents", "update_agent", "rename_agent", "remove_agent", "settings", "set_setting", "routes", "add_route", "remove_route", "add_model_server", "remove_model_server"].includes(t)).sort(), ["bash", "delegate", "download", "edit", "publish_event", "read", "sources", "state_get", "state_set", "subagent", "write"]);
+	assert.deepEqual(h.toolsOffered(ownerReq).filter((t) => !["boards", "board_read", "board_post", "board_claim", "board_done", "board_answer", "board_remove", "conversations", "read_conversation", "set_conversation", "remove_conversation", "rename_group", "remove_group", "find_tools", "question", "todo", "request_access", "stop_program", "mcp_servers", "add_mcp_server", "remove_mcp_server", "subscribe", "unsubscribe", "add_source", "read_source", "remove_source", "add_source_type", "remove_source_type", "skills", "add_skill", "remove_skill", "schedules", "add_schedule", "remove_schedule", "manual", "send", "models", "create_agent", "agents", "update_agent", "rename_agent", "remove_agent", "settings", "set_setting", "routes", "add_route", "remove_route", "add_model_server", "remove_model_server", "sign_in", "sign_out", "sign_in_mcp_server"].includes(t)).sort(), ["bash", "delegate", "download", "edit", "publish_event", "read", "sources", "state_get", "state_set", "subagent", "write"]);
 	assert.ok(h.toolsOffered(ownerReq).includes("add_mcp_server") && h.toolsOffered(ownerReq).includes("send"));
+	// A board is where the owner's conversations share work: a run that outside content started has none unless its profile says so.
+	assert.ok(h.toolsOffered(ownerReq).includes("board_post") && !h.toolsOffered(outsideReq).some((t) => t.startsWith("board")));
 	// What was written earlier in a channel is the owner's to have read: a run that outside content started cannot ask a source for it.
 	assert.ok(h.toolsOffered(ownerReq).includes("read_source") && !h.toolsOffered(outsideReq).includes("read_source") && !h.toolsOffered(outsideReq).includes("send"));
 	assert.ok(h.toolsOffered(ownerReq).includes("question") && h.toolsOffered(ownerReq).includes("todo") && !h.toolsOffered(outsideReq).includes("question") && !h.toolsOffered(outsideReq).includes("todo"), "asking the owner and the list of steps are for the owner's own conversations");
@@ -219,8 +221,15 @@ test("trust is inherited: work handed on by an untrusted run stays untrusted", {
 		agents: { main: { agent: { untrusted: { tools: ["read"], delegates: ["gonzo"] } } }, gonzo: {} },
 	});
 	h.mock.state.scripts.tryshell = [{ tools: [{ name: "bash", args: { command: "touch pwned" } }] }];
+	// A run that an event started holds outside content from its first word: handing work on is put to the owner.
+	const asked: any[] = [];
+	h.pine.bus.subscribe("approval/requested", (e) => {
+		asked.push(e.payload);
+		h.pine.approvals.decide((e.payload as any).id, true, "test");
+	});
 	h.pine.bus.publish("hook/in", { text: mockMsg([{ tools: [{ name: "delegate", args: { agent: "gonzo", task: "@@REF:tryshell@@" } }] }]) }, { source: "http" });
 	await until(() => h.pine.tasks.list({ agent: "main", status: "done" }).length === 1);
+	assert.deepEqual(asked.map((a) => a.tool), ["delegate"]);
 	const child = h.pine.tasks.list({ agent: "gonzo" })[0];
 	assert.equal(child.meta.trust, "untrusted");
 	const gonzoReq = h.requestsFor("PERSONA-GONZO")[0];
@@ -298,7 +307,7 @@ test("after outside content an agent keeps its own memory and instructions, and 
 					{ name: "write", args: { path: "sub/CLAUDE.md", content: "EVIL" } },
 				],
 			},
-			// A step of its own: calls of one step run side by side, and this one appends to what the write above made.
+			// A step of its own: the calls of one step run side by side, and this one appends to what a write above puts there.
 			{ tools: [{ name: "bash", args: { command: "echo MORE | tee -a MEMORY.md; echo EVIL | tee CLAUDE.md; echo fine | tee notes.md" } }] },
 		]),
 		...owner,
@@ -371,6 +380,12 @@ test("policy on shell commands: deny patterns and a time limit the model cannot 
 	const out = h.toolResults();
 	assert.ok(/not allowed here/.test(out[0]));
 	assert.ok(/timed out after 0.3 seconds/.test(out[1]) && /timed out after 0.3 seconds/.test(out[2]), out.join(" | "));
+	// A search of the whole disk is sent back in a sandbox: it takes minutes and finds nothing the agent may open.
+	// One that stays at the top, a folder of its own and a search from where it is are run.
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: 'ls; find / -name "notes*.md" 2>/dev/null | head' } }, { name: "bash", args: { command: "find / -maxdepth 0; echo TOP" } }, { name: "bash", args: { command: "find . -maxdepth 1 -name '*.none'; echo HERE" } }] }]), ...owner });
+	const found = h.toolResults().slice(-3);
+	assert.match(found[0], /Not run: "find \/" walks the whole disk/);
+	assert.ok(/TOP/.test(found[1]) && /HERE/.test(found[2]), found.join(" | "));
 	await h.close();
 });
 
@@ -476,7 +491,7 @@ test("agents cannot read each other's workspaces, and odd session names cannot e
 	await h.close();
 });
 
-test("a tainted session needs approval to hand work to an agent that can reach the internet", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
+test("a tainted session needs approval to hand work to any agent: what comes back can carry that agent's files", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({
 		pine: { main: "main", mcp: { web: { pine: "web", agents: ["scout"] } }, security: { approvalTimeout: "100ms" } },
 		agents: { main: { agent: { mcp: { feed } } }, scout: {}, gonzo: {} },
@@ -487,9 +502,11 @@ test("a tainted session needs approval to hand work to an agent that can reach t
 	const clean = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [to("scout")] }]), ...owner });
 	assert.ok(clean.text.includes("[scout] ECHO") && asked.length === 0, "an untainted session delegates freely");
 	const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "mcp__feed__echo", args: { text: "x" } }] }, { tools: [to("gonzo"), to("scout")] }]), ...owner });
-	assert.equal(asked.length, 1);
-	assert.ok(asked[0].summary.startsWith("delegate: scout"));
-	assert.ok(r.text.includes("[gonzo] ECHO") && /not approved \(timeout\)/.test(r.text), r.text);
+	// gonzo cannot send anything out, and is asked about all the same: its answer would bring its files into a conversation that can.
+	assert.deepEqual(asked.map((a) => a.summary.split("\n")[0].slice(0, 15)), ["delegate: gonzo", "delegate: scout"]);
+	assert.match(asked[0].why, /has read content from outside .* the other agent's answer can bring that agent's files into this conversation/);
+	assert.ok(!r.text.includes("[gonzo] ECHO") && !r.text.includes("[scout] ECHO"), r.text);
+	assert.equal((r.text.match(/not approved \(timeout\)/g) ?? []).length, 2, r.text);
 	await h.close();
 });
 

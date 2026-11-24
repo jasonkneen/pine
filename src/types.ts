@@ -1,3 +1,4 @@
+import type { Level } from "./config.ts";
 import type { CallTiming } from "./util.ts";
 /** Where a handler's answer should go: an event on `topic` whose payload is `payload` plus `text`. */
 export interface ReplyTarget {
@@ -67,6 +68,8 @@ export interface TaskMeta {
 	label?: string;
 	/** This message was given to a task that was already working (that task's id) instead of becoming work of its own. */
 	steered?: number;
+	/** When the work a steered message was given to read it (ms). */
+	read?: number;
 	/** Not a message for the model: the conversation is to be shortened (its earlier part summarised). */
 	compact?: boolean;
 	/** The owner wrote this message in the Pine app, which draws a Run button on a shell code block (`via` of the control API). */
@@ -77,6 +80,12 @@ export interface TaskMeta {
 	trust?: Trust;
 	/** The session that created this task had already seen outside content. */
 	tainted?: string;
+	/**
+	 * The most this run may do: a task handed on by `delegate` works at the stricter of its own
+	 * agent's level and the level its caller worked at, so that handing work on never reaches further
+	 * than the caller could. Set only where it is stricter than the agent's own.
+	 */
+	level?: Level;
 	/** The folder the owner opened for the conversation this task was handed on from. A one-off delegated run works there too. */
 	folder?: string;
 	/**
@@ -84,6 +93,15 @@ export interface TaskMeta {
 	 * the run works there, on a branch of its own, and what it did stays on that branch.
 	 */
 	worktree?: { repo: string; common: string; admin: string; path: string; branch: string; base: string; from: string; sub: string; made: number; kind: "conversation" | "task"; squashed?: string };
+	/**
+	 * The conversation ("agent:session") whose board this run works on, for a task handed to another
+	 * agent for one run: it sees the tasks and notes of the conversation that handed it on (src/boards.ts).
+	 */
+	board?: string;
+	/** The task of a board this run was started for (`pool` of subagent): its answer is recorded as that task's result. */
+	boardTask?: number;
+	/** The newest post on that board that such a run was shown with its task, so that it is not told of it again as news. */
+	boardShown?: number;
 	/** `input` is what the model server had to read anew; `cached` is what it took from its prompt cache. */
 	stats?: { input: number; output: number; cached?: number; turns: number; tools: string[]; ms: number; context?: ContextUse; timing?: CallTiming };
 }

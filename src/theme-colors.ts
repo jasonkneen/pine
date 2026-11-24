@@ -167,7 +167,7 @@ export function parseJsonc(text: string): unknown {
 export function resolveTheme(raw: unknown, fallbackName: string): ResolvedTheme {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("not a theme: a theme is a VS Code color theme, a JSON object with \"type\", \"colors\" and \"tokenColors\"");
 	const t = raw as Record<string, any>;
-	if (t.include !== undefined) throw new Error('"include" (a theme built on another file) is not supported: use a theme file that holds all of its colors');
+	if (t.include !== undefined) throw new Error('"include" (a theme built on another file) is not supported: use a theme file that holds all the colors');
 	const colors: Record<string, unknown> = t.colors && typeof t.colors === "object" ? t.colors : {};
 	const own: Record<string, unknown> = t.pine && typeof t.pine === "object" && !Array.isArray(t.pine) ? t.pine : {};
 	const rules: TokenRule[] = Array.isArray(t.tokenColors) ? t.tokenColors : [];

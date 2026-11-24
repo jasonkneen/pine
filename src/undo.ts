@@ -289,11 +289,11 @@ export class Turns {
 	 * folder since stays. `started`: whether the message was worked on at all.
 	 */
 	async back(turn: Turn | undefined, started: boolean): Promise<{ restored?: Restored; note?: string; cur?: Snap; paths?: string[] }> {
-		if (!turn) return started ? { note: "the folder was not recorded for this message, so no file was restored" } : {};
-		if (turn.problem) return { note: `the folder was not recorded for this message (${turn.problem}), so no file was restored` };
+		if (!turn) return started ? { note: "No files were put back: pine had not saved a copy of the folder before this message." } : {};
+		if (turn.problem) return { note: `No files were put back: pine could not save a copy of the folder before this message (${turn.problem}).` };
 		// No tool ran: there is nothing the message could have changed.
 		if (!turn.steps.length) return { restored: tally(turn.root, [], []) };
-		if (!fs.existsSync(turn.root)) return { note: `${turn.root} is not there any more, so no file was restored` };
+		if (!fs.existsSync(turn.root)) return { note: `No files were put back: ${turn.root} no longer exists.` };
 		let cur: Snap | undefined;
 		const files = new Map<string, FileChange>();
 		const paths = new Set<string>();
@@ -338,7 +338,7 @@ export class Turns {
 		const task = turn && this.tasks.get(turn.task);
 		if (!turn || !task) return { head: { files: [], more: false, note: "No message of yours has been worked on in this conversation since pine keeps track of that. What the next one changes is listed here." } };
 		const head: TurnView = { task: turn.task, prompt: typed(task.prompt).slice(0, 200), root: turn.root, files: [], more: false };
-		if (turn.problem) return { head: { ...head, note: `The folder was not recorded for this message: ${turn.problem}.` } };
+		if (turn.problem) return { head: { ...head, note: `pine could not save a copy of the folder before this message, so the files it changed cannot be put back: ${turn.problem}.` } };
 		if (!turn.steps.length) return { head };
 		const last = turn.steps.at(-1)!;
 		// While it is being worked on, what it has changed so far.

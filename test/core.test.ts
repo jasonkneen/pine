@@ -61,7 +61,8 @@ test("configuration problems are reported together and name the file", async () 
 	assert.throws(() => loadConfig(h.home), (e: any) => {
 		assert.ok(e instanceof ConfigError);
 		const all = e.problems.join("\n");
-		for (const expected of ['main agent "nobody"', 'unknown agent "ghost"', "needs one of agent, call, publish, set", 'mcp.bad needs "command", "url" or "pine"', "PINE_TEST_UNSET_VAR is not set", 'needs a "secret"', "pine.json: plugins: plugins are gone. Telegram, MQTT and watched folders are event sources now", "no model"]) assert.ok(all.includes(expected), `missing: ${expected}\n${all}`);
+		for (const expected of ['main agent "nobody"', 'unknown agent "ghost"', "needs one of agent, call, publish, set", 'mcp.bad needs "command", "url" or "pine"', "PINE_TEST_UNSET_VAR is not set", 'needs a "secret"', "pine.json: plugins: plugins are gone. Telegram, MQTT and watched folders are event sources now"]) assert.ok(all.includes(expected), `missing: ${expected}\n${all}`);
+		assert.ok(!all.includes("no model"), "no model is how a new home starts, not a problem");
 		return true;
 	});
 	await h.close();
@@ -147,6 +148,14 @@ test("the claude -p stand-in: conversation rendering and reply parsing", async (
 	assert.deepEqual(parseReply('{"text":"","tool_calls":[{"name":"bash","arguments":{"command":"ls"}}]}'), { text: "", tool_calls: [{ name: "bash", arguments: { command: "ls" } }] });
 	assert.deepEqual(parseReply('```json\n{"text":"done","tool_calls":[]}\n```'), { text: "done", tool_calls: [] });
 	assert.deepEqual(parseReply("plain words, no JSON"), { text: "plain words, no JSON", tool_calls: [] });
+	// A model that writes its calls as blocks, the way it does with tools of its own, is understood too.
+	assert.deepEqual(parseReply('Looking.\n<invoke name="bash">\n<parameter name="command">ls -la src</parameter>\n</invoke>\n<invoke name="subagent">\n<parameter name="tasks">["a", "b"]</parameter>\n<parameter name="pool">true</parameter>\n<parameter name="note">3 files</parameter>\n</invoke>\n</tool_calls>'), {
+		text: "Looking.",
+		tool_calls: [
+			{ name: "bash", arguments: { command: "ls -la src" } },
+			{ name: "subagent", arguments: { tasks: ["a", "b"], pool: true, note: "3 files" } },
+		],
+	});
 	assert.deepEqual(parseReply('{"unrelated": 1}'), { text: '{"unrelated": 1}', tool_calls: [] });
 });
 

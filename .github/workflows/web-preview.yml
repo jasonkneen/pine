@@ -1,18 +1,26 @@
 name: Web preview
 
-# The web client on every pull request that touches it: the gates of web/ and web/relay/, the
-# build as by hand (`npm run build` in web/), then a Workers version of the relay with the build,
-# uploaded under a preview alias of its own (`pr-<number>`) on the Worker's workers.dev address.
-# The address is posted on the pull request as one comment, updated on each push.
+# The web client on every pull request that touches it, and on every push to next and main that
+# does: the gates of web/ and web/relay/, the build as by hand (`npm run build` in web/), then a
+# whole deployment of web/relay (the web client, the SSH relay and the meeting service) as a
+# Worker of its own for the channel: `pine-pr-<number>` for a pull request, `pine-next` and
+# `pine-main` for those branches, each at pine-<channel>.<account>.workers.dev. Each push deploys
+# its channel's Worker again. A pull request's address is posted on it as one comment, updated on
+# each push; a branch's is in the run's summary. When a pull request is closed, its Worker is
+# deleted. pine-main is the service the apps use by default (`OFFICIAL_SERVICE` in
+# desktop/src/machines.ts).
 #
-# Nothing is deployed from next or main: the Worker's live version is never changed here. The
-# secrets live in the environment `web-preview`, which only the second job names, and that job
-# runs only for a branch of this repository: a pull request from a fork is built and tested and
-# never reaches the secrets. Without them the job says that it deployed nothing, and passes.
+# Each channel is a Worker of its own, not a version of one Worker: a Worker that holds a Durable
+# Object (the meeting service) gets no version preview addresses. The secrets live in the
+# environment `web-preview`, which only the deploy and delete jobs name, and they run only for a
+# branch of this repository: a pull request from a fork is built and tested and never reaches the
+# secrets. Without them those jobs say that they deployed or deleted nothing, and pass.
 
 on:
   pull_request:
-    paths:
+    # closed: the pull request's Worker is deleted (the job cleanup).
+    types: [opened, synchronize, reopened, closed]
+    paths: &paths
       - "web/**"
       - "desktop/src/**"
       - "desktop/vite.config.ts"
@@ -21,17 +29,28 @@ on:
       - "desktop/package-lock.json"
       # The desktop page measures a sound's levels with the terminal UI's code.
       - "src/tui/levels.ts"
+      # web/test/peer.test.ts runs the Pine app's access host, which runs the remote command.
+      - "desktop/electron/access/**"
+      - "src/remote.ts"
       - ".github/workflows/web-preview.yml"
+  push:
+    branches: [next, main]
+    paths: *paths
 
 permissions:
   contents: read
 
 concurrency:
-  group: web-preview-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # One group per channel (pr-<number>, next, main), so that two runs never deploy one Worker at once.
+  group: web-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  # A pull request's newer push replaces its run, and so does its closing, whose delete then comes
+  # after any deploy; on next and main every push runs to the end, so that each commit there has its
+  # own result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -72,25 +91,23 @@ jobs:
           path: web/dist
           retention-days: 7
       - name: Say why a fork gets no preview
-        if: github.event.pull_request.head.repo.full_name != github.repository
-        run: echo "A pull request from a fork is built and tested, and never previewed. Nothing deployed." >> "$GITHUB_STEP_SUMMARY"
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: echo "A pull request from a fork is built and tested, and never deployed. Nothing deployed." >> "$GITHUB_STEP_SUMMARY"
 
   preview:
     needs: build
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment: web-preview
-    permissions:
-      contents: read
-      pull-requests: write
-    # The Cloudflare secrets are in the env of the upload step alone, so that nothing else the job
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    # The Cloudflare secrets are in the env of the deploy step alone, so that nothing else the job
     # runs (an install script of a dependency) sees them.
     env:
-      ALIAS: pr-${{ github.event.pull_request.number }}
+      # A pull request's channel is pr-<number>; a push's is its branch, next or main.
+      WORKER: pine-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
       PR: ${{ github.event.pull_request.number }}
-      SHA: ${{ github.event.pull_request.head.sha }}
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -107,36 +124,54 @@ jobs:
       # platform package without its own postinstall check, and workerd is not run.
       - run: npm ci --ignore-scripts
         working-directory: web/relay
-      - name: Upload a version under the pull request's alias
-        id: upload
+      - name: Deploy the channel's Worker
+        id: deploy
         working-directory: web/relay
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          set -o pipefail
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not set in the environment web-preview: nothing deployed." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "url=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          npx wrangler versions upload --preview-alias "$ALIAS" --message "PR #$PR at ${SHA:0:7}" 2>&1 | tee upload.log
-          url=$(grep -Eo 'Alias URL: https://[^ ]+' upload.log | head -n 1 | sed 's/^Alias URL: //')
+          if [ -n "$PR" ]; then message="PR #$PR at ${SHA:0:7}"; else message="${GITHUB_REF_NAME} at ${SHA:0:7}"; fi
+          npx wrangler deploy --name "$WORKER" --message "$message" 2>&1 | tee deploy.log
+          # wrangler lists what it deployed, the workers.dev address on a line of its own.
+          url=$(grep -Eo "https://$WORKER\.[A-Za-z0-9.-]+\.workers\.dev" deploy.log | head -n 1)
           if [ -z "$url" ]; then
-            echo "wrangler uploaded no version with a preview alias address: see the log above." >&2
+            echo "wrangler deployed no workers.dev address for $WORKER: see the log above." >&2
             exit 1
           fi
-          echo "Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Deployed $WORKER: $url" >> "$GITHUB_STEP_SUMMARY"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  # Apart from the deploy, so that only a pull request's run holds a token that writes to pull
+  # requests, and the job that holds it has no Cloudflare secret.
+  comment:
+    needs: preview
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
       - name: Post the address on the pull request
         env:
-          URL: ${{ steps.upload.outputs.url }}
+          URL: ${{ needs.preview.outputs.url }}
         run: |
           marker='<!-- pine-web-preview -->'
           if [ -n "$URL" ]; then
             body="$marker
           **Web client preview:** $URL
 
-          The build of ${SHA:0:7}, served by its own version of the relay. It reaches a machine with a public SSH address, or one on a tailnet through Tailscale Funnel (\`user@machine.tailnet.ts.net:10000\`): add yours in Settings > Environments, with this browser's key in its \`authorized_keys\`."
+          The build of ${SHA:0:7}, a whole deployment of its own (the web client, the SSH relay and the meeting service), deleted when this pull request is closed. It reaches a machine with a public SSH address, or one on a tailnet through Tailscale Funnel (\`user@machine.tailnet.ts.net:10000\`): add yours in Settings > Environments, with this browser's key in its \`authorized_keys\`. To try pairing, give this address as the Service address in the Pine app's Settings > Browser access."
           else
             body="$marker
           **Web client preview:** nothing deployed for ${SHA:0:7}. The secrets \`CLOUDFLARE_API_TOKEN\` and \`CLOUDFLARE_ACCOUNT_ID\` are not set in the environment \`web-preview\`; the build and its tests passed."
@@ -146,4 +181,39 @@ jobs:
             gh api --method PATCH "repos/$GH_REPO/issues/comments/$id" -f body="$body" > /dev/null
           else
             gh api --method POST "repos/$GH_REPO/issues/$PR/comments" -f body="$body" > /dev/null
+          fi
+
+  # When a pull request is closed (merged or not): its Worker is deleted. Like the deploy, only for
+  # a branch of this repository, with the secrets in the env of the delete step alone.
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: web-preview
+    env:
+      WORKER: pine-pr-${{ github.event.pull_request.number }}
+    steps:
+      # The API, not `wrangler delete`: wrangler then also looks for KV namespaces to clean up, which
+      # needs a permission the token does not have, and fails after the Worker is gone.
+      - name: Delete the pull request's Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not set in the environment web-preview: nothing deleted." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # force=true: its Durable Object namespace goes with it; nothing else depends on a pull request's Worker.
+          status=$(curl -sS -o delete.json -w '%{http_code}' -X DELETE \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER?force=true")
+          cat delete.json; echo
+          if [ "$status" = 200 ]; then
+            echo "Deleted $WORKER." >> "$GITHUB_STEP_SUMMARY"
+          elif grep -q '"code":10007' delete.json; then
+            # A pull request whose runs deployed nothing (no secrets then, or closed before a deploy).
+            echo "$WORKER does not exist: nothing deleted." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Deleting $WORKER failed with HTTP $status." >&2
+            exit 1
           fi

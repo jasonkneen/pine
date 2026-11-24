@@ -25,6 +25,7 @@ Where events come from:
 | `pine emit`, `POST /events` | whatever you name | owner |
 | Schedules | `timer/<name>`, or `timer/<name>@<agent>` for an agent's own | owner |
 | Agents (`publish_event`) | topics in the agent's `publish` list | owner, or untrusted if the run was restricted |
+| A board with a name ([boards.md](boards.md)) | `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | owner for a post from one of your own conversations that had read nothing from outside, untrusted otherwise |
 | pine | `agent/...`, `state/...`, `approval/...`, `pine/...` | untrusted |
 
 Watch them:

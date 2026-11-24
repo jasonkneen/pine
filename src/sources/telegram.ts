@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { Lexer, type Token } from "marked";
 import { Type } from "typebox";
 import type { SourceType } from "../source-types.ts";
 import type { SourceApi } from "../sources.ts";
@@ -27,7 +28,7 @@ import { errText, sleep, truncate, unfolded } from "../util.ts";
 export const type: SourceType = {
 	summary: "a Telegram bot: your owner writes to it from anywhere and you answer there; you can also message them through it. Needs the bot's token from @BotFather",
 	talks: true,
-	sends: 'a Telegram message to your owner: {"text": "..."}, and with "file" a picture, a video or a sound file from your workspace to go with it',
+	sends: 'a Telegram message to your owner: {"text": "..."} in Markdown, which Telegram shows formatted, and with "file" a picture, a video or a sound file from your workspace to go with it',
 	files: true,
 	// send() refuses every chat but the owner's (`heard`), whatever the message names.
 	toOwner: true,
@@ -68,6 +69,134 @@ export const type: SourceType = {
 		};
 	},
 };
+
+// ---- Markdown, as Telegram shows it ----------------------------------------------------------------
+// Agents write Markdown. Telegram knows a small part of HTML (bold, italic, strike, code, pre,
+// blockquote, links), so what an agent sends is turned into that part and nothing else: every bit
+// of text is escaped, an agent's own tags included, and a link shows its address beside its text
+// (an answer may repeat a page, and a link whose text says one thing and goes to another would be
+// how it hides where it goes). Headings become bold lines, lists bullets, tables monospace.
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function inline(tokens: Token[] | undefined): string {
+	return (tokens ?? [])
+		.map((t: any) => {
+			switch (t.type) {
+				case "strong":
+					return `<b>${inline(t.tokens)}</b>`;
+				case "em":
+					return `<i>${inline(t.tokens)}</i>`;
+				case "del":
+					return `<s>${inline(t.tokens)}</s>`;
+				case "codespan":
+					return `<code>${esc(t.text)}</code>`;
+				case "br":
+					return "\n";
+				case "link":
+				case "image": {
+					const text = t.type === "image" ? esc(t.text) : inline(t.tokens);
+					const href = String(t.href ?? "");
+					const plain = text.replace(/<[^>]+>/g, "");
+					// A bare address shows as itself, and Telegram makes it clickable.
+					return !text || plain === esc(href) || plain === esc(href.replace(/^(https?:\/\/|mailto:)/, "")) ? esc(href) : `${text} (${esc(href)})`;
+				}
+				case "text":
+					return t.tokens ? inline(t.tokens) : esc(t.text);
+				case "checkbox":
+					return t.checked ? "☑ " : "☐ ";
+				case "escape":
+					return esc(t.text);
+				default:
+					return esc(t.raw ?? "");
+			}
+		})
+		.join("");
+}
+
+function block(t: any, quoted = false): string {
+	switch (t.type) {
+		case "paragraph":
+		case "text":
+			return t.tokens ? inline(t.tokens) : esc(t.text);
+		case "heading":
+			return `<b>${inline(t.tokens)}</b>`;
+		case "code": {
+			const lang = String(t.lang ?? "").match(/^[\w+#-]+/)?.[0];
+			const code = esc(String(t.text).replace(/\n+$/, ""));
+			return lang ? `<pre><code class="language-${lang}">${code}</code></pre>` : `<pre>${code}</pre>`;
+		}
+		case "blockquote": {
+			// Telegram has no quote inside a quote: an inner one is shown as its text.
+			const inner = blocks(t.tokens, true);
+			return quoted ? inner : `<blockquote>${inner}</blockquote>`;
+		}
+		case "list":
+			return t.items
+				.map((item: any, i: number) => {
+					const mark = item.task ? "" : t.ordered ? `${Number(t.start || 1) + i}. ` : "• ";
+					let body = "";
+					for (const x of item.tokens) {
+						if (x.type === "checkbox") body += inline([x]);
+						else if (x.type === "list") body += `\n${block(x, quoted).replace(/^/gm, "    ")}`;
+						else if (x.type !== "space") body += (body && !body.endsWith(" ") ? "\n" : "") + block(x, quoted);
+					}
+					return `${mark}${body.replace(/\n+$/, "")}`;
+				})
+				.join("\n");
+		case "table":
+			return `<pre>${esc(String(t.raw).trim())}</pre>`;
+		case "hr":
+			return "———";
+		case "space":
+		case "def":
+			return "";
+		default:
+			return esc(String(t.raw ?? "").trim());
+	}
+}
+
+const blocks = (tokens: Token[], quoted = false) =>
+	tokens
+		.map((t) => block(t, quoted))
+		.filter(Boolean)
+		.join("\n\n");
+
+/** What Telegram counts against its limits: the text without the tags. */
+const shownLength = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&(amp|lt|gt);/g, "x").length;
+
+/**
+ * Markdown cut into messages Telegram takes, each as HTML and as the Markdown it came from (sent
+ * as it is if Telegram refuses the HTML). The cuts fall between blocks; a block too long for one
+ * message is sent as plain text in pieces.
+ */
+export function telegramChunks(markdown: string, limit = 4000): { html?: string; text: string }[] {
+	const out: { html?: string; text: string }[] = [];
+	let html = "";
+	let text = "";
+	const flush = () => {
+		if (html.trim()) out.push({ html: html.trim(), text: text.trim() });
+		html = text = "";
+	};
+	for (const t of Lexer.lex(markdown, { gfm: true })) {
+		const piece = block(t);
+		if (!piece) continue;
+		if (piece.length > limit) {
+			flush();
+			const raw = String(t.raw).trim();
+			for (let i = 0; i < raw.length; i += limit) out.push({ text: raw.slice(i, i + limit) });
+			continue;
+		}
+		if (html && html.length + 2 + piece.length > limit) flush();
+		html += (html ? "\n\n" : "") + piece;
+		text += t.raw;
+	}
+	flush();
+	return out.length ? out : [{ text: markdown.trim() || "(empty message)" }];
+}
+
+/** Telegram's answer to HTML it cannot read. */
+const unreadable = (e: unknown) => /can't parse entities|unsupported start tag|unexpected end tag/i.test(errText(e));
 
 const MAX_PHOTO = 10 * 1024 * 1024;
 /** What a bot may upload in one file. */
@@ -120,6 +249,23 @@ export default async function telegram(source: SourceApi): Promise<void> {
 		for (let i = 0; i < body.length; i += 4000) last = await api("sendMessage", { chat_id: chatId, text: body.slice(i, i + 4000), ...(i + 4000 >= body.length ? extra : {}) });
 		return last;
 	};
+	/** What an agent wrote, in Markdown, shown with Telegram's formatting. pine's own messages (approvals, pairing) stay plain: they show exactly what is asked. */
+	const sendMarkdown = async (chatId: number, markdown: string) => {
+		if (!heard(chatId)) throw new Error("that chat is not your owner's");
+		for (const chunk of telegramChunks(markdown)) {
+			if (chunk.html === undefined) {
+				await api("sendMessage", { chat_id: chatId, text: chunk.text });
+				continue;
+			}
+			try {
+				await api("sendMessage", { chat_id: chatId, text: chunk.html, parse_mode: "HTML" });
+			} catch (e) {
+				if (!unreadable(e)) throw e;
+				source.log.debug("Telegram could not read the formatting, sent as plain text", errText(e));
+				await api("sendMessage", { chat_id: chatId, text: chunk.text });
+			}
+		}
+	};
 
 	// ---- out: answers, and what an agent sends on its own -------------------------------------------
 	/** A picture, a video or a sound file to the owner's chat, with the message as its caption where it fits under one. */
@@ -129,27 +275,38 @@ export default async function telegram(source: SourceApi): Promise<void> {
 		const [method, field] = file.mime.startsWith("image/") && file.bytes.length <= MAX_PHOTO ? ["sendPhoto", "photo"] : file.mime.startsWith("video/") ? ["sendVideo", "video"] : file.mime.startsWith("audio/") ? ["sendAudio", "audio"] : ["sendDocument", "document"];
 		// A message too long for a caption goes first, by itself, so that nothing of it is cut.
 		const caption = text.trim();
-		if (caption.length > MAX_CAPTION) await send(chatId, caption);
-		const form = new FormData();
-		form.set("chat_id", String(chatId));
-		if (caption && caption.length <= MAX_CAPTION) form.set("caption", caption);
-		form.set(field, new Blob([new Uint8Array(file.bytes)], { type: file.mime }), file.name);
-		const res = await fetch(`${base}/bot${token}/${method}`, { method: "POST", body: form, signal: AbortSignal.any([stop.signal, AbortSignal.timeout(180_000)]) });
-		const json: any = await res.json().catch(() => ({}));
-		if (!json.ok) throw new Error(`Telegram refused ${method}: ${json.description ?? res.status}`);
+		const chunks = caption ? telegramChunks(caption) : [];
+		const fits = chunks.length === 1 && chunks[0].html !== undefined && shownLength(chunks[0].html) <= MAX_CAPTION;
+		if (caption && !fits) await sendMarkdown(chatId, caption);
+		const upload = async (html: boolean) => {
+			const form = new FormData();
+			form.set("chat_id", String(chatId));
+			if (fits) form.set("caption", html ? chunks[0].html! : caption);
+			if (fits && html) form.set("parse_mode", "HTML");
+			form.set(field, new Blob([new Uint8Array(file.bytes)], { type: file.mime }), file.name);
+			const res = await fetch(`${base}/bot${token}/${method}`, { method: "POST", body: form, signal: AbortSignal.any([stop.signal, AbortSignal.timeout(180_000)]) });
+			const json: any = await res.json().catch(() => ({}));
+			if (!json.ok) throw new Error(`Telegram refused ${method}: ${json.description ?? res.status}`);
+		};
+		try {
+			await upload(true);
+		} catch (e) {
+			if (!fits || !unreadable(e)) throw e;
+			await upload(false);
+		}
 	};
 
 	source.onSend(async (message) => {
 		const chatId = Number(message.chatId ?? ownerChat());
 		if (!Number.isFinite(chatId)) throw new Error("nobody is connected yet: your owner has to write to the bot once, and confirm it in pine");
 		const file = message.file as { name: string; mime: string; bytes: Buffer } | undefined;
-		// Sent as plain text, which folds nothing: a block the terminal UI would fold is its summary and what it holds.
+		// Telegram folds nothing: a block the terminal UI would fold is its summary and what it holds.
 		const text = unfolded(String(message.text ?? ""));
 		if (file && Buffer.isBuffer(file.bytes)) {
 			await sendFile(chatId, file, text);
 			return `sent to your owner on Telegram, with ${file.name}`;
 		}
-		await send(chatId, text);
+		await sendMarkdown(chatId, text);
 		return "sent to your owner on Telegram";
 	});
 
@@ -177,6 +334,8 @@ export default async function telegram(source: SourceApi): Promise<void> {
 		const asked = new Map<string, number>();
 		source.on("approval/requested", async (e) => {
 			const r = e.payload as any;
+			// An agent's own bot carries that agent's questions; a bot for all agents carries every agent's.
+			if (source.agent !== undefined && r.agent !== source.agent && r.of !== source.agent) return;
 			const chat = ownerChat();
 			if (chat === undefined) return;
 			// A question of the agent's with answers to pick from: one button each. (Their own words they type on their machine.)

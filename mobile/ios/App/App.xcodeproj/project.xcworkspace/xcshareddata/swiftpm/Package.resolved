@@ -1,5 +1,5 @@
 {
-  "originHash" : "6f93dae1eaaf22c0d9e6b2a8eb56e32915f5d88d8ba25fd0389d10a0ed386df8",
+  "originHash" : "c472a86daf1b3e9ccf7e96f9048903d2469d55353d677d3329aa3254af23684e",
   "pins" : [
     {
       "identity" : "capacitor-swift-pm",
@@ -8,6 +8,24 @@
       "state" : {
         "revision" : "b945758eaf3f034cea377e3138a60611cb40a88b",
         "version" : "8.6.2"
+      }
+    },
+    {
+      "identity" : "libdatachannel-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/HaishinKit/libdatachannel-xcframework.git",
+      "state" : {
+        "revision" : "d411057e4f2c78f359c443d3912d16e6a1b126b8",
+        "version" : "0.24.6"
+      }
+    },
+    {
+      "identity" : "openssl-package",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/krzyzanowskim/OpenSSL-Package.git",
+      "state" : {
+        "revision" : "4ac3f9a68731cb3cf736a591814bad9a7a2008c8",
+        "version" : "3.6.5000"
       }
     },
     {

@@ -15,6 +15,11 @@ struct CasesTests {
 		"fingerprints": "KeysTests",
 		"service-lines": "ServiceTests",
 		"failures": "ServiceTests",
+		"pair-links": "PairedTests",
+		"opened-links": "PairedTests",
+		"machine-ids": "PairedTests",
+		"device-names": "PairedTests",
+		"paired-machines": "PairedTests",
 	]
 
 	@Test("every case file is replayed")

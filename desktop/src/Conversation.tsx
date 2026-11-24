@@ -3,13 +3,15 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CommandIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment, AttachmentContent, AttachmentGroup, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { ModelNotice } from "@/components/model-notice";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
@@ -21,7 +23,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGr
 import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
-import { Message, MessageContent, MessageHeader } from "@/components/ui/message";
+import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,8 +35,9 @@ import { cn } from "@/lib/utils";
 import { type AgentDetail, api, media, type TranscriptEntry } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
+import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
-import { type Item, type Part, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Item, type Part, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 
@@ -46,6 +49,15 @@ const TONE_ICON: Record<Tone, LucideIcon> = { muted: InfoIcon, warn: TriangleAle
 type RunStatus = "run" | "ok" | "fail" | "done" | "failed" | "cancelled";
 
 /** What Trace calls the state of a line: running, failed, or nothing to say. */
+/**
+ * A step at work fades out and in, in steps, as the dots at work do, in place of the stock trace's
+ * shimmer: a shimmer moves a gradient through the text, which the page paints again every frame for
+ * as long as the step runs, a fifth of a core; a fade in steps is the system's to draw, and costs
+ * nearly nothing (desktop/test/view-perf.test.ts measures both). Important, since the stock trace sets
+ * the shimmer from its line, which outweighs a class of the title's.
+ */
+const STEPPED = "[background-image:none]! [-webkit-text-fill-color:currentColor]! in-data-[status=running]:[animation:pulse_2s_steps(4,jump-none)_infinite]! motion-reduce:[animation:none]!";
+
 const traceStatus = (status: RunStatus) => (status === "run" ? "running" : status === "fail" || status === "failed" ? "error" : undefined);
 
 /** The icon of a line that runs: the breathing dot while it does (an agent at work), then how it ended. */
@@ -66,7 +78,7 @@ function Thought({ text, title, description, live = false }: { text: string; tit
 			<TraceIcon>
 				<BrainIcon />
 			</TraceIcon>
-			<TraceTitle>{title}</TraceTitle>
+			<TraceTitle className={STEPPED}>{title}</TraceTitle>
 			{description ? <TraceDescription>{description}</TraceDescription> : null}
 		</TraceLine>
 	);
@@ -110,7 +122,7 @@ function Call({ tool, subject, status, ms, depth = 0, output, error, images }: {
 				<StatusIcon status={status} />
 			</TraceIcon>
 			{/* Font family only: a tool's name and its subject are code. */}
-			<TraceTitle className="font-mono" title={subject}>
+			<TraceTitle className={cn("font-mono", STEPPED)} title={subject}>
 				<span data-tool>{tool}</span>
 				{subject ? ` ${subject}` : null}
 			</TraceTitle>
@@ -157,10 +169,10 @@ function Child({ part }: { part: Extract<Part, { p: "child" }> }) {
 				<TraceIcon>
 					<StatusIcon status={part.status} />
 				</TraceIcon>
-				<TraceTitle>
+				<TraceTitle className={STEPPED}>
 					↳ {part.agent} · {childKind(part.kind)} #{part.task}
 					{part.how ? ` ${part.how}` : part.label ? `: ${part.label}` : ""}
-					<span className="sr-only"> (opens in a tab of its own)</span>
+					<span className="sr-only"> (opens in a new tab)</span>
 				</TraceTitle>
 				<TraceIcon>
 					<ArrowUpRightIcon />
@@ -226,7 +238,7 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 							<Pulse />
 						</TraceIcon>
 					)}
-					<TraceTitle title={head}>{head}</TraceTitle>
+					<TraceTitle className={STEPPED} title={head}>{head}</TraceTitle>
 					{description ? <TraceDescription>{description}</TraceDescription> : null}
 				</TraceLine>
 			</TraceCollapsibleTrigger>
@@ -243,13 +255,21 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 
 /** The owner's turn (or a task's prompt): a bubble on the owner's side, with the files it brought. */
 /** A message of the owner's. With `menu`, a right click on it offers to branch from it. */
-export function OwnerTurn({ text, from, files, menu }: { text: string; from?: string; files?: string[]; menu?: () => void }) {
+export function OwnerTurn({ text, from, files, menu, skeleton, footer }: { text?: string; from?: string; files?: string[]; menu?: () => void; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
+	if (skeleton)
+		return (
+			<Message align="end" data-item="user-skeleton">
+				<MessageContent>
+					<Skeleton className="h-9 w-56 rounded-2xl" />
+				</MessageContent>
+			</Message>
+		);
 	return (
 		<Message align="end" data-item="user" onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
 			<MessageContent>
 				{from ? <MessageHeader>{from}</MessageHeader> : null}
 				<Bubble align="end" variant="muted">
-					<BubbleContent className="whitespace-pre-wrap select-text">{text}</BubbleContent>
+					<BubbleContent className="text-base leading-snug whitespace-pre-wrap select-text">{text}</BubbleContent>
 				</Bubble>
 				{files?.length ? (
 					<AttachmentGroup>
@@ -265,8 +285,28 @@ export function OwnerTurn({ text, from, files, menu }: { text: string; from?: st
 						))}
 					</AttachmentGroup>
 				) : null}
+				{footer ? <MessageFooter>{footer}</MessageFooter> : null}
 			</MessageContent>
 		</Message>
+	);
+}
+
+/**
+ * Under a message that was given to running work: whether that work has read it. Until it has, it
+ * can be sent now, which stops the step the work is on (a long command, say) so that it reads it.
+ */
+function SteerLine({ tab, steer }: { tab: Tab; steer: Steer }) {
+	if (steer.read) return <span>read {new Date(steer.read).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>;
+	// Work that ended without reading it: it is answered on its own, next.
+	if (!tab.running.has(steer.into)) return null;
+	return (
+		<span className="flex items-center gap-1">
+			not read yet ·
+			<HoverTooltip>
+				<TooltipTrigger render={<Button variant="link" size="xs" className="h-auto px-0 text-xs font-medium text-muted-foreground" onClick={() => void store.sendNow(tab, steer)} />}>send now</TooltipTrigger>
+				<TooltipContent>Stops what the agent is doing right now, gives it this message, and lets it carry on</TooltipContent>
+			</HoverTooltip>
+		</span>
 	);
 }
 
@@ -274,7 +314,7 @@ function Entry({ entry, agent }: { entry: TranscriptEntry; agent: string }) {
 	if (entry.kind === "user") return <OwnerTurn text={entry.text ?? ""} from="task" />;
 	if (entry.kind === "text")
 		return (
-			<Message>
+			<Message className="text-base leading-snug">
 				<MessageContent>
 					<Markdown text={entry.text ?? ""} where={{ agent }} />
 				</MessageContent>
@@ -413,11 +453,12 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 	switch (item.t) {
 		case "user": {
 			const task = tab.kind === "chat" ? item.task : undefined;
-			return <OwnerTurn text={item.text} from={item.from} files={item.files} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} />;
+			const steer = tab.kind === "chat" ? item.steer : undefined;
+			return <OwnerTurn text={item.text} from={item.from} files={item.files} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
 		}
 		case "answer":
 			return (
-				<Message data-item="answer">
+				<Message data-item="answer" className="text-base leading-snug">
 					<MessageContent>
 						<Markdown text={item.text} live={item.live} where={{ agent: item.agent, session: tab.kind === "chat" ? tab.session : undefined, id: `${tab.id}:${item.id}`, arrived: item.arrived }} />
 					</MessageContent>
@@ -442,6 +483,11 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 					</MarkerContent>
 				</Marker>
 			);
+		}
+		case "model": {
+			// Drawn from what is known now: once a model answers, the notice is gone.
+			const info = store.agent(item.agent);
+			return info?.modelProblem ? <ModelNotice agent={item.agent} model={info.model} problem={info.modelProblem} retry onModels={() => store.openSettings("models")} /> : null;
 		}
 		case "event":
 			return (
@@ -470,6 +516,18 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 					{item.kind === "audio" ? null : <div className={MEDIA.cap}>{item.name}</div>}
 				</div>
 			);
+		case "swarm": {
+			const w = item.swarm;
+			return (
+				<Marker className="select-text">
+					<MarkerIcon>{w.status === "done" ? <CheckIcon /> : w.status === "active" ? <UsersIcon /> : <ClockIcon />}</MarkerIcon>
+					<MarkerContent>
+						swarm · {w.note}
+						{item.full ? <span className="block">the job: {short(oneLine(w.objective), 320)}</span> : null}
+					</MarkerContent>
+				</Marker>
+			);
+		}
 		case "goal": {
 			const g = item.goal;
 			const wait = g.status !== "met" && g.status !== "active";
@@ -507,7 +565,7 @@ function Checkpoint({ tab }: { tab: Tab }) {
 				<HoverTooltip>
 					<TooltipTrigger render={<Button size="xs" variant="outline" onClick={() => void store.undo(tab, false)} />}>Take back</TooltipTrigger>
 					<TooltipContent>
-						Its files are restored, the conversation forgets it, its text returns to the input
+						Undo your last message. Files the agent changed for it go back to how they were, the agent's answer is removed, and what you wrote goes back into the message box so you can edit it and send it again.
 						<Kbd>{shortcut("⇧⌘Z")}</Kbd>
 					</TooltipContent>
 				</HoverTooltip>
@@ -516,24 +574,70 @@ function Checkpoint({ tab }: { tab: Tab }) {
 	);
 }
 
-/** Where a conversation begins: who this agent is, what it runs on and reaches, and what it has. */
-function Welcome({ tab }: { tab: Tab }) {
+/** pine's welcome letter, bound to the app: what it links to, and words put into this conversation's input. */
+function Letter({ tab }: { tab: Tab }) {
+	useModel(store);
+	const ready = store.service.status === "ready" ? store.service : undefined;
+	const home = ready?.home;
+	return (
+		<WelcomeLetter
+			main={tab.agent}
+			home={home ? tilde(home) : "~/.pine"}
+			here={Boolean(home) && !store.remote}
+			settings={(section) => store.openSettings(section)}
+			reveal={() => home && void bridge.reveal(home)}
+			say={(text) => {
+				tab.draft = text;
+				tab.touch();
+				store.ask_("focus-input");
+			}}
+		/>
+	);
+}
+
+/** Where a conversation with an agent begins: who it is, what it runs on and reaches, and what it has. It introduces itself when you first write to it. */
+export function Welcome({ tab, skeleton }: { tab?: Tab; /** While the agent is not known yet: its avatar, name, line and badges as stock Skeleton blocks. */ skeleton?: boolean }) {
+	if (skeleton || !tab)
+		return (
+			<Empty data-slot="welcome-skeleton">
+				<EmptyHeader>
+					<EmptyMedia>
+						<AgentAvatar skeleton size="lg" />
+					</EmptyMedia>
+					<Skeleton className="h-6 w-24" />
+					<Skeleton className="h-4 w-48" />
+				</EmptyHeader>
+				<EmptyContent>
+					<WelcomeBadgesSkeleton />
+				</EmptyContent>
+			</Empty>
+		);
+	return <WelcomeCard tab={tab} />;
+}
+
+/** The count badges' places, at a badge's height (h-5), held while the agent's detail loads, so that nothing moves when it lands. */
+function WelcomeBadgesSkeleton({ count = 3 }: { count?: number }) {
+	return (
+		<>
+			{Array.from({ length: count }, (_, i) => <Skeleton key={i} className="h-5 w-20 rounded-4xl" />)}
+		</>
+	);
+}
+
+function WelcomeCard({ tab }: { tab: Tab }) {
 	useModel(store);
 	const info = store.agent(tab.agent);
 	const [has, setHas] = useState<AgentDetail>();
+	// Whether the detail was asked for and answered (or refused), so the badges' places are held until then.
+	const [asked, setAsked] = useState<string>();
 	useEffect(() => {
 		let live = true;
 		// (An older pine does not say; the line is then left out.)
-		api.agentDetail(tab.agent).then((d) => live && setHas(d), () => {});
+		api.agentDetail(tab.agent).then((d) => live && (setHas(d), setAsked(tab.agent)), () => live && setAsked(tab.agent));
 		return () => {
 			live = false;
 		};
 	}, [tab.agent]);
-	const say = (text: string) => {
-		tab.draft = text;
-		tab.touch();
-		store.ask_("focus-input");
-	};
 	const mode = MODES.find((m) => m.value === info?.mode);
 	const h = has?.holdings;
 	const counts: Array<[string, number]> = h ? [["skill", h.skills.length], ["event source", h.sources.length], ["schedule", h.schedules.length], ["MCP server", h.servers.length], ["conversation", h.conversations.length]] : [];
@@ -541,7 +645,7 @@ function Welcome({ tab }: { tab: Tab }) {
 		<Empty>
 			<EmptyHeader>
 				<EmptyMedia>
-					<AgentAvatar agent={{ id: tab.agent, color: store.agent(tab.agent)?.color }} size="lg" />
+					<AgentAvatar agent={{ id: tab.agent, color: info?.color, main: info?.main }} size="lg" />
 				</EmptyMedia>
 				<EmptyTitle>
 					<h1>{tab.agent}</h1>
@@ -552,30 +656,14 @@ function Welcome({ tab }: { tab: Tab }) {
 			<EmptyContent>
 				<div className="flex flex-wrap justify-center gap-1.5">
 					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><CpuIcon data-icon="inline-start" /><b>{info?.model ?? "no model"}</b></TooltipTrigger><TooltipContent>The model it runs on</TooltipContent></HoverTooltip>
-					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><ShieldIcon data-icon="inline-start" /><b>{info?.mode}</b>{info?.mode === "auto" || info?.mode === "bypass" ? "your account, no sandbox" : "in its sandbox"}</TooltipTrigger><TooltipContent>{mode?.about ?? "How much it asks and how far it reaches"}</TooltipContent></HoverTooltip>
+					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><ShieldIcon data-icon="inline-start" /><b>{info?.mode}</b>{info?.mode === "auto" || info?.mode === "bypass" ? "your account, no sandbox" : "in a sandbox"}</TooltipTrigger><TooltipContent>{mode?.about ?? "How much it asks and how far it reaches"}</TooltipContent></HoverTooltip>
 					{info?.main ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>administers pine</TooltipTrigger><TooltipContent>It creates and changes the other agents and pine's settings when you ask it to</TooltipContent></HoverTooltip> : null}
-					{info?.delegates.length ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>hands work to <b>{info.delegates.includes("*") ? "every agent" : info.delegates.join(", ")}</b></TooltipTrigger><TooltipContent>Agents it can hand work to</TooltipContent></HoverTooltip> : null}
-					{counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>)}
+					{info?.delegates.length ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>hands work to <b>{info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</b></TooltipTrigger><TooltipContent>Agents it can hand work to</TooltipContent></HoverTooltip> : null}
+					{asked === tab.agent ? counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>) : <WelcomeBadgesSkeleton count={2} />}
 				</div>
-				{info?.modelProblem ? (
-					<Alert className="text-left">
-						<TriangleAlertIcon />
-						<AlertDescription>{info.modelProblem} Sign in to a provider (a Claude, ChatGPT or Copilot subscription, or an API key) or add a model server of your own, then choose the model {tab.agent} runs on.</AlertDescription>
-						<AlertAction>
-							<Button variant="outline" size="xs" onClick={() => store.openSettings("models")}>Models…</Button>
-						</AlertAction>
-					</Alert>
-				) : null}
-				<p className="text-faint wrap-anywhere">
-					{tab.session === "main" ? "Its main conversation: the one it keeps for good, and where what it is subscribed to as an agent arrives." : `Conversation ${tab.session}.`} {tab.folder ? `It works in ${tilde(tab.folder)}.` : "It works in its own workspace."}
-				</p>
-				<div className="flex flex-wrap justify-center gap-1.5">
-					{/* A suggestion: a Button that puts its words into the input. */}
-					<Button variant="outline" size="xs" onClick={() => say("What can you do for me, and what are you set up with?")}>What can you do?</Button>
-					<Button variant="outline" size="xs" onClick={() => store.openSettings("agents", tab.agent)}><SettingsIcon data-icon="inline-start" />Agent settings</Button>
-					<Button variant="outline" size="xs" onClick={() => void store.pickFolder(tab)}><FolderIcon data-icon="inline-start" />Give it a folder</Button>
-					<Button variant="outline" size="xs" onClick={() => void store.command("palette")}><CommandIcon data-icon="inline-start" />Commands <Kbd>{shortcut("⌘K")}</Kbd></Button>
-				</div>
+				{info?.modelProblem ? <ModelNotice agent={tab.agent} model={info.model} problem={info.modelProblem} onModels={() => store.openSettings("models")} /> : null}
+				{/* The way on to what the card only names: the agent's own page, where its model, mode, tools and instructions are changed. */}
+				<Button variant="outline" size="sm" data-slot="agent-settings" onClick={() => store.openSettings("agents", tab.agent)}><SettingsIcon data-icon="inline-start" />Agent settings</Button>
 			</EmptyContent>
 		</Empty>
 	);
@@ -671,16 +759,19 @@ function StatusLine({ tab }: { tab: Tab }) {
 	const waiting = [...tab.approvals.values()];
 	const elsewhere = store.tabs.find((t) => t !== tab && t.approvals.size > 0);
 	const goal = tab.goal?.status === "active" ? tab.goal : undefined;
+	const swarm = tab.swarm?.status === "active" ? tab.swarm : undefined;
 	// The line keeps its height when it says nothing, so that the input does not move.
 	const line = (icon: ReactNode, text: string, action?: ReactNode, warn?: boolean) => (
 		<Marker className="min-h-7.5 py-1.5">
-			{icon ? <MarkerIcon className={cn(warn && "text-warn")}>{icon}</MarkerIcon> : null}
+			{/* A grid centers the dot of Pulse, which would otherwise sit on the text's baseline in the icon's box. */}
+			{icon ? <MarkerIcon className={cn("grid place-items-center", warn && "text-warn")}>{icon}</MarkerIcon> : null}
 			<MarkerContent className="min-w-0 flex-1">{text}</MarkerContent>
 			{action}
 		</Marker>
 	);
 	if (!tab.busy) {
 		if (waiting.length) return line(<TriangleAlertIcon />, waiting[0].req.tool === "question" ? "A question waits for your answer." : "A request waits for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
+		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
 		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
 		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} waits for you.`, <Button variant="outline" size="xs" onClick={() => store.activate(elsewhere)}>Go there</Button>, true);
 		if (tab.programs.length) return line(<PlayIcon />, `${plural(tab.programs.length, "program")} still running`, <Button variant="ghost" size="xs" onClick={() => void store.command("code-running")}>Show</Button>);
@@ -693,6 +784,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 	const total = tab.tokens.input + tab.tokens.cached;
 	const parts = [
 		goal ? `goal · round ${goal.round} of ${goal.until}` : "",
+		swarm ? `swarm · round ${swarm.round} of ${swarm.until}` : "",
 		waiting.length ? "waiting for you" : tab.thinking ? "thinking" : "working",
 		clock(secs),
 		at >= 0 ? `step ${at + 1} of ${steps.length}` : "",
@@ -736,14 +828,14 @@ function ContextUsage({ tab, percent }: { tab: Tab; percent: number }) {
  * What lies above a conversation or a task, oldest first: the conversations a branch was made from, one after another; for
  * a task, the conversation it was done for and the task that started it. Each opens with a click.
  */
-function above(tab: Tab): Array<{ key: string; label: string; title: string; open: () => void }> {
+function above(tab: Tab): Array<{ key: string; label: string; known: boolean; title: string; open: () => void }> {
 	const list = store.conversations.get(tab.agent) ?? [];
-	const conv = (session: string) => ({ key: `c:${session}`, label: store.titleOf(tab.agent, session), title: `Open the conversation ${session}`, open: () => void store.openTab(tab.agent, session) });
+	const conv = (session: string) => ({ key: `c:${session}`, label: store.titleOf(tab.agent, session), known: store.titleKnown(tab.agent, session), title: `Open the conversation ${session}`, open: () => void store.openTab(tab.agent, session) });
 	if (tab.kind === "task") {
 		const out = list.some((c) => c.session === tab.session) ? [conv(tab.session)] : [];
 		if (tab.parent !== undefined) {
 			const parent = tab.parent;
-			out.push({ key: `t:${parent}`, label: `task #${parent}`, title: `Open task #${parent}, which started this one`, open: () => void store.openTask(parent) });
+			out.push({ key: `t:${parent}`, label: `task #${parent}`, known: true, title: `Open task #${parent}, which started this one`, open: () => void store.openTask(parent) });
 		}
 		return out;
 	}
@@ -783,13 +875,18 @@ function ConvHead({ tab }: { tab: Tab }) {
 					{above(tab).map((c) => (
 						<Fragment key={c.key}>
 							<BreadcrumbItem className="min-w-0">
-								<BreadcrumbLink render={<button type="button" />} className="truncate" title={c.title} onClick={c.open}>{c.label}</BreadcrumbLink>
+								<BreadcrumbLink render={<button type="button" />} className="truncate" title={c.title} onClick={c.open}>{c.known ? c.label : <Skeleton data-slot="title-skeleton" className="inline-block h-3 w-24 align-middle" />}</BreadcrumbLink>
 							</BreadcrumbItem>
 							<BreadcrumbSeparator />
 						</Fragment>
 					))}
 					<BreadcrumbItem className="min-w-0">
-						<BreadcrumbPage className="truncate" title={chat ? `conversation ${tab.session}` : undefined}>{chat ? store.titleOf(tab.agent, tab.session) : `task #${tab.task}`}</BreadcrumbPage>
+						{chat && !store.titleKnown(tab.agent, tab.session) ? (
+							// Not known yet: a bar in its place, at the line's height, as in the sidebar and the tabs.
+							<Skeleton data-slot="title-skeleton" className="h-3 w-28" />
+						) : (
+							<BreadcrumbPage className="truncate" title={chat ? `conversation ${tab.session}` : undefined}>{chat ? store.titleOf(tab.agent, tab.session) : `task #${tab.task}`}</BreadcrumbPage>
+						)}
 					</BreadcrumbItem>
 					{where ? (
 						<>
@@ -802,6 +899,27 @@ function ConvHead({ tab }: { tab: Tab }) {
 			{chat && store.pins.has(tab.key) ? <StarIcon size={12} className="text-faint" /> : null}
 			<span className="min-w-0 flex-1" />
 			{tab.context !== undefined ? <ContextUsage tab={tab} percent={tab.context} /> : null}
+		</div>
+	);
+}
+
+/**
+ * A conversation that has not loaded yet: its shape, the owner's bubble on the right, a trace line
+ * and the lines of an answer, from stock Skeleton blocks in the column the conversation is drawn in.
+ */
+export function ConversationSkeleton() {
+	return (
+		<div data-slot="conversation-skeleton" aria-busy className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3.5 overflow-hidden px-7 pt-7 pb-2">
+			<OwnerTurn skeleton />
+			<div className="flex items-center gap-2">
+				<Skeleton className="size-3 rounded-full" />
+				<Skeleton className="h-3 w-40" />
+			</div>
+			<div className="flex flex-col gap-2">
+				<Skeleton className="h-4 w-full" />
+				<Skeleton className="h-4 w-11/12" />
+				<Skeleton className="h-4 w-2/3" />
+			</div>
 		</div>
 	);
 }
@@ -848,7 +966,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 			<ConvHead tab={tab} />
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}
 			{!loaded ? (
-				<Pulse label="Loading" className="m-auto" />
+				<ConversationSkeleton />
 			) : (
 				// Message Scroller follows what arrives while the reader is at the end, holds still when
 				// they went up, and brings them back with its button. A tab opens at its end.
@@ -857,10 +975,25 @@ export function Conversation({ tab }: { tab: Tab }) {
 						<MessageScrollerViewport ref={scroller}>
 							{/* The column of the conversation, under the head and above the input. */}
 							<MessageScrollerContent className="mx-auto max-w-3xl px-7 pt-7 pb-2" aria-busy={tab.busy}>
+								{/* The main agent's main conversation begins with pine's welcome, above everything said in it: under the agent while nothing was said yet. */}
+								{chat && tab.session === "main" && store.agent(tab.agent)?.main ? (
+									<>
+										{!tab.items.length ? (
+											<MessageScrollerItem>
+												<Welcome tab={tab} />
+											</MessageScrollerItem>
+										) : null}
+										<MessageScrollerItem>
+											<Letter tab={tab} />
+										</MessageScrollerItem>
+									</>
+								) : null}
 								{!tab.items.length && chat ? (
-									<MessageScrollerItem className="my-auto">
-										<Welcome tab={tab} />
-									</MessageScrollerItem>
+									store.agent(tab.agent)?.main && tab.session === "main" ? null : (
+										<MessageScrollerItem className="my-auto">
+											<Welcome tab={tab} />
+										</MessageScrollerItem>
+									)
 								) : (
 									tab.items.map((item, i) => (
 										<Fragment key={item.id}>

@@ -52,9 +52,9 @@ export const type: SourceType = {
 			url: Type.String({ description: "the address to look at, https://... (http:// for a device on the local network)" }),
 			every: Type.Optional(Type.String({ description: 'how often to look, e.g. "5m", "1h". Default "5m", at least "30s"' })),
 			path: Type.Optional(Type.String({ description: 'for an answer in JSON: watch only this field, e.g. "data.price" or "items.0.state"' })),
-			match: Type.Optional(Type.String({ description: 'for a page or text: watch only what this regular expression finds (its first group, if it has one), e.g. "Price: ([0-9.,]+)". Without path, values, match or select the whole text counts, and a page that shows the time or a counter changes at every look' })),
+			match: Type.Optional(Type.String({ description: 'for a page or text: watch only what this regular expression finds (the first group, if there is one), e.g. "Price: ([0-9.,]+)". Without path, values, match or select the whole text counts, and a page that shows the time or a counter changes at every look' })),
 			select: Type.Optional(Type.String({ description: 'for a page: watch only the text of the first element this CSS selector matches, e.g. ".product .price" or "#stock > span". Tags, #id, .class, [attribute=value], nested with a space or >' })),
-			attr: Type.Optional(Type.String({ description: 'with "select": watch the value of this attribute of the element instead of its text, e.g. "content" for a meta tag or "data-price"' })),
+			attr: Type.Optional(Type.String({ description: 'with "select": watch the value of this attribute of the element instead of the element\'s text, e.g. "content" for a meta tag or "data-price"' })),
 			render: Type.Optional(Type.Boolean({ description: 'true for a page that a script fills in after loading, where the value is not in the page as the server sends it. Every look then opens the page in pine\'s browser, without a window, and takes what a reader sees. "select" can then be any CSS selector, "every" is at least "2m", and "path", "values", "method", "body", "headers" and "token" do not go with it. Slow and heavy: where the page\'s script asks an address of its own (usually JSON), watch that address without "render" instead' })),
 			values: Type.Optional(Type.Record(Type.String(), Type.String(), { description: 'for an answer in JSON: watch several fields at once, each under a name of yours, e.g. {"price": "data.price", "stock": "data.stock.count"}. One event says which of them changed' })),
 			method: Type.Optional(Type.String({ description: '"POST" for an address that is asked by sending something (GraphQL, a search). Default "GET"' })),
@@ -100,7 +100,7 @@ export const type: SourceType = {
 			options: { ...rest, url: url.href, ...(method === "POST" ? { method } : {}), ...(render ? { render: true } : {}) },
 			does,
 			opens: true,
-			tell: "Its first look is the starting point and reports nothing; from then on only a change does. The sources tool shows what it found at the last look.",
+			tell: "The first look is the starting point and reports nothing; from then on only a change does. The sources tool shows what it found at the last look.",
 		};
 	},
 };
@@ -118,7 +118,7 @@ function renderable(o: Record<string, any>, url: URL, control: number | undefine
 	if (o.select !== undefined && (!String(o.select).trim() || String(o.select).length > 300)) throw new Error('"select" is a CSS selector of at most 300 characters, e.g. ".product .price"');
 	const target = localTarget(url.href);
 	// A name that has to be looked up can point somewhere else tomorrow, and a page's scripts would be there then.
-	if (!target && o.local === true) throw new Error(`"render" does not go with "local": true. A browser is let onto your network only at an address that says by itself that it is local: localhost, a .local name or an IP address. Give ${url.hostname} by its IP address, or leave "render" out`);
+	if (!target && o.local === true) throw new Error(`"render" does not go with "local": true. A browser is let onto your network only at an address that says by itself that it is local: localhost, a .local name or an IP address. Give the IP address of ${url.hostname}, or leave "render" out`);
 	if (target && control !== undefined && target.port === control) throw new Error(`${target.key} is pine's own control port. No page is opened there`);
 	return target?.key;
 }

@@ -15,19 +15,19 @@ to change the code.
 | `npm run test:live` | End-to-end through `claude -p`, plus the real browser and, on a Mac, the real app control helper and the helper of the `system` source. Slow, uses a Claude plan and the network. Run it when you change prompts, tool descriptions, `src/dev/claude-model.ts`, `mcp/browser.ts`, `mcp/computer.ts` or `mcp/computer.swift`. The tests that operate TextEdit skip themselves unless the terminal app they run in has the Accessibility and Screen Recording grants. |
 | `npm run baseline` | The 59 pi SDK checks in `baseline/`. Run it after upgrading pi. |
 | `node src/cli.ts <command>` | The CLI without installing it. |
-| `npm run desktop` | The desktop app (`desktop/`, Electron), built and opened. It has its own `package.json` and `node_modules`: `npm install` in `desktop/` once. `npm run dev` there reloads the page as you edit. |
-| `npm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/test/support/app.ts`), so runs of several checkouts at once never test each other's build; two files at a time, two minutes at most a test. A few minutes; needs a screen. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. The Test workflow runs it on macOS and on Linux under `xvfb-run` when those change. `npm run check` in `desktop/` is its type check. |
+| `npm run desktop` | The desktop app (`desktop/`, Electron), built and opened. It has its own `package.json` and `node_modules`: `npm install` in `desktop/` once. `npm run dev` there reloads the page as you edit. On a Mac both start a copy of Electron's app named Pine, with Pine's icon and signed again for this Mac, so that the menu bar and the Dock say Pine (`desktop/scripts/dev-electron.mjs`, made once per Electron version in `desktop/node_modules/.cache/pine-dev`). |
+| `npm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/test/support/app.ts`), so runs of several checkouts at once never test each other's build. The app's window is drawn and never shown, so a run takes no place on the screen and the owner's pointer and keys never reach a test (`PINE_DESKTOP_SHOW=1` shows the windows, to watch a test). As many files side by side as the computer has room for (one for every two idle processors, six at most, two at least), two minutes at most a test; a file with a failure is run again alone, and one that passes then is named and does not fail the run. Under a minute. The Test workflow runs it on macOS and on Linux under `xvfb-run` when those change. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. `npm run check` in `desktop/` is its type check. |
 | `npm run dev:preview` (in `desktop/`) | The app's page in an ordinary browser on a throwaway pine; `dev:preview:home` on `~/.pine`, whose daemon it never stops. Each checkout has ports of its own, from its path (`desktop/scripts/launch-json.mjs`), and `.claude/launch.json` is written with them by `npm install` in `desktop/` (it is not in git). After pulling, or when the preview pane lists no `desktop-preview`, run `node desktop/scripts/launch-json.mjs` (or `npm install` in `desktop/`). A preview and `npm run dev` end with whatever started them (`desktop/scripts/leash.mjs`). |
-| `npm run storybook` (in `desktop/`) | Storybook for the parts of the app's page, at port 6006: a story sits beside the file of what it shows (`desktop/src/<File>.stories.tsx`, `desktop/src/components/<name>.stories.tsx`: `desktop/src/ApprovalDialog.stories.tsx`, `desktop/src/components/printed.stories.tsx`, `desktop/src/components/logo.stories.tsx`); `npm run build-storybook` builds it. Chromatic publishes the stories on every pull request (`.github/workflows/chromatic.yml`, secret `CHROMATIC_PROJECT_TOKEN`), each in light and dark at a phone's width (360) and the window's (1280) through its modes (`desktop/.storybook/modes.ts`), so no dark or phone twin of a story is written. Add or update a story when you change a part in `desktop/src/components/` (outside `ui/`, which is stock). |
-| `npm run desktop:pack` | On a Mac `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel); on Linux and Windows the app's folder (`linux-unpacked`, `win-unpacked`), and with `--dist` an AppImage and a deb, or an NSIS installer (`desktop/scripts/pack.mjs`). On a Mac: with the package of `npm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts` or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
-| `npm test`, `npm run check` (in `mobile/`) | The mobile app's bridge and both builds of its page (Android, iOS) under `node:test`, and its type check against the desktop page's `Bridge`. `npm install` in `mobile/` once. Run both when you change `mobile/src`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. The `android` and `ios` jobs of the Release workflow run both before they build the APK and the IPA. |
-| `npm run test:core` (in `mobile/`) | The native plugin's Kotlin core on the JVM: an SSH server in the test (Apache MINA sshd) and a stand-in daemon. Run it when you change `mobile/core/`, `mobile/cases/` or `src/remote.ts`. |
-| `swift test` (in `mobile/ios-core/`) | The iOS plugin's Swift core on the Mac: a real OpenSSH `sshd` started by the test on a loopback port and a stand-in daemon, and the same cases as the Kotlin core (`mobile/cases/`). Run it when you change `mobile/ios-core/`, `mobile/cases/` or `src/remote.ts`. The `ios` job of the Release workflow runs it. |
-| `npm run ipa`, `npm run smoke:ios`, `npm run ios:run` (in `mobile/`) | The IPA of a release, not signed (`scripts/ipa.ts`: `npm run ipa -- <version>`, written to `ios/App/output/`, checked unsigned and arm64); the iOS app from end to end on a simulator of its own without a window, against the Android smoke run's test SSH server; and the app opened in the Simulator app, by hand. The smoke test is the test of the web view's hardening in `PineViewController.swift` and `PinePlugin.swift`, of the return from the background and of the key kept in the Keychain: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. They need Xcode 27 with an iOS simulator runtime, and the smoke run a JDK as `npm run smoke` does. |
-| `npm run apk`, `npm run apk:release`, `npm run smoke` (in `mobile/`) | A debug APK; a release APK (signed when `ANDROID_KEYSTORE_FILE` and the three other variables of the release job name a key, versioned by `PINE_VERSION` and `PINE_VERSION_CODE`); and the app from end to end on an emulator without a window, against a test SSH server of its own running the real `pine service`. The smoke test is the test of the WebView's hardening in `PinePlugin.kt` and of the back button and the app's return from the background: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. The Gradle commands need the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`) and a JDK of 21 or later: `JAVA_HOME`, default Android Studio's (`/Applications/Android Studio.app/Contents/jbr/Contents/Home`), since a Mac has no `java` on its PATH by default. |
-| `npm test`, `npm run check`, `npm run build` (in `web/`) | The web client: the web bridge as the page calls it, in Node with a stand-in for SSH, and its SSH core in headless Chrome for Testing against a `sshd` of the test's own on a loopback port; its type check; and its build into `web/dist` (the bridge's document, and the desktop page built for the browser under `page/`). `npm install` in `web/` once. Run them when you change `web/`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. |
-| `npm test`, `npm run check` (in `web/relay/`) | The relay Worker's fetch handler with a stand-in TCP server on a loopback port, and its type check. `npm install` in `web/relay/` once. `npm run dev` there serves the deployment (relay and `web/dist`) under `wrangler dev`; `npx wrangler deploy` there deploys it, by hand only: no workflow changes the live version. A pull request that changes one of the paths listed in `.github/workflows/web-preview.yml` (`web/` and every input of the page's build) runs `.github/workflows/web-preview.yml`: the gates of `web/` and `web/relay/` and the build, then `wrangler versions upload --preview-alias pr-<number>`, whose address it posts on the pull request in one comment that each push updates. The secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) are in the environment `web-preview`, which a fork's pull request never reaches, and are given to the upload step alone; without them the job passes and says nothing was deployed. Nothing is deployed from `next` or `main`. |
-| `npm run smoke` (in `web/`) | After `npm run build`: the page and the relay as one deployment under `wrangler dev`, in headless Chrome for Testing, against a `sshd` of its own on the loopback running the real `pine service` on a home of its own with the scripted model server. Named checks, each of which fails the run. It is the one test of the page's isolation in a real browser. Run it before a release that changes `web/`; no workflow runs it. |
+| `npm run storybook` (in `desktop/`) | Storybook for the parts of the app's page, at port 6006: a story sits beside the file of what it shows (`desktop/src/<File>.stories.tsx`, `desktop/src/components/<name>.stories.tsx`: `desktop/src/ApprovalDialog.stories.tsx`, `desktop/src/components/printed.stories.tsx`, `desktop/src/components/logo.stories.tsx`); `npm run build-storybook` builds it. Chromatic publishes the stories on every pull request and every push to `next`, whose build is accepted as the baseline (`.github/workflows/chromatic.yml`, secret `CHROMATIC_PROJECT_TOKEN`), each in light and dark at a phone's width (360) and the window's (1280) through its modes (`desktop/.storybook/modes.ts`), so no dark or phone twin of a story is written. Add or update a story when you change a part in `desktop/src/components/` (outside `ui/`, which is stock). |
+| `npm run desktop:pack` | On a Mac `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel); on Linux and Windows the app's folder (`linux-unpacked`, `win-unpacked`), and with `--dist` an AppImage and a deb, or an NSIS installer (`desktop/scripts/pack.mjs`). On a Mac: with the package of `npm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts`, a native module of browser access (`ssh2`, `node-datachannel`) or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
+| `npm test`, `npm run check` (in `mobile/`) | The mobile app's bridge and both builds of its page (Android, iOS) under `node:test`, and its type check against the desktop page's `Bridge`. `npm install` in `mobile/` once. Run both when you change `mobile/src`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. The `android` job of the Release workflow runs both before it builds the APK; run them yourself before you build the IPA by hand. |
+| `npm run test:core` (in `mobile/`) | The native plugin's Kotlin core on the JVM: an SSH server in the test (Apache MINA sshd) and a stand-in daemon, and for a paired computer the Pine app's real access host under Node (`mobile/test/support/access-host.ts`, so it needs Node and `npm install` in `desktop/`), with libdatachannel's JVM binding behind the core's `WebRtc` interface. Run it when you change `mobile/core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. |
+| `swift test` (in `mobile/ios-core/`) | The iOS plugin's Swift core on the Mac: a real OpenSSH `sshd` started by the test on a loopback port and a stand-in daemon, the same cases as the Kotlin core (`mobile/cases/`), and for a paired computer the same access host helper (Node and `npm install` in `desktop/`). Apple silicon only: libdatachannel's xcframework has no Intel slice for macOS. Run it when you change `mobile/ios-core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. No workflow runs it for now. |
+| `npm run ipa`, `npm run smoke:ios`, `npm run ios:run` (in `mobile/`) | The IPA of a release, not signed (`scripts/ipa.ts`: `npm run ipa -- <version>`, written to `ios/App/output/`, checked unsigned and arm64); the iOS app from end to end on a simulator of its own without a window, against the Android smoke run's test SSH server, and paired with the real access host behind a TLS front whose authority the run adds to that simulator (`--pairing-only` for that alone); and the app opened in the Simulator app, by hand. The smoke test is the test of the web view's hardening in `PineViewController.swift` and `PinePlugin.swift`, of pairing by a pasted link and by a `pine:` address, of the return from the background and of the key kept in the Keychain: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. They need Xcode 27 with an iOS simulator runtime, and the smoke run a JDK as `npm run smoke` does. |
+| `npm run apk`, `npm run apk:release`, `npm run smoke` (in `mobile/`) | A debug APK; a release APK (signed when `ANDROID_KEYSTORE_FILE` and the three other variables of the release job name a key, versioned by `PINE_VERSION` and `PINE_VERSION_CODE`); and the app from end to end on an emulator without a window, against a test SSH server of its own running the real `pine service`, and paired with the real access host behind a TLS front whose authority only the debug build trusts (`-PpineSmokeAuthority`; `--transport-only` for the libwebrtc check, `--pairing-only` for that and pairing). The smoke test is the test of the WebView's hardening in `PinePlugin.kt`, of libwebrtc (`LibWebRtcTest`, the only test of it), of pairing by a pasted link and by an App Link, and of the back button and the app's return from the background: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. The Gradle commands need the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`) and a JDK of 21 or later: `JAVA_HOME`, default Android Studio's (`/Applications/Android Studio.app/Contents/jbr/Contents/Home`), since a Mac has no `java` on its PATH by default. |
+| `npm test`, `npm run check`, `npm run build` (in `web/`) | The web client: the web bridge as the page calls it, in Node with a stand-in for SSH, and its SSH core in headless Chrome for Testing against a `sshd` of the test's own on a loopback port, and peer to peer with the Pine app's real access host (`desktop/electron/access/`), so it needs `npm install` in `desktop/` too; its type check; and its build into `web/dist` (the bridge's document, and the desktop page built for the browser under `page/`). `npm install` in `web/` once. Run them when you change `web/`, `desktop/electron/access/`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. |
+| `npm test`, `npm run check` (in `web/relay/`) | The relay Worker's fetch handler with a stand-in TCP server on a loopback port, the meeting module and its routes, and its type check. `npm install` in `web/relay/` once. `wrangler.jsonc` has one configuration and no environment: the web client, the relay and the meeting service side by side, a whole deployment. Every deployment is a Worker of its own made from it, named with `--name`, at `pine-<channel>.<account>.workers.dev`: `pine-main` (the project's service, the apps' default), `pine-next`, and `pine-pr-<number>` for a pull request; a deployment of one's own uses it under a name of its own. `npm run dev` there serves the deployment (relay, meeting service and `web/dist`) under `wrangler dev`. A pull request that changes one of the paths listed in `.github/workflows/web-preview.yml` (`web/` and every input of the page's build) runs `.github/workflows/web-preview.yml`: the gates of `web/` and `web/relay/` and the build, then `wrangler deploy --name pine-pr-<number>`, whose address it posts on the pull request in one comment that each push updates; when the pull request is closed, `pine-pr-<number>` is deleted through Cloudflare's API. A push to `next` or `main` that changes one of those paths runs it too and deploys `pine-next` or `pine-main`, its address in the run's summary: a push to `main` is how the project's service changes. A Worker that holds a Durable Object gets no version preview addresses, which is why each channel is a Worker of its own. The secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) are in the environment `web-preview`, which a fork's pull request never reaches, and are given to the deploy and delete steps alone; without them the jobs pass and say nothing was deployed or deleted. |
+| `npm run smoke` (in `web/`) | After `npm run build`: the page and the relay as one deployment under `wrangler dev`, in headless Chrome for Testing, against a `sshd` of its own on the loopback running the real `pine service` on a home of its own with the scripted model server; then, on the same deployment (the meeting service beside the relay), the Pine app's access host under Node beside that home's `pine service`, and a second browser paired by link, peer to peer. Named checks, each of which fails the run. It is the one test of the page's isolation in a real browser, and the one test of pairing from end to end. Run it before a release that changes `web/`, `web/relay/` or `desktop/electron/access/`; no workflow runs it. |
 
 There is no build step. Node runs the TypeScript directly (the compiled parts, pine's Swift
 helpers such as `mcp/computer.swift`, are built by pine on the Mac it runs on, on first use;
@@ -45,9 +45,15 @@ src/
   pine.ts           startPine(): builds and wires everything, returns a handle with stop()
   config.ts         loads and validates pine.json, agent.json, .env; all defaults live here
   store.ts          SQLite: event log (Bus), shared state (State), private storage (Kv), tasks
+  boards.ts         boards: tasks and notes that several runs share (a conversation and its sub-agents, several
+                    agents). The tables, who may use which board, a task taken in one step and given back when
+                    its run ends. No bus, no agent in it: the tools (src/tools.ts) and the control API use it
   agents.ts         AgentManager: task queue, pi sessions, conversations, the policy gate, the download tool, context block
   tools.ts          the tools pine gives an agent: delegate, subagent, publish_event, send, read_source, request_access, state_get,
-                    state_set, question, todo, stop_program, manual; the lists of what it has (sources, schedules,
+                    state_set, question, todo, stop_program, manual; the board tools (boards, board_read, board_post,
+                    board_claim, board_done, board_answer) and the pool of sub-agents that works through a board (`workPool`),
+                    which comes back to its conversation when a sub-agent asks or fails;
+                    the lists of what it has (sources, schedules,
                     mcp_servers, skills, models); and the setup tools (subscribe, unsubscribe, add_/remove_ source, source_type,
                     mcp_server, skill, schedule, model_server; create_agent); and the main agent's tools for
                     conversations (conversations, read_conversation, set_conversation, remove_conversation)
@@ -74,6 +80,13 @@ src/
   env-file.ts       sets and removes entries in .env (secrets of sources that agents set up)
   themes.ts         the themes of the owner's UIs: VS Code color theme files in <home>/themes (seeded once from
                     examples/home/themes), listed for `GET /themes`, the one `ui.theme` names
+  views.ts          the views of the Pine app's panel: scripts of the owner's in <home>/views, listed, handed over
+                    with their types stripped (never run by the daemon), `ui.view`; pine's own (examples/home/views: office, workshop, overview) given to a home and kept up to date there at every start, a version the owner changed kept beside it as a view of its own (`seedOwn`),
+                    with the guide to writing one (`views/AGENTS.md`, for the owner or a coding agent opened there;
+                    no agent of pine's reads it), which is written anew when it or `view-kit.ts` changed (`seedGuide`).
+                    Keep that guide true to `view-kit.ts`: `test/views.test.ts` checks its names
+  view-kit.ts       `pine/view`, what a view imports: the types of what a view is told, `defineView`, helpers. No
+                    Node, no DOM: the app's view frame runs it, and pine copies it into <home>/views/.pine for editors
   theme-colors.ts   a VS Code color theme resolved into pine's color roles, as hex colors and nothing else (no
                     fs: Storybook uses it too); a theme's `pine` object overrides a role by name
   update.ts         `pine update`: brings pine up to date the way it was installed (git or npm) and fetches what the new version needs;
@@ -85,6 +98,12 @@ src/
   router.ts         routes: filter, debounce, set / publish / call / agent
   timers.ts         the scheduler: cron, intervals and one-offs; a schedule with a task wakes an agent
   goals.ts          goal mode (`/goal`): a conversation's objective, the judge that says whether it is met, the task that calls the agent again
+  swarm.ts          a swarm (`/swarm`): a job the conversation's agent leads. What the lead is told, and what pine does each time
+                    the lead ends a turn, going by the conversation's board alone: call it again while tasks are not done, put a
+                    check of the lead's answer on the board when all are and start the sub-agent that does it, call the lead
+                    when that check failed, wait for the owner's answer
+  hatch.ts          agents introduce themselves once, in their answer to the owner's first message to them: the note in front
+                    of it (`INTRODUCE`). No agent starts a conversation by itself
   browser-view.ts   the bundled browser of a conversation for a UI that shows it itself (the Pine app's panel): the
                     daemon's way through the door of the browser's server, for the control API alone
   programs.ts       what a conversation's commands left running: found by process group, listed, stopped;
@@ -126,6 +145,8 @@ src/
                     picture.ts (pictures, video and sound: conversion with sips or ffmpeg, Kitty-protocol or half-block drawing, the system's player for sound),
                     levels.ts (the bars of a sound: its levels by frequency band for each tenth of a second, from a wav file or a decoder's samples;
                     the Pine app's page is built with this file too, so nothing in it runs or imports Node's own when it is loaded),
+                    welcome.ts (pine's welcome at the top of the main agent's empty main conversation, as the Pine app's
+                    `desktop/src/WelcomeLetter.tsx` says it),
                     voice.ts (dictating a message, recognised on the device: voice.swift on macOS, voice.cs on Windows
                     (System.Speech), voice-linux.ts and voice-whisper.ts on Linux (whisper.cpp); a sentence where a piece is missing)
   types.ts, util.ts shared types; topics, templates, filters, durations, logger; the folded parts of a text (`foldsIn`, for the
@@ -140,7 +161,10 @@ test/               node:test files; support/harness.ts builds a temp home and a
 baseline/           pi SDK behaviour checks and their results; the mock model server lives here
 docs/               SKILL.md index and references/
 desktop/            the desktop app (Electron; a package of its own, not part of what goes to npm): electron/ is the
-                    main process (the window, the daemon's token, `pine service`, `pine` for a terminal, the look for a newer app), src/ the
+                    main process (the window, the daemon's token, `pine service`, `pine` for a terminal, the look for a newer app and its own update;
+                    electron/access/ is browser access, without Electron: the access server on ssh2, this computer's host key and
+                    the paired devices, pairing, the WebRTC data channel on node-datachannel, the host that waits at the
+                    meeting service, and the control the page's Settings > Browser access reads), src/ the
                     page (React, Tailwind v4, shadcn on Base UI, shadcn's core chat components composed per shadcn's AI Elements
                     patterns for the conversation and the input, Streamdown for answers, lucide icons,
                     usehooks-ts for the side panel's breakpoint; ui-sdk only for what shadcn lacks), test/ the app driven through its real window, scripts/ what builds, tests, previews and packs it.
@@ -157,33 +181,49 @@ desktop/            the desktop app (Electron; a package of its own, not part of
                     shadcn's agent skill lies in desktop/.agents/skills (desktop/.claude/skills links to it, skills-lock.json pins it):
                     read it before you change the page; `npx skills update` in desktop/ brings it up to date
 mobile/             the Android and iOS app (Capacitor; a package of its own, not part of what goes to npm): the desktop
-                    page on a phone, for the pine of another machine over SSH, no daemon on the phone. src/ is the
+                    page on a phone, for the pine of another machine over SSH or of a computer paired with the Pine app,
+                    no daemon on the phone. src/ is the
                     mobile bridge (`mobile-bridge.ts`: returns the `Bridge` type, forwards to the native plugin),
                     the plugin's contract (`plugin.ts`) and the entry that installs the bridge before the desktop
                     page (`install.ts`, `main.ts`); vite.config.ts builds desktop/src for it. core/ is the native
                     plugin's Kotlin core, with no Android in it (a Gradle build of its own, tested on the JVM):
                     SSH with sshj, `pine service` run as `remoteCommand()` of src/remote.ts runs it, calls to the
-                    control API and media under the desktop's rules, the event stream, the phone's key and host keys.
+                    control API and media under the desktop's rules, the event stream, the phone's key and host keys;
+                    for a paired computer the meeting and the data channel SSH runs on (`Peer.kt`), behind the
+                    `WebRtc` interface (`WebRtc.kt`: libdatachannel's JVM binding in the tests only), pairing
+                    (`Pairing.kt`) and the link's rules (`Paired.kt`).
                     android/ is the Capacitor app: `PinePlugin.kt` joins the core to the page (the Android
-                    Keystore, the WebView's media, links, the back button). ios-core/ is the same core in Swift
+                    Keystore, the WebView's media, links, App Links, the back button), `LibWebRtc.kt` implements
+                    `WebRtc` on Google's libwebrtc (LiveKit's build), and `androidTest/` holds its one test. ios-core/ is the same core in Swift
                     (a Swift package on Apple's swift-nio-ssh, no UIKit, tested by `swift test` on the Mac), with
-                    its secrets behind `SecretStore` (the Keychain in the app). ios/ is the Capacitor iOS app:
+                    its secrets behind `SecretStore` (the Keychain in the app), and for a paired computer
+                    libdatachannel bridged into NIO by a socket pair (`Peer.swift`, `PeerRemote.swift`,
+                    `Pairing.swift`, `Paired.swift`). ios/ is the Capacitor iOS app:
                     `PinePlugin.swift` joins that core to the page, `PineViewController.swift` hardens the web view
-                    and registers the `pine-media:` scheme (`MediaScheme.swift`), AppTests/ is the smoke run's
-                    hosted test. cases/ holds the table cases both cores replay, and the remote command they run.
+                    and registers the `pine-media:` scheme (`MediaScheme.swift`), `SceneDelegate.swift` hands it
+                    `pine:` addresses, AppTests/ is the smoke run's hosted test. cases/ holds the table cases
+                    both cores replay (the page replays `pair-links.json` too), and the remote command they run.
+                    test/support/access-host.ts runs the Pine app's access host under Node for the cores' tests
+                    and the smoke runs; its line protocol is at its top.
                     `vite build` makes Android's page, `vite build --mode ios` the iOS one (WebKit, its own policy).
                     scripts/ runs Gradle (`gradle.mjs`), derives the release's versionCode (`version-code.ts`),
                     drives the emulator (`smoke.mjs`) and the simulator (`smoke-ios.mjs`), and makes the IPA (`ipa.ts`).
                     docs/references/mobile.md describes it; docs/adr/0001-mobile-app.md and 0002-ios-app.md say why it is so
+                    (and 0004-browser-access.md for pairing)
 web/                the web client (a package of its own, not part of what goes to npm): the desktop page in a
-                    browser, for the owner's own pine over SSH, no daemon in the browser. src/ is the web bridge,
+                    browser, for the owner's own pine over SSH, or the Pine app's pine on a computer paired by QR code, no daemon in
+                    the browser. src/ is the web bridge,
                     the top-level document (`bridge-main.ts`, `host.ts`: the browser's key, machines, trusted host
                     keys, the SSH connection and the daemon's token), its door for the page's messages (`serve.ts`,
                     the fixed list in `protocol.ts`), SSH in the browser (`ssh.ts`: @microsoft/dev-tunnels-ssh with
                     Ed25519 on WebCrypto), what runs over it (`tunnel.ts`, `remote-command.ts`), and what the page
-                    carries inside its sandboxed iframe (`frame-bridge.ts`, `page-*.ts`). scripts/ builds it and
-                    runs the smoke. relay/ is the relay, a Cloudflare Worker of its own package that carries SSH
-                    and nothing else and serves the build beside it. docs/references/web.md describes it; docs/adr/0003-web-client.md says why it is so
+                    carries inside its sandboxed iframe (`frame-bridge.ts`, `page-*.ts`); a paired computer's link and
+                    pairing request (`pairing.ts`) and the data channel that carries SSH to it (`peer.ts`). scripts/
+                    builds it and runs the smoke. relay/ is the relay, a Cloudflare Worker of its own package that
+                    carries SSH (while `RELAY` is on) and serves the build beside it, and the meeting service
+                    (`meet.ts`, with no Cloudflare in it; `meet-object.ts`, its Durable Object), all in the one
+                    configuration of wrangler.jsonc that every channel deploys (`pine-main`, `pine-next`, `pine-pr-<n>`). docs/references/web.md describes it; docs/adr/0003-web-client.md
+                    and 0004-browser-access.md say why it is so
 ```
 
 ## What agents know about pine
@@ -225,8 +265,10 @@ These are invariants. A change that breaks one needs a test that shows why it is
    events (`add_source`, `remove_source`, `subscribe`, `unsubscribe`), MCP servers
    (`add_mcp_server`, `remove_mcp_server`; `mcp_servers` lists them), skills (`add_skill`, `remove_skill`) and schedules
    (`add_schedule`, `remove_schedule`); the main
-   agent also has `create_agent`, `add_source_type` and `remove_source_type`, and `add_model_server` and
-   `remove_model_server`. What an agent has of the four it is told by a tool, never by a file:
+   agent also has `create_agent`, `add_source_type` and `remove_source_type`, `add_model_server` and
+   `remove_model_server`, and the sign-ins `sign_in`, `sign_out` and `sign_in_mcp_server`, which run
+   the flows Settings runs and put every question of the flow to the owner as a question of pine's
+   (a key in a hidden field, `ApprovalDecision.values`), so that nothing typed passes a model. What an agent has of the four it is told by a tool, never by a file:
    `sources`, `mcp_servers`, `skills`, `schedules`; a new kind of thing gets its list too. Each validates its input, writes only
    the entry it is for, and asks the owner where `docs/references/setup.md` says so. A server
    is a remote URL, or a command that runs where the commands of the agent that uses it run
@@ -342,6 +384,21 @@ These are invariants. A change that breaks one needs a test that shows why it is
    fixed text of pine's (`continuePrompt`), never a word of the agent's answer or of the
    judge's reason: the answer may repeat outside content, and the judge has read it. No
    verdict pauses the goal; it never counts as "go on".
+   A swarm (`src/swarm.ts`) calls an agent again in the owner's name in the same way: only the
+   owner starts, pauses, resumes or clears one, through the control API, there is no tool for
+   it, and a run started from outside has none. The task that calls the lead again holds the
+   owner's job and fixed text of pine's with the numbers of tasks (`continuePrompts`), never a
+   word of the lead's answer, of a sub-agent's result or of what a check found (the lead reads
+   that from the board with `board_read`, which marks its run). What decides whether it is called
+   again is the board (tasks that are not done, a check of the lead's answer that failed), never
+   a model. The check pine posts (`checkTask`) holds the lead's answer, and what the owner said while the
+   swarm worked with the lead's question beside it (`Swarm.told`): it is a task on the board
+   with the mark of the lead's run (rule 14), which is how any task the lead writes reaches a
+   sub-agent, and never a prompt in the owner's voice. pine starts the sub-agent for it itself
+   (`startBoardTask` in `src/agents.ts`), on the model the owner set for it where they set one
+   (`defaults.checker`, like the judge's `defaults.judge`): a sub-agent of that conversation under the lead's turn,
+   with that turn's mark, the conversation's permissions and no way to ask the owner, whose run
+   holds the task like a pool's. Nothing else is started that way.
 4. **Untrusted runs get their capabilities by registration.** Tools and MCP servers that the
    untrusted profile does not list are not registered in that session at all, and the session
    key gets `~u` so history is never shared with the owner's session. The app control server
@@ -467,17 +524,36 @@ These are invariants. A change that breaks one needs a test that shows why it is
    "reaches nothing nearby" in `test/browser.test.ts` listens on a UDP port for anything that
    gets out: run it (`npm run test:live`) when Playwright MCP is upgraded, since the switches
    are Chromium's and a new build can rename one.
-   A UI of the owner's that shows the browser itself (the Pine app, in the panel beside a
-   conversation) gets it as pictures and hands back what the owner did in them. The browser stays
-   the one the agent has: the same process, the same guard proxy, the same blocked tools, no
-   window. `mcp/browser.ts` has a door for that (`startViewDoor`): a server on the loopback that
+   The Pine app on this computer has the agent's browser itself: while it runs, the browser of an
+   owner's conversation is a set of tabs in the app's window (`desktop/electron/browser-host.ts`),
+   each a `WebContentsView` with a session of its own, sandboxed, with no preload and no way to the
+   app's page or its main process, laid over the panel beside the conversation. The owner uses the
+   page itself there. The app says where it is with its heartbeat (`/browser/embedded`, `host`,
+   only to this computer's pine), the daemon writes that into pine's data (`BrowserViews.host`,
+   read by the browser servers of an owner's conversations with a door: `hostFile`, `room`), and
+   `mcp/browser.ts` starts Playwright's server against it (`--cdp-endpoint`) instead of a Chromium
+   of its own, and moves back to that one when the app is gone (`move`: the page is opened again,
+   the logins go along when the browser that is left still answers). What Playwright talks to is a
+   browser made of each tab's own debugger, behind a WebSocket on the loopback with a word: it
+   reaches the tabs of the conversation the connection names and nothing else, never the app's own
+   page, where the owner answers pine's questions. Never turn on Chromium's remote debugging port
+   for the app instead. Every tab's session goes through the connecting server's guard proxy,
+   loopback included (`<-loopback>`), what goes around a proxy is switched off for the whole app
+   (`BROWSER_SWITCHES`, and each tab's WebRTC policy), a tab asks for no permission, keeps no
+   download and goes to nothing but `http(s)` by itself, and the blocked tools are the same. Since
+   the owner can act in that page at any time, every call of the agent's is guarded there as with
+   a window (`guarded`). Elsewhere (the phone, the web client, another machine's pine, pine
+   without the app) a UI that shows the browser gets it as pictures and hands back what the owner
+   did in them. The browser stays the one the agent has: the same process, the same guard proxy,
+   the same blocked tools, no window. `mcp/browser.ts` has a door for that (`startViewDoor`): a server on the loopback that
    answers only who says the word it wrote into a file in pine's data (`viewFile`, which
    `browserSession` hands to an owner's conversation and to nothing else: no run started from
    outside, no sub-agent). The daemon goes through it for the control API alone
    (`src/browser-view.ts`); no agent has a tool for it, and what the door says about a page (an
    address, a title) is handed on as one line of text each. What the owner did is checked piece
    by piece by the browser's server (`cleanOps`, `webAddress`) and goes into code of the server's
-   own as values (`OWNER_HAND`): `browser_run_code_unsafe` and the tools that act at a place in
+   own as values (`OWNER_HAND`), or, for a single click, a key and plain letters, to Playwright's
+   own input tools as values: `browser_run_code_unsafe` and the tools that act at a place in
    the picture are used by the server for this and stay closed to the agent (`ALWAYS_BLOCKED`,
    `VISION_TOOLS`). Never put text from a page, an agent or the owner into that code as code,
    and never give the door a road that does more than look and act in the page. An address on
@@ -534,8 +610,9 @@ These are invariants. A change that breaks one needs a test that shows why it is
    app's page draws is content from outside (an answer can repeat a web page), so the page
    holds no token and has no Node: `desktop/electron/main.ts` makes every call for it, takes
    calls from the app's own page only, serves nothing but pictures, video and sound straight
-   from the daemon (`MEDIA`; the page of an agent's browser is one of those pictures, drawn by
-   `desktop/src/Browser.tsx` and never loaded), opens only `http(s)` addresses and only in the owner's browser,
+   from the daemon (`MEDIA`; where the page of an agent's browser is a picture, it is drawn by
+   `desktop/src/Browser.tsx` and never loaded into the app's page: the app's own browser is a view
+   of its own laid over it, rule 8), opens only `http(s)` addresses and only in the owner's browser,
    and sets the policy that lets the page load nothing from the web. Text from an agent or a
    tool is drawn by `desktop/src/markdown.tsx` (parsed, cleaned, links with their address
    beside them, a picture on the web as a line to click) or as plain text, nowhere as HTML.
@@ -543,6 +620,19 @@ These are invariants. A change that breaks one needs a test that shows why it is
    its cleaning rules (`CLEAN`), its link component and its image component. On every upgrade
    of Streamdown read its defaults again and run `npm run desktop:test`.
    `desktop/test/app.test.ts` has a test for it; keep it failing without each of the three.
+   A view of the owner's (<home>/views, `src/views.ts`, docs/references/views.md) is the one script
+   the page runs that is not the app's, and it runs in the page's one frame (`desktop/view.html`,
+   `desktop/src/view-frame.ts`): sandboxed with `allow-scripts` and nothing else, so its origin is
+   nobody's, under a policy of its own that allows no address (`VIEW_CSP` in `desktop/electron/daemon.ts`;
+   the page's own policy allows that frame and no other). It is handed the state that
+   `desktop/src/view-state.ts` builds anew from an allow-list (names, modes, states, tool names: never a
+   prompt, an answer, a path, a tool's arguments, an event's text), and what it asks the panel to show or
+   open is checked against what the panel knows (`knownTarget`). Never add `allow-same-origin` or another
+   permission to the frame, never hand it the bridge, the token or text, and never let it import more
+   than `pine/view`. `desktop/test/view-app.test.ts` has a view that tries to reach the bridge, the top
+   window, storage and an address on this computer, and looks for a word from a prompt and a path; it
+   fails without the sandbox. Only the desktop app's bridge says it can run a view (`AppState.views`);
+   the mobile app and the web client build no frame and show no view.
    The terminal beside a conversation (`desktop/electron/terminal.ts`) is the owner's own shell,
    run by the main process; the page only types into it. What an answer holds reaches it only by
    the owner's press on a code block's Run button, and only a block whose every character shows
@@ -566,9 +656,16 @@ These are invariants. A change that breaks one needs a test that shows why it is
    phone, where any app could reach it), serves the page only pictures, video and sound under
    `MEDIA`'s rules (`mobile/core/.../Media.kt`), opens only `http(s)` addresses outside, lets
    the page navigate nowhere, open no window and have no permission, and the page there carries
-   the same policy. The mobile bridge gives the page three things the preload does not, and
+   the same policy. The mobile bridge gives the page these things the preload does not, and
    only these: `local: false` in `state()` (no machine of its own), `mediaBase` (the address
-   the plugin answers media at) and `deviceKey` (the phone's public SSH key). A host key is
+   the plugin answers media at), `deviceKey` (the phone's public SSH key), `trustHostKey` (the
+   owner's press on "Trust this key", for the fingerprint shown), and for pairing (below)
+   `canPair` in `state()`, `pair`, `stopPairing`, `onPairLink` and `names` in the stored
+   preferences. Those hand text and nothing more: `onPairLink` passes on a link the system
+   opened the app with and starts nothing, `pair` is called only after the owner confirmed the
+   link in the page and the plugin reads it again before it uses the code, `stopPairing` ends
+   the pairing that is open, and `names` are the names paired computers gave, for the page to
+   show. The token and the phone's key never reach the page on any of them. A host key is
    trusted only as the owner confirmed it in the page, exactly the fingerprint shown, and a
    changed one is refused. `mobile/test/build.test.ts` fails when a build carries the other's
    stand-in. What the WebView is kept from (permissions, `onCreateWindow`, a second window, file
@@ -581,6 +678,29 @@ These are invariants. A change that breaks one needs a test that shows why it is
    media come only through the `pine-media:` scheme under the same rules (`MediaScheme.swift`
    on the core's `mediaRequest`), the one media origin of the iOS page's policy. The phone's key
    is kept in the Keychain on this device only. `npm run smoke:ios` proves each as a named check.
+   The mobile app also pairs with the Pine app's access host (browser access, below), and the
+   same holds on that path. The data channel lives in the native plugin's core, never in the
+   WebView (`Peer.kt` behind `WebRtc`, Google's libwebrtc in `LibWebRtc.kt` on Android;
+   `Peer.swift` on libdatachannel on iOS), and only SSH runs over it, end to end; the token and
+   the phone's key stay native, and the phone signs in with the key it already has. A pairing
+   link, whether pasted, opened as an App Link (`https://pine-main.drcmda.workers.dev/` only, for the
+   release-signed APK, once the relay serves the statement) or as a `pine:` address
+   (`pine://pair?service=&id=&code=`, exactly those three), is handed to the page as text, read
+   by one parser on every side (`readPairLink` in `desktop/src/machines.ts`, `pairLink` in
+   `Paired.kt` and `Paired.swift`, all three replaying `mobile/cases/pair-links.json`), and starts
+   nothing until the owner's yes in the page; a service that is not Pine's own is named in that
+   question. The service is `https` and nothing else, checked before anything is reached
+   (`meetingService` in `Peer.kt`, `openPeer` in `Peer.swift`): the tests reach the access host's
+   `http` service through a route that only a test's constructor can pass, and a smoke run's TLS
+   front through an authority that only a debug build (Android's `debug-overrides`) or the smoke's
+   own simulator trusts. The computer's host key must be the link's machine id during key
+   exchange, before the phone's key is offered, and a paired computer is refused for good when it
+   presents another. The app has no scanner and asks for no camera on either system; on Android
+   the manifest asks for `INTERNET` and `ACCESS_NETWORK_STATE` (libwebrtc aborts without it) and
+   nothing else, and has the one App Link filter (`mobile/test/config.test.ts`). The cores' suites
+   prove pairing, refusals (another host key, a changed key, an `http` service, a malformed
+   link) and removal against the real access host on the JVM and the Mac; the smoke runs prove
+   it in the real apps, with every hardening check above unchanged.
    The web client (`web/`) is the fourth holder of the token, beside `main.ts`, the preview's
    server and the mobile app's native plugin, and is held to the same: its web bridge (`web/src/host.ts`) plays `main.ts`'s
    part as the top-level document, and the page runs in an iframe sandboxed with scripts only,
@@ -602,6 +722,42 @@ These are invariants. A change that breaks one needs a test that shows why it is
    `web/relay/test/loopback.test.ts` fails when a configuration that is deployed sets it. What no
    suite of `npm test` reaches (the opaque origin, a message from another window, the token kept
    from the page, a frame that navigates itself making the whole client start anew) `npm run smoke` in `web/` proves as named checks.
+   Browser access (`desktop/electron/access/`, `docs/adr/0004-browser-access.md`) lets a browser,
+   or the mobile app, paired at the computer that runs the Pine app reach that app's own pine, peer to peer
+   (the mobile app's side of it is the end of the mobile app's part above). The access server in the app's
+   main process is an SSH server with two permissions and no third: it answers the exact string of
+   `remoteCommand()` (compared, never run) with the service line of this computer's own daemon (its
+   token included, handed to a client that signed in, as `sshd` would hand it), and
+   opens direct-tcpip channels to exactly that line's loopback host and port. Every other request
+   (a shell, a pty, a subsystem, another command, another destination, a password,
+   keyboard-interactive) is refused, it accepts only Ed25519 keys paired at that computer, at most 8
+   connections at a time and 20 seconds to authenticate; do not widen it without a test that
+   shows why it is still safe. A key is paired only by the owner's Allow at the computer, after a
+   one-time code from the QR code (compared in constant time, consumed on first use) and four
+   digits shown on both sides; refused or expired, nothing is stored, and a removed device's
+   sessions are cut at once. The host key is kept encrypted with the keychain (Electron's safe
+   storage), and a device's name is plain text of 60 characters at most. A relay (TURN) server the
+   owner names in the app is the computer's alone, beside the service's STUN servers (a TURN entry
+   from the service is dropped): its password is kept like the host key, in that encrypted file and
+   never in `prefs.json`, and never reaches the page (which is told only that one is kept), a log,
+   a status line or an error text. The pairing link
+   (`#pair=<machine id>.<code>`, in the fragment, which no server sees) is the second way a host
+   key is trusted in the web client, beside the owner's press on "Trust this key": the machine id
+   is the fingerprint of that computer's host key, accepted once, for the machine that link names alone,
+   never over a key kept for it already; the bridge takes it out of the address before anything
+   else (`takePairLink`). The data channel lives in the web bridge, never in the page's iframe,
+   and carries SSH end to end. On an iPhone or iPad the bridge asks, before it uses the code,
+   whether the Pine app or this browser pairs (`web/src/app-choice.ts`, drawn by the bridge's
+   document over the iframe); "Open in the Pine app" opens the `pine:` address and uses nothing.
+   The relay serves `/.well-known/assetlinks.json` only when `ANDROID_CERT_SHA256` is one
+   SHA-256 fingerprint, for the package `dev.pmndre.pine` alone (`web/relay/src/site.ts`). The Worker carries SSH for the relay (while `RELAY` is on: on in
+   the configuration of `wrangler.jsonc`, so on every channel's deployment, the official service included, where it is open to
+   anyone, capped per client address, SSH only and public addresses only; the page names it in the
+   SSH view, `relayLine` in `desktop/src/machines.ts`, so that the owner knows it is there) and, for meetings, small opaque messages (`web/relay/src/meet.ts`: at
+   most 64 of 16 KiB each, for 30 seconds), and keeps no storage: a computer waits under a machine id
+   only after it signed the service's challenge with that key, and the Durable Object's state is
+   its open sockets. The smoke proves pairing from end to end, and that the page's policy and its
+   iframe's sandbox are unchanged on that path.
 11. **Only the owner opens a folder for a conversation, and looking at one runs nothing.**
    `setFolder` in `src/agents.ts` is reached from the control API only; there is no tool for it.
    It refuses pine's home, pine's code and other agents' workspaces in either direction, and a
@@ -674,6 +830,38 @@ These are invariants. A change that breaks one needs a test that shows why it is
    under Wayland or without a display, any other system) the server is not registered, and
    started by hand it offers nothing and says so.
 
+14. **A board is no way around the outside-content mark, and nothing on it stays taken.** A post
+   (`src/boards.ts`) carries the trust and the mark of the run that wrote it, a result that of the
+   run that settled it, and whatever shows a post to a run marks that run (`shown` in
+   `src/tools.ts`): `board_read`, the notes at the end of the other board tools' answers, the
+   answer of a pool, and a sub-agent the pool starts for a task that such a run posted, or with such
+   a run's note or result (the notes for all, and what came of the tasks its own waited for, go
+   with its task; and the note with which a failed check gives its work out again, `Boards.rework`,
+   which carries the mark of the check's run). A new place that hands board text to a model goes through `shown`. An event of a board
+   (`boardChanged` in `src/agents.ts`, on `board/<name>/...`, a reserved topic) has the trust of
+   what was written, never more. The board tools are registered where `Profile.board` says so:
+   in the owner's conversations, and for a run from outside only where its agent's `untrusted`
+   profile opts in; such a run makes no board beyond its own conversation, and neither does a
+   sub-agent. A task is held by a run of pine's, never by an agent's word: `boardsAfter` settles
+   or gives back what a run still holds when it ends, and `init` gives back everything after a
+   restart. Do not add a claim that outlives its run, and do not let a tool settle a task for
+   another run. Two things are no exception to that, since they touch nobody's claim: the owner's
+   hand through the control API, and the conversation that gave out the work closing a task of
+   its own board that no run holds (a question it can settle itself: `board_done`). A question on a
+   board is answered by whoever gave out the work, never by a sub-agent (`board_answer` refuses
+   one): workers of equal standing do not steer each other. A pool's sub-agents may outlive the
+   call that started them (it comes back when one asks) and the turn, but not their conversation:
+   `stopPool` ends them when it is stopped. A board holds
+   text and opens no file; whatever is kept by agent or by conversation goes with it
+   (`dropConversation`, `dropAgent` from `eraseAgent`, the renames). A UI is told on `pine/board`
+   which board changed and which post, by its number and how a task stands, never a word of what
+   is on it; and a view of the owner's is told numbers, states, times, a board's name and who posted
+   a task (an agent's name or "you") and nothing else (`boards` in `desktop/src/view-state.ts`, from the
+   task list without texts that `boardBrief` makes). What a task says is shown by the panel under the
+   view when the view names a board and a task by their numbers (`knownTarget`, `BoardDetail` in
+   `desktop/src/View.tsx`): the app reads it from pine and draws it as text, and the view is told none of it. `test/boards.test.ts` and
+   `desktop/test/view-state.test.ts` fail without each of these.
+
 ## pi behaviours pine depends on
 
 The baseline suite found these; each has a mitigation in the code. Re-check them when you
@@ -688,13 +876,14 @@ upgrade pi (`npm run baseline`, then `npm test`).
 | Sessions default to the global agent dir | explicit `sessionDir` under `agents/<id>/sessions/` |
 | bash has no default timeout | the gate caps `input.timeout` at `bashTimeoutSec` |
 | bash ends a command at its timeout (`killProcessTree` in its `exec`) and cannot let go of one that is running: it owns the process and the pipes its output comes through | a command for the background never goes through pi's tool: `Programs.start` runs it, and the timeout message tells the agent to start it that way (`TIMEOUT_HINT`) |
-| `AGENTS.md` is read once | `refresh()` reloads when a file's mtime changed |
+| `AGENTS.md` is read once, and `session.reload()` to read it again starts every extension anew, which stops the session's MCP servers (the browser the owner sees among them) | in the owner's conversations `steady()` reads the files itself at every request and `refresh()` does not reload; a run started from outside is reloaded when a file's mtime changed |
 | pi looks for instruction files in the working folder and the folders above it | `agentsFilesOverride` ignores what pi found and hands it `instructionFiles()`: the owner's `agents/<id>/AGENTS.md`, the agent's own `AGENTS.md`, `SOUL.md`, `TOOLS.md`, `MEMORY.md` (`WORKSPACE_FILES` in `src/config.ts`) and the home's `AGENTS.md`, `TOOLS.md` and `USER.md` (`SHARED_FILES`) |
 | `prompt()` resolves on model failure | `execute()` inspects the last assistant message |
 | A session opened from its file stands at the last entry written; `branch()` moves it in memory only | `rewind()` in `undo.ts` works on the closed session and appends an entry of pine's own (`pine-undo`, no message) at the place it went back to |
 | Skills and `AGENTS.md` are discovered in the user's home and above the workspace | `skillsOverride` / `agentsFilesOverride` keep only configured locations |
 | `tools: [...]` is a strict allow-list that hides extension tools | `excludeTools` for built-ins instead |
 | The default system prompt describes a coding assistant inside pi and points at pi's manuals | `systemPromptOverride` supplies `BASE_PROMPT`; `docs/` is searched by every agent with the `manual` tool |
+| pi's choice of model for each provider (`defaultModelPerProvider`) is not exported | `piDefaults()` in `src/models.ts` reads it from pi's `core/model-resolver.js`; when that fails, `suggestModel` takes the provider's first model. `test/hatch.test.ts` signs in to a provider and checks that one of its models is taken |
 
 ## Releases
 
@@ -730,8 +919,10 @@ own line of commits (`git log --first-parent` in `scripts/build.mjs`), and a mer
 there would stand in for all the commits it brought.
 
 A release from `main` also gets the Pine app, attached to its GitHub release as a disk image
-for each kind of Mac (the job `app` in `release.yml`: `desktop/scripts/pack.mjs --dmg`, then
-Apple's own check of the signed app, then the upload). The job does not start the app:
+for each kind of Mac, with what the app updates itself from: the app zipped after notarisation
+(`Pine-<version>-<arch>.zip`) and its Squirrel.Mac feed (`Pine-<arch>.json`, made by
+`desktop/scripts/update-feed.ts`, tested in `desktop/test/update-feed.test.ts`). The job `app` in
+`release.yml`: `desktop/scripts/pack.mjs --dmg`, then Apple's own check of the signed app, then the upload. The job does not start the app:
 `smoke.mjs` drives its window, and a test that drives the window does not belong in a release,
 where a renamed part of the page holds back the disk images of an app that runs. Run it on a
 Mac of your own before a release that changed how the app is packed or its page is built
@@ -767,22 +958,24 @@ environment `release`: `ANDROID_KEYSTORE` (the keystore file, as base64), `ANDRO
 `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without any of them the job builds nothing and
 says so; with only some it fails. The keystore file is removed whatever happens, and none is
 ever committed. Keep that key: Android installs an update only over an app signed with the
-same one. Before the APK is built the job runs `npm run check` and `npm test` in `mobile/`. The
+same one. The release APK packs its native libraries (Google's libwebrtc) for arm64-v8a and
+armeabi-v7a alone, stripped by the NDK `mobile/android/variables.gradle` pins, and the job fails
+when one still carries `.debug_info`. Before the APK is built the job runs `npm run check` and `npm test` in `mobile/`. The
 smoke test is not run there (`npm run smoke`, on a computer of your own, with an emulator).
 
-A release from `main` gets the iOS app as well (the job `ios` in `release.yml`, on GitHub's
-`xcode-27` image, a preview, since the images up to `macos-26` stop at Xcode 26): an IPA that
-is not signed, `Pine-<version>.ipa`, which whoever installs it signs with their own Apple ID
-(AltStore, Sideloadly; docs/adr/0002-ios-app.md). It takes no secret and no environment, and
-nothing about Apple signing is ever stored in the repository or its secrets. The job runs
-`npm run check` and `npm test` in `mobile/` and `swift test` in `mobile/ios-core/`, then
-`node mobile/scripts/ipa.ts <version>`: the page built for iOS, `xcodebuild archive` for devices
-with code signing off and the packages at their committed versions
-(`-onlyUsePackageVersionsFromResolvedFile`: swift-collections is held where it compiles on
-Xcode 27), `CFBundleShortVersionString` the release's version and `CFBundleVersion` Android's
-versionCode, and a failure unless the app inside the IPA is unsigned and arm64. Uploaded with
-`--clobber`, and rebuilt from the tag by `workflow_dispatch` like the other apps. The smoke
-test is not run there (`npm run smoke:ios`, on a Mac of your own).
+A release from `main` does not get the iOS app for now: the job that built it was taken out of
+`release.yml` because the core's `swift test` did not pass on GitHub's `xcode-27` preview image.
+The IPA is made by hand on a Mac (`npm run ipa -- <version>` in `mobile/`): not signed,
+`Pine-<version>.ipa`, which whoever installs it signs with their own Apple ID (AltStore,
+Sideloadly; docs/adr/0002-ios-app.md). Nothing about Apple signing is ever stored in the
+repository or its secrets. Run `npm run check` and `npm test` in `mobile/` and `swift test` in
+`mobile/ios-core/` before building it. `scripts/ipa.ts` archives for devices with code signing
+off and the packages at their committed versions (`-onlyUsePackageVersionsFromResolvedFile`:
+swift-collections is held where it compiles on Xcode 27), sets `CFBundleShortVersionString` to
+the version and `CFBundleVersion` to Android's versionCode, and fails unless nothing inside the
+IPA is signed (the vendor's signature on the embedded `OpenSSL.framework`, which libdatachannel
+needs, is taken off), the app binary is arm64, and libdatachannel and OpenSSL are inside. The
+smoke test is `npm run smoke:ios`, on a Mac of your own.
 
 Publishing needs no stored secret: on npmjs.com the package names this repository and
 `release.yml` as a trusted publisher. A repository secret `NPM_TOKEN` is used instead if one exists.
@@ -797,6 +990,9 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   ends at the first `>>`.
 - Keep tests fast: no sleeps above a few hundred milliseconds, no network, no real model. Time
   limits accept fractions (`taskTimeoutSec: 0.25`).
+- Where steps of several scripted runs have to come in an order, say so with `until` on a step
+  (a function: the mock answers the step when it returns true), not with `delayMs`: a delay that
+  is long enough on an idle machine is not on a busy one, and test files run side by side.
 - Test files run in parallel. Use port 0 and temp folders; never a fixed port or a shared path.
 - UI tests type, click (`term.click(x, y)`) and drop files (`term.paste(path)`) on `FakeTerminal`
   and assert on `app.screen()`. Send keys one at a time
@@ -822,6 +1018,11 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   `live:` test builds the real helper, and it reads a recording, not the microphone.
 - A model call pine makes itself, without tools (the judge of goal mode), is scripted with the
   mock's `withoutTools` option: see `judged()` in `test/goals.test.ts`.
+- A swarm's lead is scripted by round: its job names a script (`@@REF:lead@@`) whose steps a getter
+  picks by the round the swarm is in, and the check pine posts, which quotes the job and so finds
+  the same script, is told apart by how its task begins: see `swarm()` in `test/swarm.test.ts`. The
+  same way a check and the work it checks are told apart in `test/boards.test.ts` (the check's
+  own words name a script of their own, which comes first in its task).
 - pine's own question for what a call needs outside the sandbox (`security.askAccess`) is off in
   `harness()`, so that a test about the sandbox meets the sandbox and not a question. The tests
   about it (`test/access.test.ts`) turn it on, set `HOME` to a folder of their own for "the
@@ -835,24 +1036,56 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   by `npm test`: they start the real app (Electron, driven by Playwright through its window)
   on a temp home with the mock model server, and a daemon of its own on port 0, so a pine the
   developer has running is left alone. They start the build of the run (`launchApp` in
-  `desktop/test/support/app.ts`), never `desktop/dist`. A test that waits for a daemon, or for one
+  `desktop/test/support/app.ts`), never `desktop/dist`. `launchApp` starts the app without a
+  screen (`PINE_DESKTOP_HEADLESS`, for tests only: `electron/main.ts` makes the window and never
+  shows it, and the page goes on drawing as in a window in front), so a run can be left alone
+  on a computer that is being used, and nothing the owner does there reaches a test. It also
+  notes what the app would do in the owner's own session instead of doing it (`quiet`: a
+  notification, the clipboard, an address opened in the browser, a file shown in the Finder,
+  open at login, a dialog of the system's), in `globalThis.quiet` of the main process; a test
+  about one of them replaces it again. A new thing the main process does outside its window
+  goes into `quiet`. Start the app only with `launchApp`. The runner (`desktop/scripts/test.mjs`)
+  gives a run a temp folder of its own (`TMPDIR`), ends what a test left running and removes
+  the folder, and runs a file with a failure again, alone: a wait that ran out on a busy
+  computer passes then and is named, a broken test fails twice. A test never waits for what
+  may not come with Playwright's default of 30 seconds (`page.textContent(...).catch()` on a
+  part that is not there): ask for what is there (`$`, `$$eval`). A test that reads a file the
+  daemon writes reads it so that an empty one is "not yet" (`json()` in `desktop/test/support/window.ts`).
+  The tests of the app's one window are two files, `app.test.ts` (the start, a conversation, the
+  panel beside it, the settings) and `app-around.test.ts` (the side bar, the palette, tabs, a
+  narrow window, another machine), which run side by side, each with an app and a home of its
+  own made by `desktop/test/support/window.ts`; what both use to look at the window and drive it
+  is there too. Within a file the tests follow each other in the one window; nothing in one
+  file may need what the other set up. A file of these that grows past half a minute is split
+  the same way: the longest file is how long a run takes. A test that waits for a daemon, or for one
   to be gone, asks `/overview` with the test home's token (`desktop/test/support/daemon.ts`), never
   `/health`, which any daemon answers: runs of several checkouts start daemons side by side. `sees()` there waits for something on screen and says
   what is there instead when it does not come. What a menu item does is sent as the menu
   sends it (`menu()`): keys typed into the page do not reach the system's menus. Voice input
   is tested with a stand-in for the helper (`PINE_DESKTOP_VOICE`, for tests only); the `live:`
   test in `desktop/test/voice-live.test.ts` (`PINE_LIVE=1`) puts the real helper behind it,
-  listening to a recording. No test shows the app's real window with its title bar: after a
+  listening to a recording. No test shows the app's real window with its title bar (only
+  `view-perf.test.ts` puts a window on the screen, to measure it in front): after a
   change to the frame (`app-drag` and `app-no-drag` in `src/index.css`, the parts of
   `src/App.tsx` that carry them: `TitleBar`, `Sidebar` and `Gate`; the side panel's sheet in a
   narrow window, in `src/CodePanel.tsx`, whose header lies under the Mac window buttons and over
   the title bar's drag area; the window's options in `electron/main.ts`: `titleBarStyle`,
   `trafficLightPosition`, `vibrancy`), look at it once in light and dark, with the side panel
   open in a window narrower than 1024 pixels too.
+- What the view costs is measured by `desktop/test/view-perf.test.ts`, skipped unless `PINE_PERF=1`: the app's
+  CPU as the system counts it (`top`, its own processes, not its pine) with the view's panel closed, open
+  at rest, open while three agents work and open with the window behind, and the frames the view draws.
+  The window has to be in front to measure the view as it draws in front. Run it after a change to how a
+  view is drawn or fed (`desktop/src/View.tsx`, `view-state.ts`, `examples/home/views/office.ts`, `workshop.ts`, `overview.ts`).
 - Whether there is a newer app (`desktop/electron/updates.ts`) is asked of a stand-in for GitHub
   on a loopback port, without a window in `desktop/test/updates.test.ts` and through the app in
   `app.test.ts` (`PINE_DESKTOP_RELEASES`, for tests only: an app from a checkout asks nobody).
   No test reaches GitHub, and what would open in a browser is noted instead (`shell.openExternal`).
+  The app's own update (`desktop/electron/updater.ts`) runs on a stand-in for macOS's updater in
+  `desktop/test/self-update.test.ts` (`PINE_DESKTOP_UPDATER`, for tests only: a folder with what it
+  is to do and the calls it was given); a real install is tried by hand, from release N to N+1,
+  with the feed and the zip on a stand-in for the release's downloads (`PINE_DESKTOP_DOWNLOADS`,
+  for tests only, beside `PINE_DESKTOP_RELEASES`).
 - The browser in the app's panel is tested without a browser: the relay on its stand-in for
   Playwright's server (`FAKE_BROWSER` in `test/browser.test.ts`, which also plays the owner's
   hand), the control API and the app on a stand-in for the browser's door (a file in the test
@@ -867,6 +1100,15 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
 - `pine` for a terminal (`desktop/electron/command.ts`) is tested without a window
   (`desktop/test/command.test.ts`), on folders of the test's own as the PATH and the home:
   no test writes into a folder of the real PATH, and none runs what asks for a password.
+- Browser access is tested without a network. `desktop/test/access-*.test.ts` run the access host
+  and its parts under plain Node, with an in-memory stream or the Worker's meeting module served on
+  a loopback port, and `desktop/test/peer.test.ts` joins two peers on this computer by hand, with no
+  STUN server. The owner's relay is tested on a TURN server in the test (`node-turn` on a loopback
+  UDP port, `desktop/test/support/turn.ts`), through which two peers that offer nothing but relay
+  candidates pass bytes. The app's tests put the stand-in host behind the app (`PINE_DESKTOP_ACCESS_STAND_IN`,
+  for tests only, `desktop/electron/access/stand-in.ts`), which also switches the app to Chromium's
+  mock keychain. `web/test/peer.test.ts` pairs the web bridge with the real access host. Real
+  networks (cellular, carrier NAT) are tried by hand.
 - The Android app has its own suites in `mobile/`, not run by `npm test` at the root. `npm run
   check` and `npm test` there are run by the `android` job of the Release workflow before it
   builds the APK; `npm run test:core` and `npm run smoke` by no workflow. `npm test` there: the mobile bridge with a fake native plugin in place of
@@ -875,17 +1117,32 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   release's versionCode (`test/version.test.ts`). `npm run test:core`: the Kotlin core on the
   JVM (JUnit), against an SSH server in the test (Apache MINA sshd) whose exec handler checks the
   command and a stand-in daemon (a local HTTP server); its cases mirror `test/remote.test.ts`
-  and `desktop/test/daemon.test.ts`. One root test, `test/mobile-remote.test.ts`, fails when the
-  command the core runs over SSH differs from `remoteCommand()`. `npm run smoke` is by hand:
+  and `desktop/test/daemon.test.ts`. For a paired computer it runs the Pine app's real access host
+  under Node (`mobile/test/support/access-host.ts`, one helper for both cores, tested by
+  `mobile/test/access-host.test.ts` in `npm test` there) and drives the core above its `WebRtc`
+  interface on libdatachannel's JVM binding (`LibDataChannelRtc`, a test dependency only, which
+  needs sshj's window at 512 KiB: the binding's 0.24.1 against the Pine app's 0.24.6 loses bursts
+  above about 1 MiB). If that binding ever breaks these tests, `dev.onvoid.webrtc:webrtc-java`
+  can take its place behind the same interface. The helper's service is `http` on the loopback:
+  the tests name `https://pine.test` and reach it through a route that only `Remote`'s internal
+  constructor takes, and a test fails when the public one accepts `http`. One root test,
+  `test/mobile-remote.test.ts`, fails when the command the core runs over SSH differs from
+  `remoteCommand()`. `npm run smoke` is by hand:
   an emulator without a window, a test SSH server on this computer (`SmokeMachine.kt`) running
   the real `pine service` on a home of its own with the scripted model server. It is the one
   test of the WebView's hardening in `PinePlugin.kt` (permission denial, `onCreateWindow`, no
   second window, no file access, the navigation rules), each a named check that fails the run,
   and of the back button (closes the open sheet, then leaves) and the return from the
-  background (still connected after back and after HOME). Run it before a release that changes
-  `mobile/` or upgrades Capacitor.
+  background (still connected after back and after HOME). It is also the one test of Google's
+  libwebrtc (`androidTest/.../LibWebRtcTest.kt`: pairs, connects, and sends 2, 4 and 6 MiB each
+  way against the real access host behind a TLS front at `https://10.0.2.2:<port>`), and of
+  pairing in the app: a pasted link, an App Link while running and at start (verified by hand with
+  `pm set-app-links`, since Android verifies only against the service on the web), a malformed
+  link and an `http` service refused. The TLS front's authority is trusted by the debug build
+  alone (`src/debug/`, from `-PpineSmokeAuthority`); a release build has neither the config nor
+  the file. Run it before a release that changes `mobile/` or upgrades Capacitor.
 - The iOS app's suites are in `mobile/` too. `npm test` there covers the iOS bridge and the iOS
-  page's policy. `swift test` in `mobile/ios-core/` (run by the `ios` job) drives the Swift core
+  page's policy. `swift test` in `mobile/ios-core/` (run by hand: no workflow runs it for now) drives the Swift core
   as the Kotlin tests drive theirs, against a real OpenSSH `sshd` the test starts on a loopback
   port with a forced command that checks the remote command, and a stand-in daemon; it replays
   the same JSON cases in `mobile/cases/` as `npm run test:core`, so a case added for one core is
@@ -895,17 +1152,27 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   the same `SmokeMachine.kt` at `127.0.0.1`. It is the one test of the web view's hardening on
   iOS (the policy, the UI delegate's refusals, no file access, the media scheme and its ranges,
   no window, the navigation rules), each a named check that fails the run, of the return from
-  the background, of the status bar, and of the Keychain key across a relaunch.
+  the background, of the status bar, and of the Keychain key across a relaunch. Its `testPairing`
+  pairs with the real access host (behind a TLS front whose authority `simctl keychain
+  add-root-cert` adds to that simulator alone) by a pasted link and by `pine:` addresses, which it
+  opens with `UIApplication.shared.open` from inside the app, since SpringBoard's "Open in Pine?"
+  cannot be answered by a hosted test; a cold start by a `pine:` address is therefore not covered.
+  `swift test` drives the Swift core against the same access host helper.
+- What no test has tried for the mobile app's pairing: a real phone, an Android phone with 16 KB
+  memory pages, cellular networks, and AltStore or Sideloadly installing the IPA that carries
+  libdatachannel and OpenSSL. Try them by hand before a release that changes that path.
 - The web client has its own suites in `web/` and `web/relay/`, not run by `npm test` at the
   root but by the `build` job of `.github/workflows/web-preview.yml` on a pull request that
-  touches `web/`, the desktop page or what it is built from, or the workflow, before its preview is uploaded. `npm test` in `web/`: the web bridge through the contract the page calls, in Node with a
+  touches `web/`, the desktop page or what it is built from, or the workflow, before its preview is deployed. `npm test` in `web/`: the web bridge through the contract the page calls, in Node with a
   stand-in for SSH (`test/support/fake-ssh.ts`): the message door (another window, a method not
   on the list, bad arguments), host-key trust and change, `local: false`, media and link rules,
-  reconnecting; and the SSH core in headless Chrome for Testing against a real `sshd` on a
+  reconnecting, the choice on an iPhone or iPad (`test/app-choice.test.ts`: the code unused before
+  it, no choice on other devices); and the SSH core in headless Chrome for Testing against a real `sshd` on a
   loopback port with its own host key and `authorized_keys` (`test/support/machine.ts`): no test
   touches `~/.ssh` or the system's sshd. `npm test` in `web/relay/`: the relay's fetch handler
   with `connect()`, the name lookup and the WebSocket pair handed in (a stand-in TCP server on a
-  loopback port; a pair that delivers Blobs unless asked otherwise, as workerd does). One root
+  loopback port; a pair that delivers Blobs unless asked otherwise, as workerd does), and the
+  statement for App Links (`test/app-links.test.ts`). One root
   test, `test/web-remote.test.ts`, fails when the command the web bridge runs over SSH differs
   from `remoteCommand()`. `npm run smoke` in `web/` is by hand: the deployment under `wrangler
   dev` (local, never logged in to Cloudflare, its files in a temp folder), headless Chrome for

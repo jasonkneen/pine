@@ -29,7 +29,7 @@ running it attaches to it; otherwise it starts one inside the same process, logs
  /mo                                                                       ← input
 ──────────────────────────────────────────────────────────────────────────
  → model       [provider/id] — Show or switch this agent's model          ← command suggestions
- main · main · no folder · dev/claude-haiku · reasoning off · auto · context 12% · ↑ 1.4k t/s ↓ 42 t/s      /help
+ main · main · no folder · opencode-go/deepseek-v4.1-flash · reasoning off · auto · context 12% · ↑ 1.4k t/s ↓ 42 t/s      /help
 ```
 
 `pine .` or `pine <folder>` opens the same UI with one more tab: a conversation that works in
@@ -76,7 +76,7 @@ Everything in the two bars reacts to a click.
 | The conversation name next to it | This agent's conversations, and "+ new conversation" |
 | The folder next to it (`no folder`, or a path) | The folder this conversation works in: none, where pine was started, one in use elsewhere, or one you pick. See [coding.md](coding.md) |
 | The `🎤` at the right end of the input (where this computer can listen) | Starts dictating the message, like `ctrl+r`. While it listens it is highlighted, and a click ends the listening. See [Dictating a message](#dictating-a-message) |
-| `▤ code` at the right end of the tab bar | Opens or closes the code pane: changes (git), files, tool output and what the agent left running. In the pane: its four views, `↻` to read again, `×` to close, any file, folder or tool call to open it, `‹ back` to return |
+| `▤ code` at the right end of the tab bar | Opens or closes the code pane: changes (git), files, tool output, what the agent left running, and the conversation's boards. In the pane: its five views, `↻` to read again, `×` to close, any file, folder or tool call to open it, `‹ back` to return |
 | The model | The models you have credentials for |
 | `reasoning <level>` | How much the model thinks before answering: off, minimal, low, medium, high, xhigh, max |
 | The mode (`auto`, `safe`, `manual`, `bypass`, `plan`) | The five modes |
@@ -105,6 +105,9 @@ prompt cache instead of reading it again; it appears once the server reports the
 are shown from the first answer on, and from the last one when you reopen a conversation.
 A yellow `outside content` at the end of the bar means that the conversation has read something
 from outside (a web page, an event): see [security.md](security.md) for what changes then.
+In a terminal too narrow for the whole bar, `/help` goes first, then the figures (the speed,
+then `cache`, then `context`), then the end of the names before the mode. The mode and
+`outside content` are the last to go.
 The wheel scrolls the conversation.
 
 Web addresses are always printed in full, also for a link an agent wrote as "[click here](...)":
@@ -224,7 +227,7 @@ Type `/` and the list appears; keep typing to narrow it, `enter` runs the comman
 | `/pin`, `/unpin` | Keep this conversation however long it is unused, or let it go again |
 | `/reset` | Forget this conversation and start fresh (also clears "has seen outside content") |
 | `/undo` | Take back your last message: what it started is stopped, the files it changed in the conversation's folder are restored, the conversation forgets it and what followed, and its text is in the input again to change and send. Again for the message before it. See [coding.md](coding.md) for what is and is not restored |
-| `/redo` | Bring back what the last `/undo` took, files and conversation. Works until you send a new message |
+| `/redo` | Redo: bring back what the last `/undo` took, files and conversation. After several undos, `/redo` again brings back the next message, one at a time. Works until you send a new message |
 | `/compact` | Shorten this conversation: its earlier part becomes a summary the model writes, the most recent part stays as it is. Frees the model's context without forgetting what was agreed; useful with a small local model. It waits its turn like a message. pi also does this by itself when the context fills up |
 | `/notify [on\|off]` | A bell and a notification when the agent is done, stops with an error, needs your approval or asks you something while the terminal's window is not in front. On by default; the setting is remembered. The notification goes through the terminal (Ghostty, iTerm, Kitty and others show it as a system notification; Terminal.app only rings the bell). Its text is pine's own ("pine: main is done"), never the agent's |
 | `/copy` | Copy the agent's last answer to the clipboard, as it wrote it (Markdown) |
@@ -232,9 +235,11 @@ Type `/` and the list appears; keep typing to narrow it, `enter` runs the comman
 | `/folder [path\|none]` | Open a folder of yours for this conversation: the agent's tools start there and may read and change it. `none` closes it again; without an argument, a list. See [coding.md](coding.md) |
 | `/worktree [name]` | Move this conversation into a worktree of its folder's repository: a checkout of its own on a branch `pine/<name>`, apart from other conversations. In one, a list: merge or squash it into what it was made from, update it, ask the agent to commit, discard it. The bottom bar shows `⎇ pine/<name>`. See [coding.md](coding.md#a-worktree-for-a-conversation) |
 | `/new --worktree [name]` | A new conversation in a worktree of the folder of the one in front |
-| `/code [changes\|turn\|files\|output\|running\|off]` | Open the code pane beside the conversation, on that view; without an argument it opens and closes. `turn` shows what your last message changed |
+| `/code [changes\|turn\|files\|output\|running\|board\|off]` | Open the code pane beside the conversation, on that view; without an argument it opens and closes. `turn` shows what your last message changed |
 | `/stop` | Stop what the agent is doing |
 | `/goal [objective\|pause\|resume\|clear]` | Goal mode: with an objective, the agent keeps working by itself, round after round, until a judge says the objective is met. Without an argument it shows the goal and where it stands; `pause`, `resume` and `clear` do what they say. See "Goals" below |
+| `/board` | The conversation's boards in the code pane (the same as `/code board`): for each how its tasks stand, then every task with who has it (`○` to do, `●` in progress, `?` waiting for an answer, `✓` done, `✗` failed) and the notes for all. A click on a task shows it in full: what it says, what came of it or what it asks, and the notes about it. It follows the board while it is open. It only shows: to answer a task's question or take a task back, tell the agent, or use the Board tab of the Pine app. See [boards.md](boards.md). |
+| `/swarm [what is to be done\|pause\|resume\|clear]` | A swarm: with a job, the agent leads it. Its sub-agents work the job through on the conversation's board (a job of a few steps it does itself), pine calls the agent again while tasks there are not done, and has its answer checked before the swarm is done. Without an argument it shows where the swarm stands. See "Swarms" below and [boards.md](boards.md). |
 | `/model [provider/id]` | Switch the agent's model. Without an argument, a list to search and pick from; or type a few letters after it: `/model deepseek` |
 | `/reasoning [level]` | Set how much the model thinks before answering; without an argument, choose from a list. Saved like the model. A model that cannot reason ignores it |
 | `/voice [language]` | Dictate the message instead of typing it; `ctrl+r` does the same. On macOS, Windows and Linux (with whisper.cpp). With a language (`/voice de-DE`) it listens for that one from then on. See [Dictating a message](#dictating-a-message) |
@@ -292,6 +297,33 @@ does a message you type: write what you have to say, then `/goal resume`. The ju
 shown to you and never to the agent. The UI only asks the daemon: a goal set here is the same
 one another UI on the same daemon shows.
 
+## Swarms
+
+`/swarm <what is to be done>` starts a swarm in the conversation: the job goes out as your
+message, the agent hands it out to sub-agents on the conversation's board (a job of a few
+steps it does itself), and each time it ends a turn pine looks at the board: it calls the agent
+again while tasks are not done, and then has its answer checked by a sub-agent that did none
+of the work. What a swarm is and when it stops is in
+[boards.md](boards.md), "A swarm".
+
+While a swarm is at work, the status line starts with it, and the conversation gets a line for
+each thing pine did about it:
+
+```
+ ⠹ swarm · round 2 of 8 · working · 38s · 2 tool calls · 4 sub-tasks running · esc to stop
+ ◎ swarm started: main leads it
+ ◎ swarm 3 tasks are not done: round 2 of 8 starts
+ ◎ swarm the answer is being checked by a sub-agent that did none of the work
+ ◎ swarm · round 2 of 8 · checking the answer · esc to pause
+ ✓ swarm done after 2 rounds: 16 tasks, and the answer was checked
+```
+
+`‖` is a swarm that waits for you: paused, at its limit, or its lead asked you something (then
+your answer is its next turn). `/swarm resume` goes on, `/swarm clear` takes it off, and its
+board stays. `esc` stops the round that is running and pauses the swarm; while the answer is
+being checked it pauses the swarm, and the check ends by itself. `/board` shows the swarm's
+tasks beside the conversation while it works.
+
 ## Keys
 
 | Key | Does |
@@ -300,7 +332,7 @@ one another UI on the same daemon shows.
 | `alt+enter` | Send, but let the message wait its turn: it is answered as work of its own when the agent is done with what it is doing |
 | `shift+enter` | New line |
 | `up` / `down` | Earlier inputs |
-| `esc` | Stop what the agent is doing; the conversation shows `■ stopped`. A goal that was being worked on is paused (`/goal resume` goes on). A message you typed while it worked is not stopped with it: it is answered next, and for three seconds a second `esc` leaves it alone (the status line says so). After that `esc` stops it like anything else. While a list or dialog is open, `esc` only closes that |
+| `esc` | Stop what the agent is doing; the conversation shows `■ stopped`. A goal that was being worked on is paused (`/goal resume` goes on), and so is a swarm (`/swarm resume`). A message you typed while it worked is not stopped with it: it is answered next, and for three seconds a second `esc` leaves it alone (the status line says so). After that `esc` stops it like anything else. While a list or dialog is open, `esc` only closes that |
 | `shift+tab` | Next mode for this agent: auto, plan, safe, manual, bypass (while the input is empty) |
 | `tab` | Next tab (while the input is empty) |
 | `alt+1` ... `alt+9` | Go to that tab |
@@ -761,17 +793,23 @@ that tab stops only that task. The tab is read-only; `ctrl+w` closes it.
 
 ## Models to try it with
 
-The footer shows the model of the tab's agent.
+A new home has no model; the first one you connect becomes the default. The footer shows the model of the tab's agent.
 
 | You have | Do |
 |---|---|
-| Claude Code installed | Nothing: the example home uses `dev/claude-haiku`, the `claude -p` stand-in. About five seconds per model call. |
 | An OpenCode Zen or Go key | `pine login opencode` or `pine login opencode-go`, paste the key, then `/model opencode-go/deepseek-v4.1-flash` |
 | A Claude or ChatGPT subscription | `pine login anthropic` or `pine login openai-codex` (signs in through the browser), then `/model` |
 | A model server of your own (llama.cpp, vLLM, LM Studio) | `pine model add studio http://127.0.0.1:8080`, then `/model studio/<model>` |
 
 `pine login` uses pi's own sign-in and stores the credential in `auth.json` in pine's home,
 mode 600, where agents cannot read it. The key you type is not echoed.
+Where your agents' model cannot answer, pine takes one of the new ones by itself and says which
+(see [operations.md](operations.md)); `/model` is then only needed for another one.
+
+While nothing was said in it yet, the main agent's main conversation begins with pine's welcome, as in the Pine app: what the main
+agent is for, chatting, code and events, a prompt to try, and where pine's home is. Every agent,
+main included, introduces itself in its answer to the first message you write to it ([agents.md](agents.md),
+"Meeting an agent").
 
 ## Notes
 

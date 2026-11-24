@@ -2,7 +2,8 @@
 // PinePlugin.kt does to the WebView on Android done to the WKWebView here. It registers the plugin,
 // answers the `pine-media:` scheme (MediaScheme.swift), and keeps the page to itself: no camera,
 // microphone or motion sensors, no new window, no navigation away (the plugin's shouldOverrideLoad),
-// no link previews, no web inspector in a release build. The status bar takes the page's theme.
+// no link previews, no web inspector in a release build. The status bar takes the page's theme. A
+// `pine:` address the app is opened with goes to the plugin, never to the web view.
 import Capacitor
 import PineCore
 import UIKit
@@ -16,6 +17,20 @@ class PineViewController: CAPBridgeViewController {
 	/** The media scheme's handler, made with the web view's configuration, before the plugin. */
 	let media = MediaScheme()
 	private var barStyle: UIStatusBarStyle = .lightContent
+	/** `pine:` addresses that came before the plugin was there: handed to it as soon as it is. */
+	private var waiting: [URL] = []
+
+	/** Whether an address is the app's own scheme, `pine:` (a pairing link from the web client on an iPhone). */
+	static func isPine(_ url: URL) -> Bool { url.scheme?.lowercased() == "pine" }
+
+	/**
+	 * The app was opened with an address of its scheme (Info.plist's `CFBundleURLTypes`), at the start
+	 * or while it runs. The plugin hands it to the page, which asks the owner; nothing pairs here.
+	 */
+	func opened(_ url: URL) {
+		guard Self.isPine(url) else { return }
+		if let plugin { plugin.opened(url) } else { waiting.append(url) }
+	}
 
 	override func webViewConfiguration(for instanceConfiguration: InstanceConfiguration) -> WKWebViewConfiguration {
 		let config = super.webViewConfiguration(for: instanceConfiguration)
@@ -30,6 +45,8 @@ class PineViewController: CAPBridgeViewController {
 		let plugin = PinePlugin()
 		bridge?.registerPluginInstance(plugin)
 		self.plugin = plugin
+		waiting.forEach(plugin.opened)
+		waiting.removeAll()
 		media.pines = { [weak plugin] in plugin?.pines }
 		guard let webView else { return }
 		// Capacitor's delegate grants the camera, the microphone and the motion sensors, and opens a

@@ -231,7 +231,7 @@ test("computer: the helper is built once, and a Mac without the compiler is told
 	await assert.rejects(() => buildHelper(out, source, tools(2, works)), (e: Error) => e.message === NO_COMPILER && /xcode-select --install/.test(e.message) && !/at .*\(.*:\d+/.test(e.message));
 	assert.deepEqual(ran, ["xcode-select"]);
 	// A compiler that fails: its reason, not a stack trace.
-	await assert.rejects(() => buildHelper(out, source, tools(0, () => ({ code: 1, stderr: "helper.swift:1:1: error: no such module 'AppKit'\nnote: something\n" }))), /pine could not build its helper for app control \(helper\.swift:1:1: error: no such module 'AppKit'\)\. Tell your owner/);
+	await assert.rejects(() => buildHelper(out, source, tools(0, () => ({ code: 1, stderr: "helper.swift:1:1: error: no such module 'AppKit'\nnote: something\n" }))), /pine could not build the helper for app control \(helper\.swift:1:1: error: no such module 'AppKit'\)\. Tell your owner/);
 	assert.deepEqual(fs.existsSync(out) ? fs.readdirSync(out) : [], [], "nothing half-built is left");
 
 	const built = await buildHelper(out, source, tools(0, works));
@@ -250,7 +250,7 @@ test("computer: looking at an app is a look, acting in an allowed one is not ask
 	const h = await harness({ agents: { main: {} }, start: false });
 	const cfg = loadConfig(h.home);
 	const roots = rootsFor(cfg, cfg.agents.main);
-	const base = { roots, cwd: roots.workspace, shellReaches: true, sends: false, canSendOut: () => true, reachable: () => false };
+	const base = { roots, cwd: roots.workspace, shellReaches: true, sends: false, reachable: () => false };
 	const cls = (app: { look: boolean }, mcp = { readOnly: false, watched: false }) => classify("mcp__computer__x", {}, { ...base, app, mcp } as any).cls;
 	assert.equal(cls({ look: true }), "look");
 	assert.equal(cls({ look: false }), "local", "local is never asked about, whatever the conversation has read");
@@ -461,7 +461,7 @@ test("computer: by outline. An app's window is read as text and its controls are
 	assert.match(await c.call("app_snapshot", { app: "Calculator" }).catch((e) => e.message), /Calculator is not running/);
 	assert.match(await c.call("app_open", { app: "Calculator.app" }), /^Calculator was opened and is in front\. It has no window open\./);
 	assert.match(await c.call("app_snapshot", { app: "Calculator" }), /^Calculator has no window open\..*app_menu/);
-	assert.match(await c.call("app_open", { app: "notes" }), /^Notes was already running and is in front\. Its window: 1 "Notes"\./);
+	assert.match(await c.call("app_open", { app: "notes" }), /^Notes was already running and is in front\. Window: 1 "Notes"\./);
 	assert.match(await c.fails("app_open", { app: "Nope" }), /No app called "Nope" was found on this Mac/);
 	assert.match(await c.fails("app_open", { app: "/tmp/evil.app" }), /Give the app's name, for example Safari, not a path/);
 });
@@ -488,7 +488,7 @@ test("computer: by picture. A position in the picture the model was given is cli
 	assert.match(await c.fails("app_click", { app: "TextEdit", x: 10, y: 10 }), /you have not taken one yet\. Take one with app_screenshot first/);
 
 	const shot = await c.call("app_screenshot", { app: "TextEdit" });
-	assert.ok(shot.startsWith('Picture of TextEdit, window 1 "Untitled": 1280 by 800 pixels. For app_click, app_drag and app_scroll, x and y are pixels in this picture, counted from its top left corner (x from 0 to 1279, y from 0 to 799).'), shot);
+	assert.ok(shot.startsWith('Picture of TextEdit, window 1 "Untitled": 1280 by 800 pixels. For app_click, app_drag and app_scroll, x and y are pixels in this picture, counted from the top left corner (x from 0 to 1279, y from 0 to 799).'), shot);
 	assert.ok(shot.endsWith(`[image/jpeg ${Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString("base64")}]`), "the picture itself goes to the model");
 	assert.deepEqual(fs.readdirSync(c.scratch), [], "and does not stay on the disk");
 	assert.equal(c.lines().at(-1), "shot w1 edge=1000");
@@ -857,7 +857,7 @@ test("live: through the daemon, the real helper operates a real window and the r
 	});
 	assert.equal(r.status, "done", String(r.error));
 	const out = h.toolResults();
-	assert.match(out[0], /^Pine Demo was already running and is in front\. Its window: 1 "Pine Demo"\./);
+	assert.match(out[0], /^Pine Demo was already running and is in front\. Window: 1 "Pine Demo"\./);
 	assert.match(out[1], /- text field \[ref=e2\].*\n- button "Shout" \[ref=e3\]\n- checkbox "Loud" \[ref=e4\] \(not checked\)\n- text "Nothing yet"/);
 	assert.equal(out[2], 'The text field in Pine Demo now holds "pine".');
 	assert.match(out[3], /^Pressed the checkbox "Loud" in Pine Demo/);

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A debug build only (merged over src/main's): the smoke run's authority, under debug-overrides. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/smoke_network_security" />
+</manifest>

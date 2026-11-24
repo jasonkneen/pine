@@ -21,6 +21,8 @@
 		{ "name": "two ports", "input": "server:22:22", "expect": { "error": "ssh" } },
 		{ "name": "a port that is no number", "input": "server:x", "expect": { "error": "ssh" } },
 		{ "name": "two users", "input": "a@b@c", "expect": { "error": "ssh" } },
-		{ "name": "a user and no host", "input": "me@", "expect": { "error": "ssh" } }
+		{ "name": "a user and no host", "input": "me@", "expect": { "error": "ssh" } },
+		{ "name": "a paired computer is no host for ssh", "input": "paired:EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs", "expect": { "error": "ssh" } },
+		{ "name": "the colon of paired: is no port", "input": "paired:22", "expect": { "error": "ssh" } }
 	]
 }

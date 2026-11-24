@@ -112,10 +112,14 @@
 	--shadow-l: 0 2px 6px rgba(0, 0, 0, 0.08), 0 24px 64px rgba(0, 0, 0, 0.22);
 }
 
-/* The editor's theme (CodePanel.tsx) reads these from script, where Tailwind cannot see them, and Tailwind
-   emits a theme variable only when a utility uses it. Static keeps them emitted; the values are Tailwind's own. */
+/* The type scale on the 15px root: a conversation is text-base (15px), the app's own text text-sm (14px), small
+   labels text-xs (12px). Tailwind's own sm and xs (0.875rem, 0.75rem) were made for a 16px root and come out at
+   13.1px and 11.25px here, a size smaller than the apps beside pine. Line heights keep Tailwind's ratios.
+   The editor's theme (CodePanel.tsx) reads --text-xs from script, where Tailwind cannot see it, and Tailwind
+   emits a theme variable only when a utility uses it: static keeps these emitted. */
 @theme static {
-	--text-xs: 0.75rem;
+	--text-xs: 0.8rem;
+	--text-sm: calc(1rem * 14 / 15);
 	--leading-relaxed: 1.625;
 	--font-weight-semibold: 600;
 }

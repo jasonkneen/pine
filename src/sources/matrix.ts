@@ -30,8 +30,8 @@ const POLL = 30_000;
 const FILTER = (limit: number) => JSON.stringify({ room: { timeline: { limit }, state: { lazy_load_members: true }, ephemeral: { types: [] } }, presence: { types: [] }, account_data: { types: ["m.direct"] } });
 
 export const type: SourceType = {
-	summary: "a Matrix account: reports messages in its rooms, all of them or only mentions and keywords. Can write to listed rooms. Not for encrypted rooms",
-	sends: 'a Matrix message to a room on its "sendTo" list: {"room": "!abc:example.org", "text": "..."}',
+	summary: "a Matrix account: reports messages in the account's rooms, all of them or only mentions and keywords. Can write to listed rooms. Not for encrypted rooms",
+	sends: 'a Matrix message to a room on the source\'s "sendTo" list: {"room": "!abc:example.org", "text": "..."}',
 	options: Type.Object(
 		{
 			homeserver: Type.String({ description: "the address of the homeserver the account is on, e.g. https://matrix.org" }),
@@ -60,7 +60,7 @@ export const type: SourceType = {
 		const sendTo = listOf(o.sendTo);
 		for (const [key, list] of [["rooms", rooms], ["sendTo", sendTo]] as const) {
 			const odd = list.filter((x) => !/^![^\s:]+(:\S+)?$/.test(x));
-			if (odd.length) throw new Error(`"${key}" takes room ids, which start with "!": ${odd.join(", ")} is not one. A room's id is in its settings under "Advanced" (a name that starts with # is an alias, not the id)`);
+			if (odd.length) throw new Error(`"${key}" takes room ids, which start with "!": ${odd.join(", ")} is not one. A room's id is in the room's settings under "Advanced" (a name that starts with # is an alias, not the id)`);
 		}
 		const mentions = listOf(o.mentions);
 		const ignore = listOf(o.ignore);

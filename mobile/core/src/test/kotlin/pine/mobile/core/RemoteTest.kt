@@ -23,7 +23,7 @@ class RemoteTest {
 	private val service = Service(line(daemon.base))
 	private val machine = Machine(AuthorizedKeyEntry.parseAuthorizedKeyEntry(key.publicKey).resolvePublicKey(null, null), service)
 	private val known = KnownHosts(vault)
-	private val remote = Remote(key, known, answerMs = 1_000)
+	private val remote = Remote(key, known, LibDataChannelRtc, answerMs = 1_000)
 	private val host get() = "me@127.0.0.1:${machine.port}"
 	private val open = mutableListOf<RemoteService>()
 
@@ -152,7 +152,7 @@ class RemoteTest {
 
 	@Test
 	fun `a key the machine does not take, a machine nobody answers at, and a host that is no host`() {
-		val stranger = Remote(DeviceKey(MemoryVault()), known, answerMs = 1_000)
+		val stranger = Remote(DeviceKey(MemoryVault()), known, LibDataChannelRtc, answerMs = 1_000)
 		known.confirm("127.0.0.1", machine.port, machine.fingerprint)
 		assertFailsWith<RemoteError> { stranger.connect(host) }.let {
 			assertEquals("ssh", it.kind)
@@ -177,7 +177,7 @@ class RemoteTest {
 		daemon.routes["/media/tool/silent"] = { hold.await(10, java.util.concurrent.TimeUnit.SECONDS) }
 		try {
 			known.confirm("127.0.0.1", machine.port, machine.fingerprint)
-			val s = Remote(key, known, answerMs = 1_000, readMs = 300).connect(host).also { open.add(it) }
+			val s = Remote(key, known, LibDataChannelRtc, answerMs = 1_000, readMs = 300).connect(host).also { open.add(it) }
 			val t = System.currentTimeMillis()
 			val r = s.call("GET", "/silent", null)
 			assertEquals(0, r.status)

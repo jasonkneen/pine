@@ -22,8 +22,9 @@ agents/gonzo/
 
 Ask the main agent ("create an agent that keeps my books"): it calls `create_agent`, you confirm
 what it proposes, and the folder above is made with `agent.json` and a workspace that holds its
-instructions (`AGENTS.md`) and stubs of `SOUL.md`, `TOOLS.md` and `MEMORY.md`. The agent exists at once,
-without a restart. Only the main agent has this tool; the
+instructions (`AGENTS.md`) and an empty `SOUL.md`, `TOOLS.md` and `MEMORY.md`, which the agent fills
+when it has something for them: what each is for is in its prompt, not in the file. The agent exists at once,
+without a restart, and its conversation opens in a tab beside yours. Only the main agent has this tool; the
 others tell you to ask it. See [setup.md](setup.md).
 
 By hand: make the folder with an `agent.json` (`{}` is enough) and a `workspace/AGENTS.md`,
@@ -34,6 +35,21 @@ instructions), to give it another name or to remove it, ask the main agent as we
 `update_agent`, `rename_agent` and `remove_agent`, described in [setup.md](setup.md) under
 "Changing and removing an agent" and "Renaming an agent". Nobody has to edit
 `agent.json` or delete a folder by hand.
+
+## Meeting an agent
+
+Each agent introduces itself once, when it first meets its owner. No agent starts a conversation by itself: pine sends a model nothing you did not write.
+
+| When | What happens |
+|---|---|
+| Your first message to an agent | The first time you write to an agent, the main agent included, a note in front of your message tells it to begin its answer by introducing itself in two or three sentences: its name, what it is for, what it can do for you |
+| Only once | It is kept in pine's database (`introduced:<agent>`), and only once the turn ended well: a model that failed has met nobody. An event from outside, a task from another agent or a sub-agent never counts as the first meeting. An agent that answered you before this existed does not introduce itself |
+| `defaults.introduce` | `false` in `pine.json` (or `set_setting`) and no agent introduces itself |
+
+Before any model answers, the main agent's main conversation begins with pine's welcome: what the
+main agent is for, the three things pine is for (chatting, code, acting on events), a prompt to
+try, and where pine's home is. pine wrote it, not a model; it stays at the top of that
+conversation and is no part of what the model reads ([desktop.md](desktop.md), "The first start").
 
 ## The files an agent keeps itself
 
@@ -137,6 +153,8 @@ Its system prompt is put together from, in this order:
    then `MEMORY.md`. See "The files an agent keeps itself".
    After them the instruction files of a folder opened for the conversation, and any files in
    `context`. All of them are in the table below.
+   A file that is empty is left out, and so is one that still holds only the line on what it is
+   for that pine wrote into new homes before they started with empty files.
 
 ### Every file that is read as instructions
 
@@ -218,13 +236,14 @@ declares them in **families**, which is about 11 500:
 
 | Family | Its actions |
 |---|---|
-| `pine_list` | What there is: `sources`, `schedules`, `mcp_servers`, `skills`, and for the main agent `agents`, `settings`, `routes`, `conversations`. `what` takes several at once (`["sources", "schedules"]`) |
+| `pine_list` | What there is: `sources`, `schedules`, `mcp_servers`, `skills`, `boards`, and for the main agent `agents`, `settings`, `routes`, `conversations`. `what` takes several at once (`["sources", "schedules"]`) |
 | `pine_sources` | `subscribe`, `unsubscribe`, `add_source`, `send`, `read_source`, `remove_source`, `publish_event`, and for the main agent `add_source_type`, `remove_source_type` |
 | `pine_schedules` | `add_schedule`, `remove_schedule` |
-| `pine_mcp` | `add_mcp_server`, `remove_mcp_server`, and the three tools for a server's resources |
+| `pine_mcp` | `add_mcp_server`, `remove_mcp_server`, `sign_in_mcp_server` (the main agent's), and the three tools for a server's resources |
 | `pine_skills` | `add_skill`, `remove_skill` |
 | `pine_agents` | The main agent's: `create_agent`, `update_agent`, `rename_agent`, `remove_agent` |
-| `pine_settings` | The main agent's: `set_setting`, `add_route`, `remove_route`, `add_model_server`, `remove_model_server` |
+| `pine_settings` | The main agent's: `set_setting`, `add_route`, `remove_route`, `add_model_server`, `remove_model_server`, `sign_in`, `sign_out` |
+| `pine_board` | `board_read`, `board_post`, `board_claim`, `board_done`, `board_answer`, `board_remove`: the tasks of a job that several work on ([boards.md](boards.md)) |
 | `pine_other` | `request_access`, `stop_program`, `state_get`, `state_set` |
 | `pine_conversations` | The main agent's: `read_conversation`, `set_conversation`, `remove_conversation` |
 | One for each MCP server, named after the server (`browser`, `media`, `home_link`) | The server's tools under their own names (`browser_navigate`, `browser_click`) |
@@ -387,12 +406,6 @@ arrives in the conversation that subscribed to the Telegram source. Runs started
 events use a twin of the session with `~u` appended,
 so they never see or extend your own conversation.
 
-Tasks for one session queue up. With `"whenBusy": "steer"` on a route, a new message is instead
-shown to the agent in the middle of what it is doing: it reads it at its next step. The terminal
-UI sends your own messages this way (`alt+enter` makes one wait its turn). A steered message
-that the work did not get to read, because it ended or was stopped first, is answered next as
-work of its own.
-
 `pine reset <agent> [session]` (or `/reset` in the terminal UI) starts a session
 over. The old history is kept on disk next to it with a `.reset-<time>` suffix for
 `limits.eventRetentionDays`. It is no longer shown, also after a restart of pine: the
@@ -408,6 +421,24 @@ conversation: one you opened in the terminal UI, a delegation thread's, one a ro
 conversations in the terminal UI; see [tui.md](tui.md)), or set `limits.conversationDays` to
 `0` to keep them all. Everything that was set up for one conversation alone goes with it: its
 event sources and subscriptions, schedules, MCP servers and skills ([setup.md](setup.md)).
+
+### A message while the agent works
+
+Tasks for one session queue up. With `"whenBusy": "steer"` on a route, a new message is instead
+shown to the agent in the middle of what it is doing: it reads it at its next step. The terminal
+UI sends your own messages this way (`alt+enter` makes one wait its turn). A steered message
+that the work did not get to read, because it ended or was stopped first, is answered next as
+work of its own.
+
+A steered message of yours comes with a word from pine that it is to be answered first, briefly,
+before the work goes on. A steered event comes as it is.
+
+The work reads a steered message only at its next step, which a long command can put off for
+minutes. The Pine app writes under such a message whether the work has read it ("not read yet",
+"read 14:03"), and until it has, offers "send now": the step under way is stopped (a command it
+runs ends), and the work goes on with the message. Reading is not answering: a model deep in
+long work may read a message and still keep going. Stop the work when you need the answer and
+it does not come.
 
 ## Groups of conversations
 
@@ -537,13 +568,32 @@ judge has a model of its own (`defaults.judge`). Say in the objective how to tel
 "the file exists and has all twelve entries"): the judge sees only the agent's answer, not the
 files.
 
+## A swarm
+
+With `/swarm` and a job, a conversation's agent leads the job: its sub-agents work it through
+on the conversation's board (a job of a few steps the lead does itself), pine calls the lead
+again while tasks there are not done, and then has its answer checked by a sub-agent that did
+none of the work. Like a goal it is yours to start,
+pause, resume and clear, and no tool reaches it. All of it is in [boards.md](boards.md), "A swarm".
+
+| Command | What it does |
+|---|---|
+| `/swarm <what is to be done>` | Starts a swarm in this conversation: the job goes out as your message, with pine's note on how a swarm is led. |
+| `/swarm`, `/swarm pause`, `/swarm resume`, `/swarm clear` | Shows it, holds it, goes on with it, takes it off. |
+
 ## Handing work to another agent
 
-The `delegate` tool exists for an agent when its `delegates` list is not empty. The main agent
-(`"main"` in `pine.json`) may delegate to everyone by default.
+Every agent may hand work to every other agent but the main one, unless its `agent.json` lists
+fewer: `delegates` is `["*"]` by default, and `*` leaves out the agent that `main` in
+`pine.json` names, the administrator. The main agent's own `*` is everyone else. An agent hands
+the main agent work only where its list names it. An empty list takes the `delegate` tool away.
 
 ```json
 { "delegates": ["gonzo", "scout"] }
+```
+
+```json
+{ "delegates": ["*", "main"] }
 ```
 
 What the model sees:
@@ -555,18 +605,35 @@ delegate(agent, task, wait?, thread?, worktree?)
 - The other agent gets only the task text, prefixed with who sent it. It runs in its own
   workspace with its own tools and instructions.
 - By default the caller waits and gets the answer as the tool's result.
+- Several `delegate` calls in one message of the model run side by side, each to its agent, and the
+  caller gets every answer: this is how one agent gives tasks to several others at once. Calls
+  in separate messages run one after the other, each waiting for its answer.
 - `wait: false` returns at once; the answer arrives later as a new message in the caller's
   session.
 - Each delegation starts the other agent fresh. `thread: "okapi"` instead continues a named
   conversation with it, so it remembers earlier tasks of that thread.
 - An agent already waiting further up the chain cannot be called again, and chains stop at
   `limits.maxDelegationDepth`. The model gets an error it can act on.
+- The other agent works in its own mode or in the caller's, whichever is stricter (from the
+  strictest: `manual`, `safe`, `auto`, `bypass`). An agent in `safe` mode that hands work to one
+  in `bypass` gets that work done in `safe` mode, in the other agent's sandbox: handing work on
+  never reaches further than the caller could itself. An agent in `bypass` that hands work to one
+  in `safe` leaves it in `safe`. A chain is held to its strictest link, and a caller in `bypass`
+  that has read outside content (where bypass is paused) hands on `auto`. A `thread` held to a
+  stricter mode is kept apart (`thread-okapi~safe` beside `thread-okapi`): it never shares
+  history or MCP servers with the same thread in the mode the other agent has by itself.
+- Once the caller has read outside content, every delegation is put to you, whoever it is for:
+  the answer can carry that agent's files to where somebody else may be steering
+  ([security.md](security.md), "What asks you").
 - `worktree: true` (in your own conversations, when they have a folder): the other agent does
   the task in a worktree of its own of the conversation's folder, and its work comes back as a
   branch to merge, as for sub-agents below. Not with `thread` or `wait: false`.
+- A task handed on without `thread` works on the board of the conversation it came from, for
+  that run: the other agent reads the notes that are there and leaves its own
+  ([boards.md](boards.md)).
 
 What an agent is for, as the agents that delegate to it read it, is the first paragraph of its
-`AGENTS.md` (a heading above it aside), one line of at most 160 characters. Write it for the
+`AGENTS.md` (a heading above it aside), one line of at most 240 characters. Write it for the
 delegating model: "You are gonzo. Contract law; you know the case files in your workspace"
 works; "Gonzo" does not. An agent keeps its `AGENTS.md` itself, so it can change that line too.
 pine reads the file only as the plain file it is (not through a link, nor a file with a second
@@ -575,8 +642,13 @@ has no such paragraph is shown with `description` from its `agent.json`.
 
 ## Sub-agents
 
-`subagent(tasks: string[], model?, thinking?, worktree?)` runs up to `subagents.maxParallel` copies of the
-same agent at once (4 unless the agent's `agent.json` says otherwise).
+Every agent has sub-agents and starts them itself: asked to "create two new sub-agents" or to
+"use sub-agents", an agent calls `subagent`, and nothing has to be created first or asked of
+the main agent. `create_agent` is something else: a new agent that stays.
+
+`subagent(tasks: string[], stages?, ids?, model?, thinking?, worktree?, pool?, note?, check?, verify?)` runs up to `subagents.maxParallel` copies of the
+same agent at once (pine's `limits.maxSubagents`, 4 unless you changed it in Settings > General, or what the agent's `agent.json` says). Given more tasks than
+that, it works through them that many at a time, as a pool ([boards.md](boards.md)).
 Each copy has the agent's workspace, instructions and tools but an empty conversation, cannot
 delegate or spawn further, and returns only its final answer. Use it for searches and checks
 that would otherwise fill the context:
@@ -586,9 +658,14 @@ that would otherwise fill the context:
 | Argument | What it does |
 |---|---|
 | `tasks` | One task per sub-agent. A sub-agent sees nothing of the conversation, so each task says everything it needs: what to do, which files (by their path), what to answer. |
-| `model` | Another model for these sub-agents than the agent's own, as `provider/model` (the id alone is enough where only one model has it). For work another model does better: one that sees pictures, a small fast one for many simple checks, a large one for a hard part. The `models` tool lists what there is. Left out: the agent's own model. |
+| `model` | Runs these sub-agents on a different model than the agent's own, as `provider/model` (the id alone is enough where only one model has it). For work another model does better: one that sees pictures, a small fast one for many simple checks, a large one for a hard part. The `models` tool lists what there is. Left out: the agent's own model. |
 | `thinking` | How much these sub-agents reason: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. A model that cannot reason ignores it. Left out: the agent's own level. |
 | `worktree` | `true`: each sub-agent changes files in a worktree of its own of the conversation's folder (a git repository), made from its last commit, so that sub-agents that change the same files do not collide. When it is done, what it changed is committed on its branch (`pine/<conversation>-sub`, `-sub-2`, ...), its folder goes, and the answer names the branch: the conversation brings it in with `git merge` and deletes it with `git branch -d`. One that changed nothing leaves nothing. Only in your own conversations; what is not committed in the folder is not in the sub-agents' worktrees. See [coding.md](coding.md), "A worktree for a conversation". |
+| `pool` | `true`: more tasks than run at once (up to 100), worked through on the conversation's board; `note` says once what all go by. Comes back early when one asks or fails. Not with `worktree`. See [boards.md](boards.md). |
+| `stages` | Instead of `tasks`, for pieces that build on others: a list of lists of tasks. A stage starts when the one before is done, and is shown what came of it. Makes the call a pool. See [boards.md](boards.md), "Stages". |
+| `check` | A second sub-agent checks each task's result and says PASS or FAIL; what fails is done again once with what the check found, and checked again. Makes the call a pool. See [boards.md](boards.md), "A check after the work". |
+| `verify` | One last check of the finished whole by a sub-agent that did none of it, which says PASS or FAIL. Makes the call a pool. See [boards.md](boards.md), "A check of the whole". |
+| `ids` | Tasks that are on a board already, by number: one sub-agent for each, which settles that very task where it is (a board for all agents, say). Makes the call a pool. See [boards.md](boards.md). |
 
 A sub-agent on another model is still the same agent: the same workspace, files, tools,
 instructions and permissions. Only the model that reads and answers is another one. So a file is
@@ -637,6 +714,9 @@ The same works for a task that was delegated to another agent.
 
 Small facts that several agents and routes need: who is home, the mode of the house, the state
 of the printer.
+
+(For work that several do together, who takes which task and what each found, there are
+boards: [boards.md](boards.md). Shared state is for facts about the world.)
 
 - Routes write it: `"set": { "house/mode": "{{payload.value}}" }`.
 - Agents read it with `state_get` and write it with `state_set`, within `state.read` and

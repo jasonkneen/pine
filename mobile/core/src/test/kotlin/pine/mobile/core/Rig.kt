@@ -10,7 +10,7 @@ class Rig : AutoCloseable {
 	val service = Service("""{"base":"${daemon.base}","token":"secret-token","mode":"attached","started":false,"home":"/home/me/.pine","version":"0.40.0"}""")
 	val machine = Machine(AuthorizedKeyEntry.parseAuthorizedKeyEntry(key.publicKey).resolvePublicKey(null, null), service)
 	val known = KnownHosts(vault).apply { confirm("127.0.0.1", machine.port, machine.fingerprint) }
-	val remote = Remote(key, known, answerMs = 1_000)
+	val remote = Remote(key, known, LibDataChannelRtc, answerMs = 1_000)
 	val host get() = "me@127.0.0.1:${machine.port}"
 	private val open = mutableListOf<AutoCloseable>()
 

@@ -1,5 +1,5 @@
 // The mobile app's native cores (mobile/core on Android, the iOS one) run the same command on the
-// other machine as the Pine app on a Mac: they read it from one shared file, which has to be what
+// other machine as the Pine app does: they read it from one shared file, which has to be what
 // src/remote.ts builds.
 import assert from "node:assert/strict";
 import fs from "node:fs";

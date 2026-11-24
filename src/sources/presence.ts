@@ -39,6 +39,8 @@ const PORTS = [7, 80, 62078];
 const DNSSD = "/usr/bin/dns-sd";
 /** How long one device is given to answer, and how long answers to a question about services are waited for. A test shortens them. */
 export const timing = { probeMs: 1500, listenMs: 1200 };
+/** What a test puts in place of asking an address: the network the test runs on is not one it can count on. */
+export const standIn: { answers?: (ip: string) => Promise<boolean> } = {};
 
 // ---- DNS, as much of it as asking who offers a service takes ---------------------------------
 
@@ -244,7 +246,7 @@ function hostsOf(raw: unknown): Array<{ name: string; address: string }> {
 	if (list.length > 32) throw new Error('"hosts" takes 32 devices at most');
 	for (const h of list) {
 		if (!NAME.test(h.name)) throw new Error(`"${h.name}" is not a usable name for a device: letters, digits, - and _`);
-		if (!own(h.address)) throw new Error(`${h.name}: "${h.address}" is not an address on your owner's own network. Give the device's IP address there (192.168.1.23) or its .local name; this is not for addresses on the internet (the http type looks whether one of those answers)`);
+		if (!own(h.address)) throw new Error(`${h.name}: "${h.address}" is not an address on your owner's own network. Give the device's IP address there (192.168.1.23) or the device's .local name; this is not for addresses on the internet (the http type looks whether one of those answers)`);
 	}
 	return list;
 }
@@ -260,8 +262,8 @@ export const type: SourceType = {
 	summary: "who is on your owner's own network: reports when a device joins it and when it has left. For a phone coming home, a TV or printer switched on",
 	options: Type.Object(
 		{
-			hosts: Type.Optional(Type.Record(Type.String(), Type.String(), { description: 'the devices to look for, as name and address on the network: {"phone": "192.168.1.23", "tv": "tv.local"}. An IP address the router always gives that device, or its .local name' })),
-			services: Type.Optional(Type.Array(Type.String(), { description: 'kinds of device that announce themselves on the network (Bonjour), by service type: ["_airplay._tcp", "_ipp._tcp", "_googlecast._tcp"]. Every device of that kind is reported by its own name' })),
+			hosts: Type.Optional(Type.Record(Type.String(), Type.String(), { description: 'the devices to look for, as name and address on the network: {"phone": "192.168.1.23", "tv": "tv.local"}. An IP address the router always gives that device, or the device\'s .local name' })),
+			services: Type.Optional(Type.Array(Type.String(), { description: 'kinds of device that announce themselves on the network (Bonjour), by service type: ["_airplay._tcp", "_ipp._tcp", "_googlecast._tcp"]. Each device of that kind is reported by name' })),
 			every: Type.Optional(Type.String({ description: 'how often to look, e.g. "30s", "2m". Default "30s", at least "10s"' })),
 			away: Type.Optional(Type.String({ description: 'how long a device must have been silent before it counts as gone. Default "10m": a phone that sleeps answers only now and then' })),
 		},
@@ -421,9 +423,9 @@ export default async function presence(source: SourceApi): Promise<void> {
 						// A device that is off has no name on the network.
 						return { h, ip: undefined, there: false };
 					}
-					if (!isPrivateAddress(ip)) throw new Error(`${h.name}: its name leads to an address that is not on your own network`);
+					if (!isPrivateAddress(ip)) throw new Error(`${h.name}: that name leads to an address that is not on your own network`);
 				}
-				return { h, ip, there: await answers(ip) };
+				return { h, ip, there: await (standIn.answers ?? answers)(ip) };
 			}),
 		);
 		if (sock) {

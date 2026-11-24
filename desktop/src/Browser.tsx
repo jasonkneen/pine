@@ -13,13 +13,16 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEffect, useRef, useState } from "react";
 import { api, type BrowserState, media } from "./api.ts";
+import { bridge } from "./bridge.ts";
 import { ROOM, store, type Tab, useModel } from "./model.ts";
 import { errText, macKeys, shortcut } from "./text.ts";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { HoverTooltip } from "@/components/hover-tooltip";
+import { EmptyView } from "@/components/empty-view";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Pulse } from "@/components/pulse";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type Op = Record<string, unknown> & { do: string };
@@ -45,11 +48,24 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
 	const line = useRef<HTMLInputElement>(null);
 	const [state, setState] = useState<BrowserState>();
+	const [lookError, setLookError] = useState<string>();
 	const [address, setAddress] = useState<string>();
 	const [busy, setBusy] = useState(false);
 	const [drawn, setDrawn] = useState(false);
 	/** What was done and is not sent yet: typing and the wheel come in bursts, and go as one. */
 	const pending = useRef<{ ops: Op[]; timer?: number; sending: boolean }>({ ops: [], sending: false });
+	/** When the owner last did something in the page: pictures come one right after another for a while after it. */
+	const lastAct = useRef(0);
+	/** Asks where the browser is now (the look below). */
+	const lookNow = useRef<() => void>(undefined);
+	/** How many pixels of the picture make one point of the page (2: as sharp as a Retina display draws). */
+	const scale = useRef(1);
+	scale.current = state?.scale ?? 1;
+	/** The app could not lay its own browser over the panel (another machine's pine): pictures, then. */
+	const [noPage, setNoPage] = useState(false);
+	/** The browser is the app's own, and this bridge lays its page over the panel: the page itself is there, not pictures. */
+	const inApp = state?.open && state.room && bridge?.browserShow && !noPage ? state.room : undefined;
+	const hosted = Boolean(state?.room);
 	const front = state?.tabs[state.current];
 	/** What the empty view offers: the ports of the conversation's running programs, and what the agent opened that is not one of those. */
 	const running = tab.programs.flatMap((p) => p.ports.map((port) => ({ port, command: p.command })));
@@ -64,19 +80,28 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	// Where the browser is: asked while this view is open, and again after the agent used it.
 	useEffect(() => {
 		let over = false;
-		const look = () => void api.browser(tab.agent, tab.session).then((s) => !over && setState(s), () => {});
+		const look = () => void api.browser(tab.agent, tab.session).then(
+			(s) => {
+				if (over) return;
+				setState(s);
+				setLookError(undefined);
+			},
+			(e) => !over && setLookError(errText(e)),
+		);
 		look();
-		const timer = window.setInterval(look, 1500);
+		lookNow.current = look;
+		// (The page in the app's own browser goes elsewhere without a word to this view: its address is asked for more often.)
+		const timer = window.setInterval(look, hosted ? 700 : 1500);
 		return () => {
 			over = true;
 			window.clearInterval(timer);
 		};
-	}, [tab.agent, tab.session, tab.codeTick]);
+	}, [tab.agent, tab.session, tab.codeTick, hosted]);
 
 	// The picture: one after another while a page is open, each drawn when it is whole.
 	const open = state?.open === true;
 	useEffect(() => {
-		if (!open) return void setDrawn(false);
+		if (!open || inApp) return void setDrawn(false);
 		let over = false;
 		let n = 0;
 		let timer: number | undefined;
@@ -94,7 +119,8 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					c.getContext("2d")?.drawImage(picture, 0, 0);
 					setDrawn(true);
 				}
-				next(120);
+				// Right after the owner's hand, one picture after another, so that the page is seen answering it.
+				next(performance.now() - lastAct.current < 2000 ? 0 : 120);
 			};
 			// No picture this time (the page is busy, or it was closed): the last one stays, and it is asked again.
 			picture.onerror = () => next(700);
@@ -105,25 +131,26 @@ export function BrowserView({ tab }: { tab: Tab }) {
 			over = true;
 			window.clearTimeout(timer);
 		};
-	}, [open, tab.agent, tab.session]);
+	}, [open, tab.agent, tab.session, inApp]);
 
 	// The page is laid out for the room it has here, so that it is shown point for point: said when the
 	// view opens and when the panel is made wider or narrower.
 	const room = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		const el = room.current;
-		if (!open || !el) return;
+		if (!open || inApp || !el) return;
 		const fit = () => {
 			const box = el.getBoundingClientRect();
 			const [w, h] = [Math.round(box.width), Math.round(box.height)];
 			const c = canvas.current;
-			if (w >= 320 && h >= 240 && (c?.width !== w || c?.height !== h)) act({ do: "size", w, h }, 250);
+			// (The picture has scale pixels for a point of the room.)
+			if (w >= 320 && h >= 240 && c && (Math.round(c.width / scale.current) !== w || Math.round(c.height / scale.current) !== h)) act({ do: "size", w, h }, 250);
 		};
 		fit();
 		const watch = new ResizeObserver(fit);
 		watch.observe(el);
 		return () => watch.disconnect();
-	}, [open]);
+	}, [open, inApp]);
 
 	const flush = async () => {
 		const p = pending.current;
@@ -134,6 +161,8 @@ export function BrowserView({ tab }: { tab: Tab }) {
 		const ops = p.ops.splice(0);
 		try {
 			took(await api.browserInput(tab.agent, tab.session, ops));
+			// A click or a key may take the page somewhere else after the answer came: the address is asked again then.
+			if (ops.some((op) => !["move", "wheel", "text", "size"].includes(op.do))) window.setTimeout(() => lookNow.current?.(), 700);
 		} catch (e) {
 			store.flash(errText(e), "bad");
 		}
@@ -143,6 +172,8 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	/** Queue something that was done. `wait`: how long more of the same may still join it. */
 	const act = (op: Op, wait = 0) => {
 		const p = pending.current;
+		// (Not the pointer passing over the page: a picture after another would be taken all the while it rests there.)
+		if (op.do !== "size" && op.do !== "move") lastAct.current = performance.now();
 		const last = p.ops.at(-1);
 		// Letters join the letters before them, the wheel adds up, and of the pointer's way only the end counts.
 		if (op.do === "text" && last?.do === "text") last.text = `${last.text}${op.text}`;
@@ -155,11 +186,12 @@ export function BrowserView({ tab }: { tab: Tab }) {
 		else void flush();
 	};
 
-	/** A place in the window as a place in the page: the picture is the page, point for point, drawn smaller or larger. */
+	/** A place in the window as a place in the page: the picture is the page, scale pixels for a point, drawn smaller or larger. */
 	const at = (e: { clientX: number; clientY: number }) => {
 		const c = canvas.current!;
 		const box = c.getBoundingClientRect();
-		return { x: Math.round(((e.clientX - box.left) * c.width) / box.width), y: Math.round(((e.clientY - box.top) * c.height) / box.height) };
+		const [w, h] = [c.width / scale.current, c.height / scale.current];
+		return { x: Math.round(((e.clientX - box.left) * w) / box.width), y: Math.round(((e.clientY - box.top) * h) / box.height) };
 	};
 	const down = useRef<{ x: number; y: number }>(undefined);
 
@@ -239,7 +271,9 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					{busy ? <InputGroupAddon align="inline-end"><Pulse label="Loading" /></InputGroupAddon> : null}
 				</InputGroup>
 			</div>
-			{open ? (
+			{inApp ? (
+				<HostedPage room={inApp} index={state?.current ?? 0} title={front?.title} refused={() => setNoPage(true)} />
+			) : open ? (
 				<ScrollArea ref={room} className="flex min-h-0 flex-1 flex-col bg-press *:data-[slot=scroll-area-viewport]:scroll-fade">
 					{/* The page keeps its shape: as wide as the panel, and scrolled down to when it is taller than the room. */}
 					<canvas
@@ -277,19 +311,21 @@ export function BrowserView({ tab }: { tab: Tab }) {
 							else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) (e.preventDefault(), act({ do: "text", text: e.key }, 90));
 						}}
 					/>
-					{drawn ? null : <div className="absolute inset-0 grid place-items-center"><Pulse label="Loading" /></div>}
+					{drawn ? null : <BrowserSkeleton className="absolute inset-0" />}
 				</ScrollArea>
+			) : !state ? (
+				lookError ? <EmptyView icon={EyeIcon} title="The browser cannot be reached">{lookError}</EmptyView> : <BrowserSkeleton className="min-h-0 flex-1" />
 			) : (
 				<Empty>
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
 							<EyeIcon />
 						</EmptyMedia>
-						<EmptyTitle>{state ? "No page is open" : "Looking for the browser…"}</EmptyTitle>
-						{state ? <EmptyDescription>This is the browser the agent of this conversation works in. A page it opens is shown here as it is, and you can use it too: click, type, log in. Type an address above to open one yourself.</EmptyDescription> : null}
+						<EmptyTitle>No page is open</EmptyTitle>
+						<EmptyDescription>This is the browser the agent of this conversation works in. A page it opens is shown here as it is, and you can use it too: click, type, log in. Type an address above to open one yourself.</EmptyDescription>
 					</EmptyHeader>
 					{/* What the conversation's own programs listen on (the code pane's Running): a server the agent started is one click away. */}
-					{state && running.length ? (
+					{running.length ? (
 						<EmptyContent data-offer="running">
 							<EmptyDescription>Running in this conversation</EmptyDescription>
 							{running.map((r) => (
@@ -315,6 +351,101 @@ export function BrowserView({ tab }: { tab: Tab }) {
 				</Empty>
 			)}
 			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-line-soft px-2.5 py-1 text-xs text-faint"><ShieldIcon size={11} /><span className="truncate">The agent's browser, behind pine's guard. What you do here, the agent sees when it next looks.</span></div> : null}
+		</div>
+	);
+}
+
+/** What the app draws itself and lays over everything, the page in its panel among it: a dialog, a sheet, wherever it lies. */
+const COVERS = "[data-slot=dialog-content],[data-slot=alert-dialog-content],[data-slot=sheet-content]";
+/** What the app draws over a part of the window: a menu, a popover, a tooltip, a toast. */
+const OVER = ["popover-content", "dropdown-menu-content", "dropdown-menu-sub-content", "context-menu-content", "context-menu-sub-content", "select-content", "combobox-content", "hover-card-content", "tooltip-content", "toast-content"].map((s) => `[data-slot=${s}]`).join(",");
+
+/** Whether something of the app's own lies over the place of the page: the page, a window of its own above the app's, would hide it. */
+function covered(el: HTMLElement, r: DOMRect): boolean {
+	for (const o of document.querySelectorAll(COVERS)) if (!o.contains(el) && o.getClientRects().length) return true;
+	for (const o of document.querySelectorAll(OVER)) {
+		const b = o.getBoundingClientRect();
+		if (b.width && b.height && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) return true;
+	}
+	return false;
+}
+
+/**
+ * The agent's browser as the app's own (electron/browser-host.ts): its page is laid over this place by the main
+ * process, the page itself with its cursor, its scrolling and its keys. Followed every frame while the panel moves or
+ * changes size. While something of the app's own lies over it (a dialog, a menu), the page is taken away and a still
+ * picture of it stands in its place, so that what the app shows is seen and can be answered.
+ */
+function HostedPage({ room, index, title, refused }: { room: string; index: number; title?: string; refused: () => void }) {
+	const place = useRef<HTMLDivElement>(null);
+	const [still, setStill] = useState<string>();
+	useEffect(() => {
+		const show = bridge!.browserShow!;
+		let over = false;
+		let last = "";
+		let misses = 0;
+		let frame = 0;
+		let timer: number | undefined;
+		const hide = () => void show(undefined, 0, undefined).catch(() => {});
+		const tick = async () => {
+			const el = place.current;
+			let wait = 0;
+			if (el) {
+				const r = el.getBoundingClientRect();
+				const box = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+				const away = box.width < 1 || box.height < 1 || covered(el, r);
+				const now = away ? "away" : `${index} ${box.x} ${box.y} ${box.width} ${box.height}`;
+				if (now !== last) {
+					const was = last;
+					last = now;
+					if (away) {
+						if (was && was !== "away") {
+							const picture = await bridge!.browserPicture?.().catch(() => undefined);
+							if (!over) setStill(picture);
+						}
+						hide();
+					} else {
+						const shown = await show(room, index, box).catch(() => false);
+						if (over) return hide();
+						if (shown) (setStill(undefined), (misses = 0));
+						else {
+							// The tab is not there yet (the browser is being moved into the app), or never will be.
+							last = "";
+							wait = 300;
+							if (++misses > 20) return refused();
+						}
+					}
+				}
+			}
+			if (over) return;
+			if (wait) timer = window.setTimeout(() => void tick(), wait);
+			else frame = requestAnimationFrame(() => void tick());
+		};
+		void tick();
+		return () => {
+			over = true;
+			cancelAnimationFrame(frame);
+			window.clearTimeout(timer);
+			hide();
+		};
+	}, [room, index]);
+	return (
+		<div ref={place} data-slot="browser-page" title={title} className="relative min-h-0 flex-1 bg-white">
+			{still ? <img src={still} alt="" className="absolute inset-0 size-full object-cover object-left-top" /> : null}
+		</div>
+	);
+}
+
+/** A page while it loads: a header bar, a title and lines of text, from stock Skeleton blocks. Shown while the browser is looked for and before the first picture. */
+export function BrowserSkeleton({ className }: { className?: string }) {
+	return (
+		<div data-slot="browser-skeleton" className={cn("flex flex-col gap-3 bg-background p-4", className)}>
+			<Skeleton className="h-8 w-full" />
+			<Skeleton className="mt-2 h-6 w-2/3" />
+			<Skeleton className="h-4 w-full" />
+			<Skeleton className="h-4 w-5/6" />
+			<Skeleton className="h-4 w-3/4" />
+			<Skeleton className="mt-2 h-32 w-full" />
 		</div>
 	);
 }

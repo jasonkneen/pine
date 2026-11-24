@@ -5,11 +5,12 @@
 // `window.pine` already, and in a build `__PINE_PREVIEW__` is false and none of this is kept.
 // The preview's pine is the one its server started: other machines are the app's only.
 import type { Bridge } from "../electron/preload.ts";
+import type { AccessCalls, BrowserCalls, UpdateCalls } from "./bridge.ts";
 import { cleanLook } from "./theme.ts";
 
 if (import.meta.env.DEV && __PINE_PREVIEW__ && !window.pine) window.pine = standIn();
 
-function standIn(): Bridge {
+function standIn(): Omit<Bridge, AccessCalls | UpdateCalls | BrowserCalls> {
 	type Listener = (...args: any[]) => void;
 	const listeners = { service: new Set<Listener>(), events: new Set<Listener>(), connection: new Set<Listener>() };
 	const on = (set: Set<Listener>) => (fn: Listener) => (set.add(fn), () => void set.delete(fn));
@@ -68,7 +69,7 @@ function standIn(): Bridge {
 		},
 		forgetHost: async () => ({ ...prefs }),
 		// No system dialog in a browser: a folder is named by its path.
-		pickFolder: async (title?: string) => window.prompt(`${title ?? "Choose a folder"}: its path`)?.trim() || undefined,
+		pickFolder: async (title?: string) => window.prompt(`${title ?? "Choose a folder"}: the folder's path`)?.trim() || undefined,
 		saveText: async (name: string, text: string) => {
 			const a = document.createElement("a");
 			a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));

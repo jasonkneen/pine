@@ -4,7 +4,7 @@
 // on a loopback port of this computer.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import net, { type AddressInfo } from "node:net";
-import { RelayClosed, SshRefused, type Channel, type Connection, type ConnectOptions } from "../../src/ssh.ts";
+import { PeerClosed, RelayClosed, SshRefused, type Channel, type Connection, type ConnectOptions, type OpenStream, type Transport } from "../../src/ssh.ts";
 
 export type Daemon = { port: number; token: string; seen: { method: string; url: string; auth?: string; host?: string; body: string }[]; stop(): Promise<void> };
 
@@ -102,9 +102,56 @@ export type Machine = {
 	/** Cuts every open connection, as a relay that restarts or a network that drops does. */
 	drop(): void;
 	connect(options: ConnectOptions): Promise<Connection>;
+	/** As a paired computer: the pairing open at the computer (its code, taken by the first session that names it), and none after. */
+	pairCode?: string;
+	/** As a paired computer: how many times a session got past the host key and offered the browser's key. */
+	keysOffered: number;
+	/** As a paired computer: the names that pairing requests carried. */
+	pairings: string[];
+	/** As a paired computer: the owner's answer at the computer to the pairing request waiting, with the computer's name on a yes. */
+	answer(decision: "allow" | "refuse" | "expired", computerName?: string): void;
+	/** As a paired computer: what the meeting service makes of a browser that asks for it. */
+	meeting: "ok" | PeerClosed["reason"];
+	/** As a paired computer: the stand-in for the peer transport's opener (web/src/peer.ts). */
+	peer(id: string): OpenStream;
 };
 
+/** The four digits the stand-in computer shows. */
+export const DIGITS = "4821";
+
+/** The pairing request's channel: the digits first, then the owner's answer when it comes. */
+function pairChannel(): { channel: Channel; answer(line: object, exit: number): void } {
+	let listener: ((bytes: Uint8Array) => void) | undefined;
+	let finish!: (v: { exitStatus?: number }) => void;
+	const closed = new Promise<{ exitStatus?: number }>((resolve) => (finish = resolve));
+	const say = (line: object) => listener?.(new TextEncoder().encode(`${JSON.stringify(line)}\n`));
+	return {
+		channel: {
+			onData: (fn) => {
+				listener = fn;
+				setTimeout(() => say({ code: DIGITS }), 1);
+			},
+			onStderr: () => {},
+			send: async () => {},
+			close: async () => finish({}),
+			closed,
+		},
+		answer(line, exit) {
+			say(line);
+			setTimeout(() => finish({ exitStatus: exit }), 1);
+		},
+	};
+}
+
 export const fp = (c: string) => `SHA256:${c.repeat(43)}`;
+
+/** A transport that carries nothing: the stand-in connection never reads it, and only says where it went. */
+export type FakeTransport = Transport & { where: string };
+
+/** An opener of a transport that says it goes to `where` (the relay's address the bridge asked for). */
+export function fakeStream(where: string): OpenStream {
+	return async (): Promise<FakeTransport> => ({ where, write: async () => {}, onData: () => {}, ended: new Promise(() => {}), close: () => {} });
+}
 
 /** A machine whose pine runs the daemon given, at its port on the loopback. */
 export function fakeMachine(daemon: Daemon): Machine {
@@ -121,13 +168,31 @@ export function fakeMachine(daemon: Daemon): Machine {
 		drop() {
 			for (const cut of [...cuts]) cut();
 		},
+		keysOffered: 0,
+		pairings: [],
+		answer: () => {
+			throw new Error("no pairing request is waiting");
+		},
+		meeting: "ok",
+		peer: (id) => async () => {
+			if (m.meeting !== "ok") throw new PeerClosed(m.meeting);
+			return fakeStream(`peer:${id}`)();
+		},
 		async connect(options) {
-			m.connects.push({ url: options.url, user: options.user, hostFingerprint: options.hostFingerprint });
+			const transport = (await options.open()) as FakeTransport;
+			m.connects.push({ url: transport.where, user: options.user, hostFingerprint: options.hostFingerprint });
 			if (m.reachable === "refused") throw new RelayClosed(0, "");
 			if (m.reachable === "tls") throw new RelayClosed(4525, "No TLS from the server: Tailscale Funnel may be off for this port.");
 			if (!m.reachable) throw new RelayClosed(4504, "The server could not be reached.");
 			if (options.hostFingerprint !== m.fingerprint) throw new SshRefused("host-key", "not the confirmed key", m.fingerprint);
-			if (!m.authorized) throw new SshRefused("not-authorized", "key refused");
+			m.keysOffered++;
+			// A pairing session: its code is taken at once, whatever comes of it.
+			const pairing = options.user.startsWith("pair.");
+			if (pairing) {
+				const open = m.pairCode;
+				m.pairCode = undefined;
+				if (!open || options.user !== `pair.${open}`) throw new SshRefused("not-authorized", "key refused");
+			} else if (!m.authorized) throw new SshRefused("not-authorized", "key refused");
 			m.open++;
 			let gone = false;
 			let ended!: () => void;
@@ -147,6 +212,20 @@ export function fakeMachine(daemon: Daemon): Machine {
 				async exec(command) {
 					if (gone) throw new Error("the connection is closed");
 					m.commands.push(command);
+					if (pairing) {
+						const request = /^pine-pair ([A-Za-z0-9_-]+)$/.exec(command);
+						if (!request) throw new Error("a pairing session runs the pairing request and nothing else");
+						m.pairings.push(JSON.parse(Buffer.from(request[1], "base64url").toString()).name);
+						const pair = pairChannel();
+						execs.add(pair.channel);
+						m.answer = (decision, computerName = "Studio Mac") => {
+							if (decision === "allow") {
+								m.authorized = true;
+								pair.answer({ ok: true, name: computerName }, 0);
+							} else pair.answer({ ok: false, reason: decision === "refuse" ? "refused" : "expired" }, 1);
+						};
+						return pair.channel;
+					}
 					const channel = execChannel(m.service.out, m.service.err ?? "", m.service.exit);
 					execs.add(channel);
 					return channel;

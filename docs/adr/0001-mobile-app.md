@@ -129,3 +129,60 @@ What the first version settled that the decision above did not say, or said othe
   back button are proven by the smoke run on an emulator (`npm run smoke` in `mobile/`), which
   is run by hand before a release that changes `mobile/` or upgrades Capacitor. The Release
   workflow runs `npm run check` and `npm test` of `mobile/` before it builds the APK.
+
+## Amended: the app pairs with the Pine app
+
+The decision above said the app "embeds no network of its own": how a machine is reached was the
+owner's business, over SSH on TCP. That kept out the owners who cannot set up Remote Login, an
+address and a key in `authorized_keys`, and a phone that scanned the Pine app's QR code paired its
+browser, not the app. So the app now pairs with a computer that runs the Pine app, by that QR
+code, and reaches it peer to peer as a paired browser does ([0004](0004-browser-access.md)).
+
+- **A second transport under the same SSH.** Each core opens the byte stream SSH runs on either
+  as a TCP socket or as one WebRTC data channel (`ssh`, ordered, reliable) to a paired computer,
+  set up through the meeting service the pairing link names. Everything above it (the remote
+  command, direct-tcpip calls, the event stream, media) is the same code. The daemon's token and
+  the phone's key stay in native code; the data channel lives there too, never in the WebView.
+  `user@host` works as before.
+- **Pairing in the cores.** A link is read by one parser on each side, replayed from shared cases
+  (`mobile/cases/pair-links.json`, also read by the page): `https` services only, a machine id
+  and a code of the expected shape. Pairing is an SSH session as `pair.<code>` with the phone's
+  own key; the computer's host key must be the link's machine id before that key is offered. A
+  paired computer is the machine `paired:<machine id>`, with its service and name kept beside it.
+  Forget removes the entry on the phone and closes no access: Remove in the Pine app does.
+- **The library differs by platform.** The plan was libdatachannel on both, for one API and for
+  builds that run on the JVM and the Mac. On Android the owner chose Google's libwebrtc instead
+  (`io.github.webrtc-sdk:android-prefixed-stripped`, LiveKit's build): libdatachannel's Android
+  binding is aligned for 4 KB memory pages only, so it may not load on a phone with 16 KB pages,
+  and the same binding (0.24.1), tried on the JVM against the Pine app's 0.24.6, lost the
+  connection on bursts above about 1 MiB. libwebrtc
+  comes stripped and aligned for 16 KB pages on 64-bit, and the release APK carries it for
+  arm64-v8a and armeabi-v7a alone (about 22 MB instead of 43 MB with libdatachannel's four ABIs).
+  It has no JVM build, so the Kotlin core reaches it through an interface (`WebRtc` in
+  `mobile/core`), implemented in the app (`LibWebRtc.kt`) and, for the core's tests on the JVM,
+  by the libdatachannel binding, a test dependency only. Should that binding stop serving the
+  tests, `dev.onvoid.webrtc:webrtc-java` (libwebrtc for the desktop JVM) can take its place behind
+  the same interface.
+- **One more permission on Android.** libwebrtc reads the phone's networks and aborts the app
+  without `ACCESS_NETWORK_STATE`. It is a normal permission: granted at install, never asked of
+  the owner, and it reads only whether and which networks there are. The app asks for no camera:
+  it has no scanner, and the phone's own camera reads the code.
+- **How a link reaches the app.** On Android by App Links, for the official service's address and
+  the release-signed APK only: the relay serves `/.well-known/assetlinks.json` once its
+  configuration names the release key's fingerprint (`ANDROID_CERT_SHA256`), a step the
+  maintainer does once by hand. Any other service or build opens the browser, as before, and the
+  app takes a pasted link. On iOS by the `pine:` scheme ([0002](0002-ios-app.md)). Either way the
+  link starts nothing: the page asks the owner first.
+- **No background work.** Nothing keeps a connection alive: a locked phone drops it, and on
+  return the health check makes it again whole (a new meeting, a new channel, a new SSH session),
+  with a growing wait for the troubles that may pass. A key the computer no longer knows, or a
+  changed host key, is final.
+- **What proves it.** The cores' suites (`npm run test:core`, `swift test`) pair, call, reconnect
+  and are refused against the Pine app's real access host, run under Node by a helper
+  (`mobile/test/support/access-host.ts`). The smoke runs pair from end to end on the emulator and
+  the simulator; on Android an instrumented test is the only proof of libwebrtc. A smoke run reaches
+  its access host through a TLS front with a certificate authority of its own, trusted by the debug
+  build (and the simulator) alone; no product code accepts `http`, and the cores' tests reach the
+  helper's `http` service through a seam only a test can use. Not tried: a real phone, a
+  16 KB-page device, cellular networks, AltStore or Sideloadly with the new IPA, a cold start by a
+  `pine:` address.

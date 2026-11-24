@@ -9,11 +9,11 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { addRoute, applySetting, checkRoute, checkSetting, dropRoute, type RouteInput, SETTINGS } from "./admin.ts";
+import { addRoute, applyModelLimit, applySetting, checkModelLimit, checkRoute, checkSetting, dropRoute, type RouteInput, SETTINGS, settleModel } from "./admin.ts";
 import { AGENT_TOOLS } from "./agent-admin.ts";
 import type { AgentManager } from "./agents.ts";
 import { browserReady } from "./browser-build.ts";
-import { type AgentConfig, loadConfig, mainAgentId, PINE_ROOT, type PineConfig, purposeOf, SHARED_FILES } from "./config.ts";
+import { type AgentConfig, loadConfig, mainAgentId, ownText, PINE_ROOT, type PineConfig, purposeOf, SHARED_FILES } from "./config.ts";
 import { login, logout, type Prompter } from "./login.ts";
 import { findServer, piMcp, serverStates } from "./mcp-config.ts";
 import { addModelServer, checkServerName, listModelServers, lookAt, modelKeys, modelServerUsers, removeModelServer, serverUrl } from "./models.ts";
@@ -24,6 +24,7 @@ import type { SourceHost } from "./sources.ts";
 import { localTime, type Scheduler } from "./timers.ts";
 import { errText, type Logger, parseDuration } from "./util.ts";
 import { listThemes, themeInForce } from "./themes.ts";
+import { listViews, viewCode, viewInForce } from "./views.ts";
 import { MAX_EDIT, writeText } from "./workspace-view.ts";
 
 /** A request that is refused, with the status it is answered with and what a client needs besides the sentence. */
@@ -79,6 +80,8 @@ export interface LoginView {
 	done: boolean;
 	error?: string;
 	models?: string[];
+	/** The model the agents run on from now on, when the sign-in made pine choose one (`settleModel`). */
+	chosen?: string;
 }
 
 interface LoginSession extends LoginView {
@@ -105,12 +108,12 @@ export class Logins {
 	private sessions = new Map<string, LoginSession>();
 	private run: LoginRunner;
 	private secret: (value: string) => void;
-	private ended: () => Promise<void>;
+	private ended: (provider: string) => Promise<string | undefined>;
 
-	constructor(run: LoginRunner, opts: { secret?: (value: string) => void; ended?: () => Promise<void> } = {}) {
+	constructor(run: LoginRunner, opts: { secret?: (value: string) => void; ended?: (provider: string) => Promise<string | undefined> } = {}) {
 		this.run = run;
 		this.secret = opts.secret ?? (() => {});
-		this.ended = opts.ended ?? (async () => {});
+		this.ended = opts.ended ?? (async () => undefined);
 	}
 
 	private tidy(): void {
@@ -156,7 +159,7 @@ export class Logins {
 			async (models) => {
 				if (s.done) return;
 				s.models = models;
-				await this.ended().catch(() => {});
+				s.chosen = await this.ended(provider).catch(() => undefined);
 				this.end(s);
 			},
 			(e) => this.end(s, errText(e)),
@@ -177,7 +180,7 @@ export class Logins {
 	view(id: string): LoginView | undefined {
 		this.tidy();
 		const s = this.sessions.get(id);
-		return s && { lines: s.lines, url: s.url, code: s.code, question: s.question, done: s.done, error: s.error, models: s.models };
+		return s && { lines: s.lines, url: s.url, code: s.code, question: s.question, done: s.done, error: s.error, models: s.models, ...(s.chosen ? { chosen: s.chosen } : {}) };
 	}
 
 	answer(id: string, value: string): boolean {
@@ -231,12 +234,18 @@ export class OwnerApi {
 		this.logins = new Logins(deps.loginRunner ?? ((provider, type, prompter, signal) => login(this.cfg, provider, type, prompter, signal)), {
 			// A key that was typed is a secret from then on, wherever it might turn up.
 			secret: (value) => this.sources?.keepOut([value]),
-			ended: () => this.manager.reloadModels(),
+			ended: (provider) => this.modelsChanged(provider),
 		});
 	}
 
 	stop(): void {
 		this.logins.stop();
+	}
+
+	/** After a sign-in or a model server: models read again, and a default that answers. */
+	private async modelsChanged(provider: string): Promise<string | undefined> {
+		await this.manager.reloadModels();
+		return settleModel(this.cfg, this.manager, this.log, provider);
 	}
 
 	private agent(id: unknown): AgentConfig {
@@ -279,7 +288,8 @@ export class OwnerApi {
 		}
 		if (parts[0] === "agents" && parts[2] === "detail" && parts.length === 3) {
 			const a = this.agent(parts[1]);
-			const file = (name: string) => textOf(path.join(a.workspace, name));
+			// What pine once put into a file nobody wrote in is shown as what it is: an empty file.
+			const file = (name: string) => { const t = textOf(path.join(a.workspace, name)); return t === undefined ? t : ownText(t); };
 			const files = { instructions: file("AGENTS.md"), soul: file("SOUL.md"), tooling: file("TOOLS.md"), memory: file("MEMORY.md"), rules: textOf(path.join(a.dir, "AGENTS.md")) };
 			return {
 				id: a.id, main: a.id === mainAgentId(cfg), description: purposeOf(a), ...(a.color ? { color: a.color } : {}), workspace: a.workspace, dir: a.dir,
@@ -294,12 +304,20 @@ export class OwnerApi {
 			const themes = listThemes(cfg.home);
 			return { theme: themeInForce(cfg.home, cfg.ui.theme, themes).id, chosen: cfg.ui.theme ?? null, themes };
 		}
-		if (at === "shared") return SHARED_FILES.map((name) => ({ name, about: SHARED_ABOUT[name] ?? "", text: textOf(path.join(cfg.home, name)) ?? "" }));
+		// The views of the app's panel and the one in force (none: the app shows no panel), and a view's code,
+		// its types taken away. The daemon runs none of it: the app runs it in a sandboxed frame.
+		if (at === "views") {
+			const views = listViews(cfg.home).map((v) => ("problem" in v ? { id: v.id, problem: v.problem } : { id: v.id }));
+			return { view: viewInForce(cfg.ui.view, listViews(cfg.home)) ?? null, chosen: cfg.ui.view ?? null, views };
+		}
+		if (parts[0] === "views" && parts.length === 2) return viewCode(cfg.home, parts[1]);
+		if (at === "shared") return SHARED_FILES.map((name) => ({ name, about: SHARED_ABOUT[name] ?? "", text: ownText(textOf(path.join(cfg.home, name)) ?? "") }));
 		if (at === "skills") return allSkills(cfg).map((s) => ({ ...s, instructions: skillBody(s.dir) }));
 		if (at === "schedules") return this.need(this.schedules, "a scheduler").list();
 		if (at === "routes") return cfg.routes.map((r) => ({ name: r.name, on: r.on, when: r.when, throttleMs: r.throttleMs, debounceMs: r.debounceMs, agent: r.agent, prompt: r.prompt, session: r.session, set: r.set, publish: r.publish, call: r.call, trust: r.trust }));
 		if (at === "sources/types") return this.need(this.sources, "event sources").typeList().map((t) => ({ name: t.name, summary: t.summary, options: t.options, own: t.name in cfg.sourceTypes }));
-		if (at === "models/servers") return listModelServers(cfg.home);
+		// (Each model with its own number of runs at a time, where it has one; and what holds for the others.)
+		if (at === "models/servers") return listModelServers(cfg.home).map((x) => ({ ...x, models: x.models.map((m) => ({ ...m, ...(cfg.limits.models[`${x.name}/${m.id}`] !== undefined ? { limit: cfg.limits.models[`${x.name}/${m.id}`] } : {}) })), runs: cfg.limits.maxConcurrentRuns }));
 		if (at === "models/providers") {
 			// What pi says of each provider. `signedIn` is "pi has a credential or a key for it", which
 			// for a model server of the owner's own without a key is true as well; `oauth` is "its
@@ -319,7 +337,7 @@ export class OwnerApi {
 	/** A POST request. Undefined: not one of these. `long` is called by a request that takes as long as a person does. */
 	async post(parts: string[], body: any, long: () => void = () => {}): Promise<unknown | undefined> {
 		const at = parts.join("/");
-		const mine = ["settings", "shared", "skills", "skills/remove", "schedules", "schedules/remove", "routes", "routes/remove", "sources", "sources/propose", "sources/remove", "models/servers", "models/servers/remove", "models/login", "models/logout", "mcp/login"].includes(at) || (parts[0] === "models" && parts[1] === "login" && parts.length === 3) || (parts[0] === "agents" && parts[2] === "view" && parts[3] === "write" && parts.length === 4);
+		const mine = ["settings", "shared", "skills", "skills/remove", "schedules", "schedules/remove", "routes", "routes/remove", "sources", "sources/propose", "sources/remove", "models/servers", "models/servers/remove", "models/servers/limit", "models/login", "models/logout", "mcp/login"].includes(at) || (parts[0] === "models" && parts[1] === "login" && parts.length === 3) || (parts[0] === "agents" && parts[2] === "view" && parts[3] === "write" && parts.length === 4);
 		if (!mine) return undefined;
 		try {
 			return await this.change(at, parts, body ?? {}, long);
@@ -375,7 +393,7 @@ export class OwnerApi {
 			const agent = this.maybeAgent(body.agent);
 			const session = str(body.session);
 			const found = allSkills(cfg).find((s) => s.name === body.name && (agent ? s.agent === agent.id && (session ? s.session === session : s.scope === "agent") : s.scope === "global"));
-			if (!found) throw new Refusal(404, `there is no skill "${String(body.name)}" ${agent ? `of ${agent.id}${session ? ` in its conversation ${session}` : ""}` : "for all agents"}`);
+			if (!found) throw new Refusal(404, `there is no skill "${String(body.name)}" ${agent ? `of ${agent.id}${session ? ` in the conversation ${session}` : ""}` : "for all agents"}`);
 			if (!found.managed) throw new Refusal(409, `"${found.name}" lies in a folder you named in the configuration (${found.dir}), and stays yours: take it out there`);
 			deleteSkill(found.dir, agent ? agent.dir : cfg.home);
 			await manager.refreshSessions(agent ? [agent.id] : undefined);
@@ -469,8 +487,21 @@ export class OwnerApi {
 			}
 			const context = body.context === undefined || body.context === null || body.context === "" ? undefined : Number(body.context);
 			const models = addModelServer(cfg.home, { name, baseUrl, key, models: look.models, context, reasoning: typeof body.reasoning === "boolean" ? body.reasoning : undefined });
-			await manager.reloadModels();
-			return { models };
+			const chosen = await this.modelsChanged(name);
+			return { models, ...(chosen ? { chosen } : {}) };
+		}
+		if (at === "models/servers/limit") {
+			// How many runs a model takes at a time: a number, or nothing for pine's own limit.
+			// (By its server's name and "model", the id the server gives it.)
+			const known = [...new Set([...listModelServers(cfg.home).flatMap((x) => x.models.map((m) => `${x.name}/${m.id}`)), ...(await manager.availableModels())])];
+			let checked: ReturnType<typeof checkModelLimit>;
+			try {
+				checked = checkModelLimit(known, body.name, body.model, body.limit);
+			} catch (e) {
+				throw new Refusal(400, errText(e));
+			}
+			applyModelLimit(cfg, checked);
+			return { name: checked.name, model: checked.model, ...(checked.limit !== undefined ? { limit: checked.limit } : {}), runs: cfg.limits.maxConcurrentRuns };
 		}
 		if (at === "models/servers/remove") {
 			const name = String(body.name ?? "");
@@ -543,3 +574,6 @@ const safe = <T>(fn: () => T, otherwise: T): T => {
 		return otherwise;
 	}
 };
+
+// In src/admin.ts, where the main agent's sign_in uses it too; said here for those who import it from here.
+export { settleModel };

@@ -65,7 +65,7 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 						Why you are asked: {req.why}
 						{req.holds ? <div>“Allow” holds for {req.holds}: you are not asked about it again there.</div> : null}
 						{req.remember ? <div>“Always here” stops asking about {req.remember} in this conversation.</div> : null}
-						{!req.remember && !req.holds && !fields.length ? <div>This one is asked every time: there is no “always” for it.</div> : null}
+						{!req.remember && !req.holds && !fields.length ? <div>You are asked about this each time: there is no “always” for it.</div> : null}
 					</div>
 					{fields.map((f, i) => {
 						const [name, about] = labelParts(f.label ?? f.name);
@@ -77,15 +77,16 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 							</Field>
 						);
 					})}
-					{fields.length ? <FieldDescription>{fields.some((f) => f.secret !== false) ? "What you type is not shown, goes into pine's .env file, and never reaches the agent or its model." : "Without it, this cannot be allowed."}</FieldDescription> : null}
+					{fields.length ? <FieldDescription>{fields.some((f) => f.secret !== false) ? "What you type is not shown, goes into pine's .env file, and never reaches the agent or the model." : "Without it, this cannot be allowed."}</FieldDescription> : null}
 				</div>
 				</ScrollArea>
 				<DialogFooter>
 					<Button variant="ghost" onClick={() => s.closeAsking()}>Later <Kbd>esc</Kbd></Button>
 					<span className="min-w-0 flex-1" />
-					<Button variant="destructive" onClick={() => void s.decide(req.id, false)}>Deny{fields.length ? "" : <Kbd>d</Kbd>}</Button>
+					{/* A key on a filled button is a darker shade of the button, in the button's own text color. */}
+					<Button variant="destructive" onClick={() => void s.decide(req.id, false)}>Deny{fields.length ? "" : <Kbd className="bg-black/15 text-current">d</Kbd>}</Button>
 					{req.remember && !fields.length ? <Button variant="outline" onClick={() => allow(true)}>Always here <Kbd>s</Kbd></Button> : null}
-					<Button onClick={() => allow()}>{fields.length ? "Save and allow" : req.holds ? "Allow" : "Allow once"}{fields.length ? "" : <Kbd>a</Kbd>}</Button>
+					<Button onClick={() => allow()}>{fields.length ? "Save and allow" : req.holds ? "Allow" : "Allow once"}{fields.length ? "" : <Kbd className="bg-black/15 text-current">a</Kbd>}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

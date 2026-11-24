@@ -175,7 +175,7 @@ export function parseFeed(body: string, base: string): { title: string; entries:
 	const doc = tree(text);
 	const root = doc.children[0];
 	const kind = root?.name === "feed" ? "atom" : root?.name === "rss" || root?.name === "rdf:rdf" || root?.name === "rdf" ? "rss" : undefined;
-	if (!kind) throw new Error(/^<(!doctype html|html)\b/i.test(text) ? "that address is a web page, not a feed. A site's feed has an address of its own, often ending in /feed, /rss or .atom: set the source up with that one, or watch the page itself with an http source" : "what it answers is not a feed (RSS, Atom or JSON Feed)");
+	if (!kind) throw new Error(/^<(!doctype html|html)\b/i.test(text) ? "that address is a web page, not a feed. A site's feed has a separate address, often ending in /feed, /rss or .atom: set the source up with that one, or watch the page itself with an http source" : "what it answers is not a feed (RSS, Atom or JSON Feed)");
 	if (kind === "atom") {
 		const link = (n: Node) => {
 			const links = all(n, "link").filter((l) => l.attrs.href);

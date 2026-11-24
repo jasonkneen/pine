@@ -6,14 +6,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useNamedLine } from "./lists.tsx";
 import type { Picker } from "./model.ts";
 import { fuzzy } from "./text.ts";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function PickDialog({ p }: { p: Picker }) {
 	const [query, setQuery] = useState("");
 	const shown = useMemo(() => (query && !p.free ? p.items.map((i) => ({ i, rank: Math.min(...[fuzzy(query, i.label), fuzzy(query, i.about ?? "") + 10].filter((r) => r >= 0), 99) })).filter((x) => x.rank < 99).sort((a, b) => a.rank - b.rank).map((x) => x.i) : p.items), [query, p]);
 	// The list starts on the one in use.
-	const line = useNamedLine(query, p.current);
+	const line = useNamedLine(query, p.current, !p.loading);
 	// A short list is chosen from with the arrows; its field is there for the keyboard and for screen readers, unseen.
-	const typing = p.free || p.items.length > 7;
+	const typing = !p.loading && (p.free || p.items.length > 7);
 	const list = (
 		<Command
 			{...line}
@@ -27,8 +28,14 @@ export function PickDialog({ p }: { p: Picker }) {
 			<div className={typing ? undefined : "sr-only"}>
 				<CommandInput placeholder={p.placeholder ?? "Type to narrow the list"} value={query} onValueChange={setQuery} />
 			</div>
-			<CommandList className="scroll-fade">
-				{shown.length ? (
+			<CommandList className="scroll-fade" aria-busy={p.loading || undefined}>
+				{p.loading ? (
+					<div className="flex flex-col gap-1 p-1">
+						{["w-1/2", "w-2/3", "w-2/5"].map((w) => (
+							<div key={w} className="flex h-8 items-center px-2"><Skeleton className={`h-4 ${w}`} /></div>
+						))}
+					</div>
+				) : shown.length ? (
 					<CommandGroup>
 						{shown.map((i) => (
 							<CommandItem key={i.value} value={i.value} data-checked={i.value === p.current} onSelect={() => p.done(i.value)}>
@@ -38,7 +45,7 @@ export function PickDialog({ p }: { p: Picker }) {
 						))}
 					</CommandGroup>
 				) : null}
-				{p.free ? null : <CommandEmpty>Nothing fits.</CommandEmpty>}
+				{p.free || p.loading ? null : <CommandEmpty>Nothing fits.</CommandEmpty>}
 			</CommandList>
 		</Command>
 	);

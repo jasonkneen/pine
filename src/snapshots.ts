@@ -184,7 +184,7 @@ export class Snapshots {
 		if (large.length > MAX_SKIPPED) throw new Error(`there are too many large files in ${root} to record (${large.length})`);
 		const out = [...large, ...nested];
 		if (out.length) {
-			if (out.some((p) => p.includes("\n"))) throw new Error(`a file in ${root} that has to be left out has a line break in its name`);
+			if (out.some((p) => p.includes("\n"))) throw new Error(`a file in ${root} that has to be left out has a line break in the file name`);
 			fs.writeFileSync(exclude, `${out.map(pattern).join("\n")}\n`, "latin1");
 			// One that was small before is in the index: taken out, or the tree would keep its old content as if it were the present.
 			if (large.length) await this.must("a large file could not be left out", this.g(at, ["update-index", "--force-remove", "-z", "--stdin"], { stdin: bytes(`${large.join("\0")}\0`) }));

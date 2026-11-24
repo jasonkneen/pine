@@ -8,7 +8,7 @@ import { frameBridge } from "../src/frame-bridge.ts";
 import { webBridge, type Store } from "../src/host.ts";
 import { REMOTE_COMMAND } from "../src/remote-command.ts";
 import { serve } from "../src/serve.ts";
-import { fakeMachine, fp, startDaemon, type Daemon, type Machine } from "./support/fake-ssh.ts";
+import { fakeMachine, fakeStream, fp, startDaemon, type Daemon, type Machine } from "./support/fake-ssh.ts";
 import { windows } from "./support/windows.ts";
 
 let daemon: Daemon;
@@ -30,7 +30,7 @@ function client(machine: Machine, store = memoryStore(), waitMs = 2) {
 	// The waits between attempts to connect again, as asked for; each is a few milliseconds here.
 	const waits: number[] = [];
 	const wait = (ms: number) => (waits.push(ms), new Promise<void>((r) => setTimeout(r, waitMs)));
-	const bridge = webBridge({ connect: machine.connect, store, relay: (host, port) => `wss://relay.test/ssh?host=${host}&port=${port}`, clipboard: async (text) => void copied.push(text), version: "9.9.9", wait, serviceMs: 500 });
+	const bridge = webBridge({ connect: machine.connect, store, relay: (host, port) => fakeStream(`wss://relay.test/ssh?host=${host}&port=${port}`), clipboard: async (text) => void copied.push(text), version: "9.9.9", wait, serviceMs: 500 });
 	serve(bridge, w.top, () => w.frame);
 	const page = frameBridge(w.parentOfFrame, w.frame);
 	const states: ServiceState[] = [];

@@ -253,12 +253,20 @@ unknown accounts get no answer at all and cause no question.
 |---|---|---|
 | `token` | | The bot's token. Create a bot by writing `/newbot` to @BotFather in Telegram; it answers with the token. Kept in `.env`. |
 | `allow` | pairing | Telegram user ids that may talk to the bot, if you know yours. Without it the bot is paired as described above. With several ids, what the agent sends unasked and the approval requests go to the first. |
-| `approvals` | `true` | Approval requests are also sent to that chat, with buttons to answer them: Allow, Deny and, where a yes can be remembered for the conversation, Always. `/allow` and `/deny` work too (with the request's id when more than one is open). A question the agent asks with its `question` tool arrives the same way when it offers answers to pick from, with one button for each and one for "No answer"; an answer in your own words, and a question without answers to pick from, you type in the terminal UI. A request that needs a secret typed is never sent there. |
+| `approvals` | `true` | Approval requests are also sent to that chat, with buttons to answer them: Allow, Deny and, where a yes can be remembered for the conversation, Always. A bot that is one agent's own carries that agent's requests and questions and no other agent's, and answers none of theirs; a bot for all agents carries every agent's. `/allow` and `/deny` work too (with the request's id when more than one is open). A question the agent asks with its `question` tool arrives the same way when it offers answers to pick from, with one button for each and one for "No answer"; an answer in your own words, and a question without answers to pick from, you type in the terminal UI. A request that needs a secret typed is never sent there. |
 | `apiBase` | Telegram's | The address of a Bot API server of your own. |
 
 Event `message`: `{ text, name, username, chatId, messageId, images? }`. A photo you send (up
 to 10 MB) is shown to the model. The bot listens only in its private chat with you: what is
 written in a group it was added to reaches no agent.
+
+What an agent sends there, and its answers, are Markdown, and Telegram shows them formatted:
+bold, italic, strikethrough, code and code blocks, quotes. A heading becomes a bold line, a list
+bullets, a table monospace text. A link shows its address beside its text, since an answer can
+repeat a page and a link's text can name another place than it goes to. Tags an agent writes
+itself (HTML) are shown as text. Should Telegram refuse the formatting, the message is sent as
+it was written. Approval requests and the pairing messages are plain text: they show exactly
+what is asked.
 
 What makes it different from the other types:
 

@@ -52,7 +52,8 @@ like that, it is for the conversation you are in: only that conversation has the
 tools, and the server is removed with the conversation (in an agent's main conversation it is
 the agent's, in all its conversations). Say "for you as an agent" to keep it for the agent from
 any conversation, and ask the **main agent** for "all agents": only it can add or remove a
-server for everyone. `remove_mcp_server` takes a server out again. See [setup.md](setup.md).
+server for everyone. `remove_mcp_server` takes a server out again, and the main agent signs in
+to a remote one that needs it with `sign_in_mcp_server` (you finish in the browser). See [setup.md](setup.md).
 
 If you allow it, the server is written to the configuration, without a restart. The agent
 does not have the new tools in the turn in which it added the server, so pine calls it again

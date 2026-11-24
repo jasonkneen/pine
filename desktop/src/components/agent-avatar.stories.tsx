@@ -10,6 +10,9 @@ type Story = StoryObj<typeof meta>;
 /** An agent without a color: the stock avatar, as every agent had before. */
 export const AgentAvatar: Story = { args: { agent: { id: "main" } } };
 
+/** The main agent: pine's mark in place of its initial. */
+export const AgentAvatarMain: Story = { args: { agent: { id: "main", main: true }, size: "lg" } };
+
 /** An agent in coral. */
 export const AgentAvatarColored: Story = { args: { agent: { id: "scout", color: "#e0805a" }, size: "lg" } };
 
@@ -25,3 +28,6 @@ export const AgentAvatarPresets: Story = {
 		</div>
 	),
 };
+
+/** While it loads: its own shape, from stock Skeleton blocks. */
+export const AgentAvatarSkeleton: Story = { args: { skeleton: true } as never };

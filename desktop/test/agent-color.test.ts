@@ -46,12 +46,12 @@ async function avatarsAre(want: string, why: string): Promise<void> {
 
 const menu = (name: string) => app.evaluate(({ BrowserWindow }: any, n: string) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", n), name);
 
-/** The color the agent's file keeps; a file read while the daemon writes it is not one yet. */
+/** The color in the agent's file; none while the daemon is writing the file, when a reader can find it empty. */
 const kept = (): string | undefined => {
 	try {
 		return JSON.parse(fs.readFileSync(agentFile(), "utf8")).color;
 	} catch {
-		return "(being written)";
+		return undefined;
 	}
 };
 /** Waits until the agent's file keeps that color (none: undefined): a pick is saved at once, with no button to press. */
@@ -74,14 +74,14 @@ before(async () => {
 	mock = await startMock({});
 	home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-desktop-agent-color-")));
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
-	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, main: "main", defaults: { model: "mock/m", mode: "safe" }, security: { askAccess: false } }));
+	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, main: "main", defaults: { model: "mock/m", mode: "safe", introduce: false }, security: { askAccess: false } }));
 	write(path.join(home, "agents", "main", "agent.json"), JSON.stringify({}));
 	write(path.join(home, "agents", "main", "workspace", "AGENTS.md"), "The main agent.\n\nYou are the main agent.\n");
 	write(agentFile(), JSON.stringify({}));
 	write(path.join(home, "agents", "books", "workspace", "AGENTS.md"), "Keeps the books.\n\nYou keep the books.\n");
 	fs.mkdirSync(path.join(home, "browsers"), { recursive: true });
 	write(path.join(home, "desktop-data", "prefs.json"), JSON.stringify({ updates: false }));
-	app = await launchApp({ ...process.env, PINE_DESKTOP_BACKGROUND: "1", PLAYWRIGHT_BROWSERS_PATH: path.join(home, "browsers"), PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_RELEASES: "" });
+	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: path.join(home, "browsers"), PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_RELEASES: "" });
 	page = await app.firstWindow();
 	await page.setViewportSize?.({ width: 1280, height: 820 }).catch(() => {});
 	await page.waitForSelector("[data-slot=empty] h1", { timeout: 30_000 });
@@ -114,7 +114,7 @@ test("a preset color picked on the agent's avatar is kept in its agent.json at o
 	await page.waitForFunction(() => document.documentElement.dataset.theme === "pmndre");
 
 	// Its conversation: the tab and the empty conversation carry it too.
-	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Open" }).click();
+	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Open conversation" }).click();
 	await page.waitForSelector("[data-slot=empty] [data-slot=avatar][data-agent=books]");
 	assert.ok((await avatars()).length >= 3, "the side bar, the tab and the empty conversation");
 	await avatarsAre(drawnIn("#e0805a"), "every avatar of books");

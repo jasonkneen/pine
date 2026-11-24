@@ -84,18 +84,23 @@ asked you for it (`pine model add`, `add_model_server`); `models.json` names it 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `main` | none | Id of the main agent. It may delegate to every other agent unless its `agent.json` says otherwise, and it is the only one that can create agents and set things up for all agents ([setup.md](setup.md)). Without this key, the agent called `main` (or else the first one) has those setup rights, but nobody delegates by default. |
+| `main` | none | Id of the main agent. It is the only one that can create agents and set things up for all agents ([setup.md](setup.md)), and the one agent that `*` in another agent's `delegates` leaves out. Without this key, the agent called `main` (or else the first one) is the main agent. A new home names `main`; a home made while a new one's was called `prime` keeps `prime`. |
 | `logLevel` | `info` | `debug`, `info`, `warn`, `error`, `silent`. Logs go to stderr; a daemon started inside the terminal UI logs to `data/pine.log`. |
 | `dataDir` | `data` | Where the database, media and control token live. |
-| `defaults.model` | none | `provider/model-id` from `models.json`: the model of every agent whose `agent.json` names none. There is no built-in fallback: an agent with neither is a configuration error, which `pine check` and the start of pine report. |
+| `defaults.model` | none | `provider/model-id` from `models.json`: the model of every agent whose `agent.json` names none. There is no built-in fallback. A new home has no default model: the first model you connect (`pine login`, `pine model add`, Settings > Models) becomes it, and until then an agent with no model named says so instead of answering. |
 | `defaults.judge` | not set | The model of the judge of goal mode (`/goal`), as `provider/model-id`. Not set: the agent's own model. A second, small model keeps the judge's call from pushing the agent's conversation out of a model server's cache. See "Goal mode" in [agents.md](agents.md). |
-| `defaults.thinking` | `off` | Reasoning level for models that can reason: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. |
+| `defaults.checker` | not set | The model on which the answer of a swarm (`/swarm`) is checked, as `provider/model-id`. Not set: the agent's own model. A check on the same model shares the misreadings of whoever wrote the answer; one on another model does not. `/swarm` is refused while this names a model that is not there. See "A swarm" in [boards.md](boards.md). |
+| `defaults.introduce` | `true` | Every agent introduces itself once, in its answer to your first message to it. `false`: none does. See "Meeting an agent" in [agents.md](agents.md). |
+| `defaults.thinking` | `medium` | Reasoning level for models that can reason: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. A model that cannot reason ignores it. |
 | `defaults.mode` | not set | The mode of every agent that names none: `auto`, `safe`, `manual`, `bypass` or `plan` (see `mode` below). Not set: `auto` for the main agent, `safe` for all others. Set it to `safe` to keep every agent, the main one too, in its sandbox. See "Modes" in [security.md](security.md). |
 | `defaults.bashTimeoutSec` | `900` | Longest a shell command may run (15 minutes: a build, an install). The model cannot raise it. A server or another program that should keep running, and whatever needs longer, is started in the background, which is not held to it ([coding.md](coding.md)). |
 | `defaults.taskTimeoutSec` | `7200` | Longest a task may run before it is aborted (two hours). |
 | `defaults.idleMs` | `15m` | A live session without work is closed after this (and resumed from disk later). |
 | `defaults.settings` | `{}` | pi settings applied to every agent, for example `{ "compaction": { "reserveTokens": 8000 } }`. They are put on top of pi's own settings files and stay in force when pi reads those files again. |
-| `limits.maxConcurrentRuns` | `2` | Model slots: how many runs talk to the model server at once. Match it to the server's parallel slots. |
+| `limits.maxConcurrentRuns` | `8` | Model slots: how many runs talk to the model server at once; the others wait their turn. A run that only waits (for sub-agents, a delegated task, your approval) gives its slot back meanwhile. With a hosted model 8 is fine; with a model server of your own (llama.cpp, LM Studio, Ollama) set it to the number of requests the server answers side by side (`-np` for llama.cpp): more only makes each slower. Settings > General > Limits: Agents at work at once. |
+| `limits.models` | none | Runs at a time on one model, by its whole name: `{ "local/qwen3-coder": 2, "local/gemma-vision": 1 }`. A whole number from 1 to 64. Such a model has a queue of its own, apart from `limits.maxConcurrentRuns`, which holds for every model without a number: a model on your own computer takes one or two requests at once where a hosted one takes many, and one endpoint can serve models that are set up differently. An agent that waits for its sub-agents gives its place up meanwhile, so a model held to 1 still gets a job with sub-agents done, one after the other. Set it in Settings > Models, on the model's line, or here; it holds from the next run on, and goes when the model's server is removed. |
+| `limits.maxSubagents` | `4` | Sub-agents one conversation runs at a time: the default of `subagents.maxParallel` for every agent whose `agent.json` names none. More tasks wait for a free place; they count towards `limits.maxConcurrentRuns` too. Settings > General > Limits: Sub-agents at a time. |
+| `limits.maxPoolTasks` | `100` | The most tasks one call of `subagent` takes as a pool, worked through a few at a time ([boards.md](boards.md), "A pool of sub-agents"). Settings > General > Limits: Largest batch of sub-agent tasks. |
 | `limits.warmSlots` | `true` | Whether pine has the idle slots of a llama.cpp model server read, in the background, what a conversation of the agent that used it last begins with, so that a new conversation or a sub-agent starts at once. See [agents.md](agents.md), "What the model server keeps". |
 | `limits.warmAfterMs` | `3000` | How long the model server has to have been left alone before an idle slot is filled, in milliseconds. |
 | `limits.slotPages` | `6` | How many conversations that had to leave their slot on a llama.cpp model server are kept in files there and read back when they come again. Needs a server started with `--slot-save-path`. `0`: none. See [agents.md](agents.md), "What the model server keeps". |
@@ -110,13 +115,15 @@ asked you for it (`pine model add`, `add_model_server`); `models.json` names it 
 | `limits.conversationDays` | `7` | A conversation in which nothing was said for this long is removed with its history, unless it is an agent's main conversation, pinned, in a group, open in a tab, subscribed to an event source, or has a schedule of its own. `0`: never. |
 | `limits.goalRounds` | `20` | Goal mode (`/goal`): how many rounds a goal gets before it stops and waits for `/goal resume`, which gives it as many again. A round is a whole turn of the agent with all its tool calls, so twenty are hours on a local model. See "Goal mode" in [agents.md](agents.md). |
 | `limits.goalIdleRounds` | `3` | Goal mode: after this many rounds in a row that the judge called "not met" and in which the agent made no tool call, the goal is paused: the agent is going in circles. `0`: never. |
+| `limits.swarmRounds` | `8` | A swarm (`/swarm`): how many turns its lead gets before the swarm stops with work left and waits for `/swarm resume`, which gives it as many again. A turn is a whole task of the lead with the sub-agents it starts ([boards.md](boards.md), "A swarm"). |
 | `limits.goalJudgeTimeout` | `90s` | Goal mode: how long the judge may take to answer. When it takes longer, that counts as no verdict, and the goal is paused. |
 | `security.approvalTimeout` | `5m` | An unanswered approval request counts as "no" after this. |
 | `security.taint` | `session` | How long a session stays tainted: until reset (`session`), until the task ends (`run`), or never (`off`). See [security.md](security.md). |
 | `security.taintTools` | `[]` | Tool name globs whose results count as outside content, besides MCP servers marked `taints`. |
 | `security.bypassWhenTainted` | `false` | Keep bypass mode in force in a session that has read outside content. Off, bypass is paused in such a session, and the agent works as in `auto` mode. |
 | `security.askAccess` | `true` | pine asks you itself when a call of an agent in the sandbox (`safe` or `manual` mode) needs a file or folder outside it, or the network: before a file tool or a shell command that names it, and on macOS after a command the sandbox refused something. `false` turns that question off: you are only asked when the agent calls `request_access`. See "When a call needs something outside" in [security.md](security.md). |
-| `ui.theme` | `pmndre` | The theme of the Pine app: a VS Code color theme in the `themes` folder of the home, by its file name without `.json` (`dracula` for `themes/dracula.json`). Chosen in Settings > App. See "Themes" in [desktop.md](desktop.md). |
+| `ui.theme` | `pmndre` | The theme of the Pine app: a VS Code color theme in the `themes` folder of the home, by its file name without `.json` (`dracula` for `themes/dracula.json`). Chosen in Settings > General. See "Themes" in [desktop.md](desktop.md). |
+| `ui.view` | a view in the folder | The view of the Pine app's panel: a file in the home's `views` folder, without `.ts`, or `off`. See [views.md](views.md). |
 | `http` | on, loopback, port 7463 | Control API and webhooks. `false` turns it off (the CLI's client commands then do not work). |
 | `http.host`, `http.port` | `127.0.0.1`, `7463` | Where the control API listens. Anything but loopback is reported by `pine check`. |
 | `http.token` | generated | Bearer token of the control API. When unset, pine generates one into `data/http-token`. |
@@ -159,7 +166,7 @@ Every key is optional; `{}` is a valid agent.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `description` | empty | Only for a home from before: what the agent is for, where its `AGENTS.md` does not say it. What an agent is for is the first paragraph of the `AGENTS.md` in its workspace (a heading above it aside), as one line of at most 160 characters: other agents read it when they choose whom to delegate to, and the Pine app and `pine agent list` show it beside its name. Write that paragraph for them ("You are gonzo. Contract law; you know the case files"). Nothing writes `description` any more. |
+| `description` | empty | Only for a home from before: what the agent is for, where its `AGENTS.md` does not say it. What an agent is for is the first paragraph of the `AGENTS.md` in its workspace (a heading above it aside), as one line of at most 240 characters: other agents read it when they choose whom to delegate to, and the Pine app and `pine agent list` show it beside its name. Write that paragraph for them ("You are gonzo. Contract law; you know the case files"). Nothing writes `description` any more. |
 | `color` | none | The agent's own color in the Pine app, written `#rrggbb` (kept in lower case): its avatar is drawn in it, and nothing else: the window keeps the theme's colors. Display only; the terminal UI does not use it. Set it on the agent's avatar in the app (at the top of its page in Settings > Agents, or Color in the side bar's menu on it), with `pine agent update <id> --color #e0805a` (`--color none` takes it away), or ask the main agent ("make scout blue"): `color` of `create_agent` and `update_agent`, which you confirm. Anything that is not `#rrggbb` is a configuration problem. |
 | `workspace` | `agents/<id>/workspace` | The agent's working folder. `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` at its top are the agent's instructions and are loaded into its prompt. Must exist when you set it. |
 | `context` | `[]` | Further instruction files to load into the system prompt. |
@@ -185,8 +192,8 @@ Every key is optional; `{}` is a valid agent.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `delegates` | `["*"]` for the agent that `main` in `pine.json` names, else `[]` | Agents this one may hand tasks to. |
-| `subagents` | on, 4 in parallel | `false`, or `{ "maxParallel": 4, "tools": [...], "mcp": true }`. `tools` narrows what sub-agents get. Which model they run on, the agent says call by call (`model` of `subagent`); without it, the agent's own. |
+| `delegates` | `["*"]` | Agents this one may hand tasks to. `*` is every other agent but the main one; name the main agent to include it. `[]`: none, and no `delegate` tool. A task it hands on runs in the other agent's mode or this one's, whichever is stricter. |
+| `subagents` | on, `limits.maxSubagents` (4) in parallel | `false`, or `{ "maxParallel": 4, "tools": [...], "mcp": true }`; without `maxParallel`, pine's `limits.maxSubagents` holds. `tools` narrows what sub-agents get. Which model they run on, the agent says call by call (`model` of `subagent`); without it, the agent's own. |
 | `publish` | `[]` | Topic patterns the `publish_event` tool may publish on. Empty: the agent has no such tool. |
 | `state.read` | `["#"]` | State keys the agent may read. |
 | `state.write` | `["agent/<id>/#"]` | State keys the agent may write. |
@@ -204,15 +211,14 @@ Every key is optional; `{}` is a valid agent.
 | `trustWorkspace` | `false` | `true` lets pi load `.pi/extensions`, `.pi/settings.json` and skills from the workspace. That is code execution inside the daemon for whoever can write there, the agent included. |
 | `approve` | `[]` | Tool calls that always need your approval: `"tool"` or `"tool:argument-glob"`, for example `"bash:*git push*"`. |
 | `approveWhenTainted` | `["publish_event", "send"]` | Tool calls that count as sending something out. Once the session has seen outside content they need your approval. A `send` through a source that reaches only you (Telegram) is a message to you and is never asked about this way; to see those first, name it in `approve` (`"send:telegram"`). |
-| `untrusted` | read-only profile | What a run started by an untrusted event may use: `{ "tools": ["read","grep","find","ls"], "mcp": [], "delegates": [], "publish": [], "stateWrite": false, "subagents": false }`. `false` refuses such runs. |
+| `untrusted` | read-only profile | What a run started by an untrusted event may use: `{ "tools": ["read","grep","find","ls"], "mcp": [], "delegates": [], "publish": [], "stateWrite": false, "subagents": false, "board": false }`. `board`: whether such a run has the board tools; what it posts counts as coming from outside ([boards.md](boards.md)). `false` in place of the whole profile refuses such runs. |
 
 ## models.json
 
 This is pi's own file; pine passes it through. It is only needed for model servers of your own:
 pi already knows the hosted providers (OpenCode, Anthropic, OpenAI and many more), and
-`pine login <provider>` supplies their credentials. `pine init` writes two providers: `dev`
-(Claude through `claude -p`, served by `pine dev-model`; the example's `defaults.model` is
-`dev/claude-haiku`) and `local` for llama.cpp.
+`pine login <provider>` supplies their credentials. `pine init` writes it with no provider in
+it, and `pine.json` with no `defaults.model`: the first model you connect becomes the default.
 
 You do not have to write an entry yourself: `pine model add <name> <address>` asks the server
 what it serves and writes it ([operations.md](operations.md), "With a model server of your

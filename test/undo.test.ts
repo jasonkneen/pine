@@ -502,8 +502,8 @@ test("tui: /undo says what was taken back and puts the message into the input, /
 	await sees("↶ taken back: “TWO");
 	await sees(`3 files restored in ~/${name}`);
 	await sees("1 changed back, 1 removed, 1 brought back");
-	await sees("not taken back: what commands did outside this folder");
-	await sees("/redo brings it back, until you send a new message");
+	await sees("not undone: changes made outside this folder");
+	await sees("/redo restores it until you send something new");
 	await sees("TAIL-OF-TWO");
 	assert.ok(!answer("ANSWER-TWO").test(text()) && answer("ANSWER-ONE").test(text()), "the conversation shows what is left of it");
 	assert.equal(read(dir, "notes.txt"), "NOTES-1\n");
@@ -524,7 +524,7 @@ test("tui: /undo says what was taken back and puts the message into the input, /
 
 	// /undo twice goes one message further each time; the message that returns to the input is the earlier one.
 	await send("/undo");
-	await sees("/undo again takes back the message before it");
+	await sees("/undo again to take back the message before it too");
 	term.type(["\x03"]);
 	await send("/undo");
 	await sees("↶ taken back: “ONE");

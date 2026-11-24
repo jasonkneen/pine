@@ -38,12 +38,10 @@ name: Release
 # Without any of them no APK is built, and the job says so; with only some of them it fails. Keep
 # that key: Android installs an update only over an app signed with the same key.
 #
-# A release from main also gets the iOS app (mobile/), attached as Pine-<version>.ipa: not signed,
-# since whoever installs it signs it with their own Apple ID (AltStore, Sideloadly). It takes no
-# secret. Its version is the release's and its build number Android's versionCode
-# (mobile/scripts/ipa.ts, which fails unless the app inside is unsigned and arm64).
+# The iOS app (mobile/) is not built here for now: its core's tests do not pass on GitHub's Xcode 27
+# preview image. Its IPA is made by hand on a Mac (npm run ipa in mobile/).
 #
-# The apps of a release (the disk images, the APK and the IPA) can be built again by hand, without publishing
+# The apps of a release (the disk images and the APK) can be built again by hand, without publishing
 # anything: Actions > Release > Run workflow, from main, with the release's version (gh workflow run
 # release.yml -f version=0.38.0). They are built from that release's tag and attached to that
 # release, in place of what is there.
@@ -125,7 +123,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     environment: release
     permissions:
-      contents: write # the disk image goes to the release
+      contents: write # the disk image, the zip and the feed go to the release
     env:
       VERSION: ${{ inputs.version || needs.release.outputs.version }}
     steps:
@@ -199,7 +197,13 @@ jobs:
           spctl --assess --type execute --verbose=2 "$app"
           xcrun stapler validate "$app"
       - if: steps.signing.outputs.ready == 'true'
-        run: gh release upload "v$VERSION" "desktop/release/Pine-$VERSION-${{ matrix.arch }}.dmg" --clobber
+        # The disk image, and what the apps in the field update from: the app zipped after its ticket was
+        # attached, and the feed that points at that zip on this release's tag (desktop/scripts/update-feed.ts).
+        run: |
+          gh release upload "v$VERSION" --clobber \
+            "desktop/release/Pine-$VERSION-${{ matrix.arch }}.dmg" \
+            "desktop/release/Pine-$VERSION-${{ matrix.arch }}.zip" \
+            "desktop/release/Pine-${{ matrix.arch }}.json"
         env:
           GH_TOKEN: ${{ github.token }}
       - if: always()
@@ -554,6 +558,15 @@ jobs:
         # The bridge, the configuration and both builds of the page: an APK is built only from what passes.
         run: npm run check --prefix mobile && npm test --prefix mobile
       - if: steps.signing.outputs.ready == 'true'
+        name: The NDK that strips the APK's native libraries
+        # The exact one mobile/android/variables.gradle names: without it AGP packages a native
+        # library with its debug symbols and only warns. libwebrtc comes stripped, but a library
+        # added later may not; the check after the build ("What a phone will say to it") fails then.
+        run: |
+          ndk="$(sed -n "s/^ *ndkVersion = '\(.*\)'/\1/p" mobile/android/variables.gradle)"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
+          echo "NDK_DIR=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+      - if: steps.signing.outputs.ready == 'true'
         name: Build the page and a signed release APK
         # On the runner's Android SDK (ANDROID_HOME) and the JDK above. The Gradle build signs with the
         # key the environment names, and is given the release's version and its code.
@@ -573,64 +586,36 @@ jobs:
         run: |
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
           "$apksigner" verify --verbose --print-certs "Pine-$VERSION.apk"
+          # The native libraries went in stripped (a missing strip tool is only a warning of AGP's).
+          unzip -q -o "Pine-$VERSION.apk" 'lib/*' -d "$RUNNER_TEMP/apk-lib"
+          for so in "$RUNNER_TEMP"/apk-lib/lib/*/*.so; do
+            if "$NDK_DIR"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -S "$so" | grep -q '\.debug_info'; then
+              echo "::error::$so carries its debug symbols: the NDK's strip tool was not found."
+              exit 1
+            fi
+          done
+      - if: steps.signing.outputs.ready == 'true'
+        name: What the APK asks of a phone
+        # The permissions of what was built, not of the manifest: a library added later can bring one
+        # of its own in when the manifests are merged. Exactly the network and its state, and the
+        # signature permission androidx.core declares under the package's name for its own receivers
+        # (DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION), which only this app holds and no owner grants.
+        run: |
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt2"
+          app=dev.pmndre.pine
+          printf '%s\n' \
+            "permission: $app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" \
+            "uses-permission: name='$app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'" \
+            "uses-permission: name='android.permission.ACCESS_NETWORK_STATE'" \
+            "uses-permission: name='android.permission.INTERNET'" | LC_ALL=C sort > "$RUNNER_TEMP/permissions-wanted"
+          "$aapt2" dump permissions "Pine-$VERSION.apk" | grep -v '^package: ' | LC_ALL=C sort > "$RUNNER_TEMP/permissions-asked"
+          if ! diff -u "$RUNNER_TEMP/permissions-wanted" "$RUNNER_TEMP/permissions-asked"; then
+            echo "::error::The APK asks for other permissions than INTERNET and ACCESS_NETWORK_STATE (the lines with + above): find what brought them in (the merged manifest, app/build/intermediates/merged_manifests) and remove them, or change this check knowingly."
+            exit 1
+          fi
       - if: steps.signing.outputs.ready == 'true'
         run: gh release upload "v$VERSION" "Pine-$VERSION.apk" --clobber
         env:
           GH_TOKEN: ${{ github.token }}
       - if: always()
         run: rm -f "$RUNNER_TEMP/release.jks"
-
-  # The iOS app of a release (mobile/): an IPA that is not signed, attached next to the APK. Whoever
-  # installs it signs it with their own Apple ID at that moment (AltStore, Sideloadly), so it needs
-  # no secret and no environment: pine has no Apple certificate or profile, and wants none.
-  ios:
-    needs: release
-    # As the app job: after a release from main, or by hand for a release there already is.
-    if: always() && !inputs.signing_trial && (github.event_name == 'workflow_dispatch' || needs.release.outputs.channel == 'latest')
-    # The image with Xcode 27 (a preview of GitHub's): the app's packages are held at versions that
-    # compile on it (swift-collections), and the images up to macos-26 stop at Xcode 26.
-    runs-on: xcode-27
-    permissions:
-      contents: write # the IPA goes to the release
-    env:
-      VERSION: ${{ inputs.version || needs.release.outputs.version }}
-    steps:
-      - run: |
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::\"$VERSION\" is not the version of a release (like 0.38.0)."
-            exit 1
-          fi
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          # By hand: the release's own commit.
-          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Use Xcode 27
-        run: |
-          xcode="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)"
-          if [ -z "$xcode" ]; then
-            echo "::error::This runner has no Xcode 27: $(ls -d /Applications/Xcode_*.app | tr '\n' ' ')"
-            exit 1
-          fi
-          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
-          DEVELOPER_DIR="$xcode/Contents/Developer" xcodebuild -version
-      - run: npm ci && npm ci --prefix desktop && npm ci --prefix mobile
-      - name: Check and test the mobile package
-        # The bridge, the configuration and both builds of the page: an IPA is built only from what passes.
-        run: npm run check --prefix mobile && npm test --prefix mobile
-      - name: Test the iOS core
-        # The Swift core against an OpenSSH sshd of the test's own and a stand-in daemon.
-        run: swift test --package-path mobile/ios-core
-      - name: Build the page and an IPA that is not signed
-        # Archived for devices with code signing off, version the release's and build number Android's
-        # versionCode; the script fails unless the app inside is unsigned and arm64.
-        run: |
-          node mobile/scripts/ipa.ts "$VERSION"
-          cp "mobile/ios/App/output/Pine-$VERSION.ipa" "Pine-$VERSION.ipa"
-      - run: gh release upload "v$VERSION" "Pine-$VERSION.ipa" --clobber
-        env:
-          GH_TOKEN: ${{ github.token }}

@@ -39,6 +39,8 @@ export interface SourceApi {
 	name: string;
 	/** What it is called in events and addresses: its name, or name@agent for an agent's own source. */
 	key: string;
+	/** The agent whose own source this is; absent for a source of all agents. */
+	agent?: string;
 	options: Record<string, any>;
 	/** Folder that relative paths in the options are meant from. */
 	base: string;
@@ -73,7 +75,10 @@ export interface SourceApi {
 	status(line: string): void;
 	/** Look at events of the system (read only): "agent/+/started", "approval/requested", ... */
 	on(pattern: string | string[], handler: (e: PineEvent) => void | Promise<void>): void;
-	/** Approval requests: put a question of its own to the owner, see the open ones, pass on the owner's answer. */
+	/**
+	 * Approval requests: put a question of its own to the owner, see the open ones, pass on the owner's answer.
+	 * An agent's own source sees and answers that agent's requests and no other's.
+	 */
 	approvals: {
 		/** Ask the owner in pine's UI. Resolves with their answer; no answer in time counts as no. */
 		ask(summary: string, why: string): Promise<boolean>;
@@ -299,7 +304,7 @@ export class SourceHost {
 				const mod: any = await import(pathToFileURL(file).href);
 				const type: SourceType | undefined = mod.type && typeof mod.type === "object" && mod.type.options ? mod.type : undefined;
 				this.types.set(name, { file, type });
-				if (!type && !SOURCE_TYPES.includes(name)) this.log.warn(`source type ${name}: ${file} exports no "type" with a schema of its options, so agents cannot set one up by tool call`);
+				if (!type && !SOURCE_TYPES.includes(name)) this.log.warn(`source type ${name}: ${file} exports no "type" with a schema of the options, so agents cannot set one up by tool call`);
 			} catch (e) {
 				this.log.error(`source type ${name} could not be loaded from ${file}: ${errText(e)}`);
 			}
@@ -330,7 +335,7 @@ export class SourceHost {
 	async addType(name: string, code: string): Promise<{ name: string; summary: string; options: string; file: string }> {
 		if (!/^[a-z][a-z0-9_-]{0,39}$/.test(name)) throw new Error(`"${name}" is not a usable type name: lowercase letters, digits, - and _, starting with a letter`);
 		if (SOURCE_TYPES.includes(name)) throw new Error(`"${name}" is one of pine's own types`);
-		if (this.cfg.sourceTypes[name]) throw new Error(`a source type "${name}" is registered already. Remove it first (remove_source_type) to put another in its place`);
+		if (this.cfg.sourceTypes[name]) throw new Error(`a source type "${name}" is registered already. Remove it first (remove_source_type) to put another in that place`);
 		fs.mkdirSync(this.typeDir(), { recursive: true, mode: 0o700 });
 		// The name carries what is in it: Node loads a file once, so a later version must be another file.
 		const file = path.join(this.typeDir(), `${name}.${crypto.createHash("sha256").update(code).digest("hex").slice(0, 10)}.ts`);
@@ -342,7 +347,7 @@ export class SourceHost {
 			type = mod.type;
 			if (!type || typeof type !== "object" || typeof type.summary !== "string" || !type.summary.trim()) throw new Error('it exports no "type" with a "summary": one line on what such a source reports');
 			const schema: any = type.options;
-			if (!schema || schema.type !== "object" || typeof schema.properties !== "object") throw new Error('its "type.options" must be a JSON schema of an object: { type: "object", properties: { ... } }');
+			if (!schema || schema.type !== "object" || typeof schema.properties !== "object") throw new Error('the module\'s "type.options" must be a JSON schema of an object: { type: "object", properties: { ... } }');
 			const taken = Object.keys(schema.properties).filter((k) => RESERVED_OPTIONS.includes(k));
 			if (taken.length) throw new Error(`an option cannot be called ${taken.join(", ")}: every source has a setting of that name already`);
 			if (type.plan !== undefined && typeof type.plan !== "function") throw new Error('"type.plan" must be a function');
@@ -568,9 +573,13 @@ export class SourceHost {
 		const ended = new AbortController();
 		run.stops.push(() => ended.abort());
 		const prefix = `source:${key}:`;
+		// An agent's own source is that agent's: another agent's questions are not shown there, nor answered from there.
+		const owner = key.includes("@") ? key.slice(key.lastIndexOf("@") + 1) : undefined;
+		const open = () => (this.approvals?.pending() ?? []).filter((r) => owner === undefined || r.agent === owner || r.of === owner);
 		const api: SourceApi = {
 			name,
 			key,
+			agent: owner,
 			options: source.options,
 			base: source.base,
 			controlPort: this.cfg.http?.port,
@@ -591,12 +600,12 @@ export class SourceHost {
 				}
 			}, `source:${key}`)),
 			approvals: {
-				ask: async (summary, why) => (this.approvals ? (await this.approvals.request({ agent: `${name} (event source)`, task: 0, tool: source.type ?? name, summary, why })).allow : false),
-				request: async (summary, why, inputs) => (this.approvals ? this.approvals.request({ agent: `${name} (event source)`, task: 0, tool: source.type ?? name, summary, why, inputs }) : { allow: false, by: "nobody" }),
-				pending: () => this.approvals?.pending() ?? [],
-				decide: (id, allow, by, always) => this.approvals?.decide(id, allow, by, always) ?? false,
+				ask: async (summary, why) => (this.approvals ? (await this.approvals.request({ agent: `${name} (event source)`, of: owner, task: 0, tool: source.type ?? name, summary, why })).allow : false),
+				request: async (summary, why, inputs) => (this.approvals ? this.approvals.request({ agent: `${name} (event source)`, of: owner, task: 0, tool: source.type ?? name, summary, why, inputs }) : { allow: false, by: "nobody" }),
+				pending: open,
+				decide: (id, allow, by, always) => open().some((r) => r.id === id) && (this.approvals?.decide(id, allow, by, always) ?? false),
 				choose: (id, choice, by) => {
-					const answer = this.approvals?.pending().find((r) => r.id === id)?.choices?.[choice];
+					const answer = open().find((r) => r.id === id)?.choices?.[choice];
 					return answer !== undefined && (this.approvals?.decide(id, true, by, false, { answer }) ?? false);
 				},
 			},
@@ -732,7 +741,7 @@ export class SourceHost {
 	private follow(key: string, command: string, onLine: (line: string) => void, signal: AbortSignal): Promise<{ code: number; error: string }> {
 		return new Promise((resolve, reject) => {
 			// Rule of the house: where the sandbox only cleans up after a command, a command without an end is not started.
-			if (sandboxKind() === "linux") return reject(new Error("a command cannot be followed on Linux: its sandbox takes away what a command must not leave behind only after the command, and this one would not end. Run it again and again instead (without \"follow\")"));
+			if (sandboxKind() === "linux") return reject(new Error("a command cannot be followed on Linux: the sandbox there takes away what a command must not leave behind only after the command, and this one would not end. Run it again and again instead (without \"follow\")"));
 			if (signal.aborted) return reject(new Error("stopped"));
 			let sh: ReturnType<SourceHost["shell"]>;
 			try {
@@ -1087,7 +1096,7 @@ export class SourceHost {
 		this.router.add(route);
 		this.wireGlobal();
 		await this.ensure(found.key);
-		this.log.info(`${agentId} subscribed its conversation "${sub.session}" to ${found.key}`);
+		this.log.info(`${agentId} subscribed the conversation "${sub.session}" to ${found.key}`);
 		// How long events are ignored after one that woke the agent (the subscription's throttle), for the agent to be told.
 		return { ...this.started(found.key), session: sub.session, pauseMs: route.throttleMs };
 	}

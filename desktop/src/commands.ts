@@ -42,13 +42,13 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{ name: "close", title: "Close tab", about: "Close this tab; the conversation stays in the list", keys: "⌘W", run: menu("close") },
-	{ name: "close-others", title: "Close other tabs", about: "Close every tab but this one; the conversations stay in the list", run: (_a, tab) => store.closeTabs("others", tab) },
+	{ name: "close-others", title: "Close other tabs", about: "Close all tabs except this one; the conversations stay in the list", run: (_a, tab) => store.closeTabs("others", tab) },
 	{ name: "close-right", title: "Close tabs to the right", about: "Close the tabs to the right of this one", run: (_a, tab) => store.closeTabs("right", tab) },
-	{ name: "close-all", title: "Close all tabs", about: "Close every tab, the agent's main conversation's too; a tab that waits for your answer stays", run: (_a, tab) => store.closeTabs("all", tab) },
-	{ name: "rename", title: "Rename conversation", about: "Another name for this conversation and its tab", hint: "<name>", chat: true, run: (args, tab) => (chat(tab) ? (args.trim() ? store.rename(tab!.agent, tab!.session, args.trim()) : store.askRename(tab!)) : undefined) },
+	{ name: "close-all", title: "Close all tabs", about: "Close all tabs, including the agent's main conversation; a tab that waits for your answer stays", run: (_a, tab) => store.closeTabs("all", tab) },
+	{ name: "rename", title: "Rename conversation", about: "Give this conversation a new name", hint: "<name>", chat: true, run: (args, tab) => (chat(tab) ? (args.trim() ? store.rename(tab!.agent, tab!.session, args.trim()) : store.askRename(tab!)) : undefined) },
 	{ name: "pin", title: "Pin conversation", about: "Keep this conversation however long it is not used", chat: true, run: (_a, tab) => (chat(tab) ? store.pin(tab!, true) : undefined) },
 	{
-		name: "group", title: "Move conversation to group", about: "Put this conversation, with its branches, into a group of the agent's conversations, or take it out of one", hint: "[name | -]", chat: true,
+		name: "group", title: "Move conversation to group", about: "Put this conversation, with the conversations branched from it, into a group of the agent's conversations, or take it out of one", hint: "[name | -]", chat: true,
 		run: (args, tab) => {
 			const t = chat(tab);
 			if (!t) return;
@@ -60,11 +60,11 @@ export const COMMANDS: Command[] = [
 	},
 	{ name: "unpin", title: "Unpin conversation", about: "Let this conversation go when it has not been used for a while", chat: true, run: (_a, tab) => (chat(tab) ? store.pin(tab!, false) : undefined) },
 	{ name: "reset", title: "Start over", about: "Forget this conversation and start fresh", chat: true, run: menu("reset") },
-	{ name: "undo", title: "Take back last message", about: "Its files are restored, the conversation forgets it, its text returns to the input", keys: "⇧⌘Z", chat: true, run: menu("undo") },
-	{ name: "branch", title: "Branch conversation", about: "Go on in a new conversation that has all of this one; this one stays as it is. A message of yours branches from there. --worktree: the new one works in a worktree of its own", hint: "[--worktree]", chat: true, run: (args) => store.command(/(^|\s)(--worktree|-w)(\s|$)/.test(args) ? "branch-worktree" : "branch") },
-	{ name: "worktree", title: "Worktree", about: "Work in a checkout of the folder's repository of its own, apart from other conversations; in one: merge it, update it or discard it", chat: true, run: menu("worktree") },
+	{ name: "undo", title: "Take back last message", about: "Undo your last message: files the agent changed for it go back to how they were, and what you wrote goes back into the message box", keys: "⇧⌘Z", chat: true, run: menu("undo") },
+	{ name: "branch", title: "Branch conversation", about: "Go on in a new conversation that has all of this one; this one stays as it is. A message of yours branches from there. --worktree: the new one works in a separate worktree", hint: "[--worktree]", chat: true, run: (args) => store.command(/(^|\s)(--worktree|-w)(\s|$)/.test(args) ? "branch-worktree" : "branch") },
+	{ name: "worktree", title: "Worktree", about: "Work in a separate checkout of the folder's repository, apart from other conversations; in one: merge it, update it or discard it", chat: true, run: menu("worktree") },
 	{ name: "redo", title: "Bring back what was taken back", about: "Until you send a new message", keys: "⇧⌘Y", chat: true, run: menu("redo") },
-	{ name: "compact", title: "Shorten the conversation", about: "Its earlier part becomes a summary, which frees the model's context", chat: true, run: menu("compact") },
+	{ name: "compact", title: "Shorten the conversation", about: "The earlier part becomes a summary, which frees the model's context", chat: true, run: menu("compact") },
 	{
 		name: "folder", title: "Folder of this conversation", about: "Open a folder of yours for it, or none", hint: "[path|none]", chat: true,
 		run: (args, tab) => {
@@ -75,18 +75,20 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "code", title: "Side panel", about: "The agent, its files, changes, tool output, what is running and a terminal, beside the conversation", hint: "[agent|files|changes|turn|output|running|terminal|off]", keys: "⌥⌘B",
+		name: "code", title: "Side panel", about: "The agent, files, changes, tool output, what is running, the board and a terminal, beside the conversation", hint: "[agent|files|changes|turn|output|running|board|terminal|off]", keys: "⌥⌘B",
 		run: (args) => {
 			const word = args.trim().toLowerCase();
 			if (!word) return store.command("code");
 			if (word === "off") return void (store.close("code"), store.touch());
-			if (!["agent", "changes", "turn", "files", "output", "running", "terminal"].includes(word)) return store.flash("The panel shows: agent, files, changes, turn, output, running, terminal.");
+			if (!["agent", "changes", "turn", "files", "output", "running", "board", "terminal"].includes(word)) return store.flash("The panel shows: agent, files, changes, turn, output, running, board, terminal.");
 			return store.command(`code-${word}`);
 		},
 	},
 	{ name: "terminal", title: "Terminal", about: "A shell of your own in the conversation's folder, in the side panel", keys: "⌃`", chat: true, run: () => store.command("code-terminal") },
 	{ name: "browser", title: "Browser", about: "The agent's browser, in an aside at the right of the window", keys: "⇧⌘B", run: menu("browser") },
+	{ name: "view", title: "View", about: "All of pine at a glance, drawn by the view in pine's views folder, in a panel at the right", keys: "⇧⌘O", run: menu("view") },
 	{ name: "goal", title: "Goal", about: "Keep the agent working until something is reached", hint: "[objective|pause|resume|clear]", chat: true, run: (args, tab) => (chat(tab) ? (args.trim() ? store.setGoal(tab!, args) : store.askGoal(tab!)) : undefined) },
+	{ name: "swarm", title: "Swarm", about: "Have the agent lead a job: sub-agents work it through on the board, and the answer is checked", hint: "[what is to be done|pause|resume|clear]", chat: true, run: (args, tab) => (chat(tab) ? store.setSwarm(tab!, args) : undefined) },
 	{ name: "stop", title: "Stop", about: "Stop what the agent is doing", keys: "⌘.", run: (_a, tab) => (tab?.busy ? store.stop(tab) : store.flash("Nothing is running.")) },
 	{
 		name: "model", title: "Model", about: "Show or switch this agent's model", hint: "[provider/id]", keys: "⇧⌘M", chat: true,
@@ -269,6 +271,7 @@ export const COMMANDS: Command[] = [
 	{ name: "settings", title: "Settings", about: "Agents, models, MCP servers, skills, events and pine's own settings", keys: "⌘,", run: menu("settings") },
 	{ name: "sidebar", title: "Toggle sidebar", about: "Show or hide the list of agents and conversations", keys: "⌘B", run: menu("sidebar") },
 	{ name: "open", title: "Open a folder", about: "A conversation that works in a folder of yours", keys: "⌘O", run: menu("open-folder") },
+	{ name: "device", title: "Add a device", about: "Pair a phone or a browser with this computer: a code to scan, or a link", keys: "⇧⌘D", run: menu("add-device") },
 	{ name: "updates", title: "Check for updates", about: "Ask GitHub whether there is a newer Pine app", run: menu("updates") },
 	{ name: "help", title: "Keys and commands", about: "What can be typed and pressed", run: menu("help") },
 ];

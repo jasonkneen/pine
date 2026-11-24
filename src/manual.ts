@@ -38,6 +38,7 @@ const SYNONYMS: string[][] = [
 	["source", "watch", "monitor", "observe", "listen", "trigger", "event", "sensor", "feed"],
 	["subscribe", "subscription", "listen", "follow", "wake", "notify", "notification"],
 	["unsubscribe", "stop", "mute", "silence"],
+	["introduce", "introduction", "hello", "hatch", "greet", "greeting", "welcome", "onboarding", "meet"],
 	["mcp", "server", "connector", "integration", "plugin", "extension", "tool"],
 	["skill", "procedure", "howto", "recipe", "playbook", "instruction", "knowhow"],
 	["secret", "token", "password", "key", "credential", "apikey", "env"],
@@ -48,6 +49,11 @@ const SYNONYMS: string[][] = [
 	["theme", "colour", "color", "colorscheme", "appearance", "skin"],
 	["branch", "fork", "split", "offshoot", "copy", "duplicate", "clone", "sidetrack", "tangent"],
 	["worktree", "worktrees", "checkout", "isolated", "collide", "clash", "interfere", "overwrite", "simultaneously"],
+	// Boards: what somebody who has not heard the word calls agents that share tasks and findings.
+	["board", "blackboard", "kanban", "backlog", "coordinate", "coordination", "collaborate", "claim", "findings"],
+	["swarm", "team", "crew", "fleet", "orchestrate", "orchestrator", "orchestration", "lead", "coordinator", "parallelize", "fan-out"],
+	["check", "verify", "verifier", "critic", "reviewer", "review", "validate", "judge", "audit"],
+	["stages", "stage", "phases", "phase", "dependency", "dependencies", "depends", "pipeline", "sequence"],
 	["interface", "ui", "gui", "frontend", "dashboard", "widget", "panel"],
 	["click", "press", "tap", "button", "pressed", "clicked"],
 	// Not "theme": its stem is "them", a word of every other question.
@@ -58,6 +64,12 @@ const SYNONYMS: string[][] = [
 	["android", "mobile", "apk", "smartphone", "tablet", "cellphone"],
 	["iphone", "ios", "ipa", "altstore", "sideloadly", "sideload", "mobile"],
 	["vpn", "tailscale", "tailnet", "funnel", "zerotier", "wireguard", "tunnel", "reachable"],
+	// Browser access: what an owner calls pairing a device by the QR code the Pine app shows.
+	["pair", "pairing", "paired", "qr", "qrcode", "barcode", "scan"],
+	// What an owner calls taking a paired device away: Forget on the phone, Remove in the Pine app.
+	["forget", "unpair", "unpaired", "unlink", "revoke", "revoked"],
+	// How a scanned link opens the mobile app: App Links on Android, the `pine:` scheme on iOS.
+	["applinks", "applink", "deeplink", "deeplinks"],
 	["fingerprint", "hostkey", "known_hosts", "knownhosts"],
 	["rss", "atom", "podcast", "blog", "newsletter", "release", "changelog", "syndication"],
 	["calendar", "ical", "ics", "icalendar", "webcal", "caldav", "appointment", "meeting", "agenda"],
@@ -79,7 +91,8 @@ const SYNONYMS: string[][] = [
 	["system", "computer", "mac", "laptop", "sleep", "wake", "lock", "unlock", "battery"],
 	["catalogue", "catalog", "family", "families", "declare", "declared", "declaration", "toolset", "grouped", "schema"],
 	["cache", "cached", "caching", "slot", "warm", "reread", "reprocess", "reprocessing", "kept", "prefix", "page", "paging"],
-	["undo", "redo", "revert", "rollback", "rewind", "restore", "checkpoint", "snapshot", "unsend", "mistake"],
+	// Not "redo": it is the opposite of undo, and with it every undo part outranked the parts about /redo.
+	["undo", "revert", "rollback", "rewind", "restore", "checkpoint", "snapshot", "unsend", "mistake"],
 	["taint", "tainted", "outside", "untrusted", "injection", "external", "hostile"],
 	["trust", "owner", "trusted", "yours"],
 	["scope", "local", "global"],
@@ -89,6 +102,7 @@ const SYNONYMS: string[][] = [
 	["model", "llm", "provider", "inference", "endpoint"],
 	["telegram", "messenger", "phone", "chat", "bot"],
 	["pair", "pairing", "link", "connect", "bind"],
+	["birdseye", "bird", "glance", "overview", "everything", "visualize", "visualise", "office", "house", "pixel", "robot", "plugin", "views", "workshop", "santa", "elf", "elves", "christmas", "diagram", "boxes"],
 	["webhook", "hook", "callback", "http", "post"],
 	["http", "url", "website", "web", "page", "site", "address", "poll", "scrape"],
 	["command", "shell", "bash", "script", "terminal", "cli"],
@@ -393,7 +407,9 @@ export function createManual(parts: Part[]): Manual {
 					// A title that says what was asked, in the query's words or in the manual's own for them.
 					const title = entry.fields[0].tf;
 					const named = direct.filter((w) => title.has(w) || [...(SYNONYM_MAP.get(w) ?? [])].some((syn) => title.has(syn))).length;
-					if (named === direct.length) total += direct.length === entry.fields[0].len ? 4 : 2.5;
+					// A title that is the query, word for word, is the thing that was asked for by its name: "/redo", "bashTimeoutSec".
+					const exact = direct.length === entry.fields[0].len && direct.every((w) => title.has(w));
+					if (named === direct.length) total += exact ? 6 : direct.length === entry.fields[0].len ? 4 : 2.5;
 					else total += (named / direct.length) * 1.5;
 					if (joined.length > 5 && title.has(stem(joined))) total += 4;
 					// A question in several words asks how something is; the section explains it, a row only names it.
@@ -492,7 +508,7 @@ export function showSearch(manual: Manual, queries: string[], limit = 6): string
 		out.push(`"${q}": ${r.hits.length} of ${r.total} parts, the best first`);
 		r.hits.forEach((h, i) => out.push(`${i + 1}. ${h.id}   (${h.where}${h.note ? `, ${h.note}` : h.kind === "section" ? `, ${h.chars} characters` : ", one row of a table"})\n   ${h.line}`));
 	}
-	out.push(`Read a part in full by its id (the first word of an entry), several at once if you like. A line above is only the line that matched: read the part before you rely on it.`);
+	out.push(`Read a part in full by id (the first word of an entry), several at once if you like. A line above is only the line that matched: read the part before you rely on it.`);
 	return out.join("\n");
 }
 
@@ -507,7 +523,7 @@ export function showRead(manual: Manual, ids: string[], budget = 14_000): string
 			continue;
 		}
 		if (used && used + r.text.length > budget) {
-			out.push(`(not shown, to keep this answer short: ${id}. Read it on its own.)`);
+			out.push(`(not shown, to keep this answer short: ${id}. Read it separately.)`);
 			continue;
 		}
 		used += r.text.length;

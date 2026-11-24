@@ -3,6 +3,11 @@ ext {
     minSdkVersion = 26
     compileSdkVersion = 36
     targetSdkVersion = 36
+    // The NDK whose strip tool takes the debug symbols out of the native libraries the app packs. libwebrtc
+    // (app/build.gradle) is published stripped already; without this exact NDK installed, AGP would
+    // package a library that is not as it is, with a warning only: the release job installs it and
+    // refuses an APK whose libraries carry debug symbols (release.yml).
+    ndkVersion = '29.0.14206865'
     androidxActivityVersion = '1.11.0'
     androidxAppCompatVersion = '1.7.1'
     androidxCoordinatorLayoutVersion = '1.3.0'

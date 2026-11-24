@@ -1,25 +1,28 @@
 // Settings: everything about pine that is otherwise a command in a shell or a sentence to the
 // main agent. Each page asks the daemon what there is and tells it what to change; the daemon
 // checks every change as it checks the main agent's, and nothing here writes a file itself.
-import { AudioLinesIcon, BookIcon, LaptopIcon, ServerIcon, TerminalSquareIcon, CheckIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PencilIcon, PlugIcon, PlusIcon, RotateCwIcon, SettingsIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowLeftIcon, AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Sidebar as SidebarRoot, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@/components/ui/sidebar";
+import { Sidebar as SidebarRoot, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@/components/ui/sidebar";
 import { Pulse } from "@/components/pulse";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "cn";
-import { Fragment, type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { type AgentDetail, api, type LoginState, type Route, type Setting, type SourceType } from "./api.ts";
+import { type ComponentProps, Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type AgentDetail, api, type LoginState, type ModelServer, type Provider, type Route, type Setting, type SourceType } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { Editor } from "./CodePanel.tsx";
-import { store, useModel } from "./model.ts";
+import { store, type UpdatePhase, useModel, useSignal } from "./model.ts";
 import { ago, errText, MODES, newApp, plural, REASONING, short, tilde } from "./text.ts";
 import type { DialogRootActions } from "@base-ui/react/dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -31,42 +34,79 @@ import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyView } from "@/components/empty-view";
 import { useLoad } from "./use-load.ts";
+import { APP_DOWNLOAD, computerWord, isPaired, meetingLine, type NearbyFound, reachedThrough, relayLine } from "./machines.ts";
 import { Textarea } from "@/components/ui/textarea";
 import { type Look, type ThemeEntry } from "./theme.ts";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { ModelNotice } from "@/components/model-notice";
 import { AgentColorPicker, AgentNameInput } from "@/components/agent-identity";
+import { BrowserAccess } from "./BrowserAccess.tsx";
+import { Control, CONTROL, Page, Section } from "./settings-parts.tsx";
+import { type Entry, entries, GROUPS, LABELS, type Lists, type Place, search } from "./settings-index.ts";
+import { NearbyComputers, PairLinkField } from "./Pairing.tsx";
 
-const SECTIONS: Array<{ id: string; label: string; icon: LucideIcon }> = [
-	{ id: "general", label: "General", icon: SlidersHorizontalIcon },
-	{ id: "agents", label: "Agents", icon: UsersIcon },
-	{ id: "models", label: "Models", icon: CpuIcon },
-	{ id: "mcp", label: "MCP servers", icon: PlugIcon },
-	{ id: "skills", label: "Skills", icon: BookIcon },
-	{ id: "events", label: "Events", icon: ZapIcon },
-	{ id: "instructions", label: "Instructions", icon: PencilIcon },
-	{ id: "environments", label: "Environments", icon: ServerIcon },
-	{ id: "app", label: "App", icon: SettingsIcon },
-];
+const SECTIONS: Array<{ id: string; label: string; icon: LucideIcon }> = (
+	[
+		["general", SlidersHorizontalIcon],
+		["agents", UsersIcon],
+		["models", CpuIcon],
+		["mcp", PlugIcon],
+		["skills", BookIcon],
+		["events", ZapIcon],
+		["environments", ServerIcon],
+		["access", MonitorSmartphoneIcon],
+	] as const
+).map(([id, icon]) => ({ id, label: LABELS[id], icon }));
+
+/**
+ * Whether Settings > Browser access is offered: only by the desktop app's bridge, which has its calls,
+ * and only while the app uses this computer's pine. Browser access is this computer's door: the web client,
+ * the mobile apps and another machine's pine have none to show.
+ */
+const offersAccess = (s: { local: boolean; remote?: string }) => s.local && !s.remote && typeof bridge.access === "function";
+
+/** The sections the navigation lists for this state: every one, but Browser access only where it is offered. */
+const offeredSections = (s: { local: boolean; remote?: string }) => SECTIONS.filter((x) => x.id !== "access" || offersAccess(s));
+
+function Access() {
+	return (
+		<Page title="Browser access" lead={`Your conversations in a browser on your phone or another computer, with this ${computerWord(store.platform)}'s pine. A device is let in once by scanning a code here, and connects by itself from then on.`}>
+			<BrowserAccess />
+		</Page>
+	);
+}
 
 // Every page is made of stock Item, Field, Badge and Alert, written out where they are used. Some
 // carry a class the desktop tests look for (set-group, item, name, ctl, form, log, tag, notice,
 // good, warn, mono): it carries no style. An Item's description is shown whole and broken anywhere
 // (`line-clamp-none wrap-anywhere`): stock cuts it after two lines, and here it is what explains
 // the thing (a path, an address, a list of models). A Badge's variant follows its tone: default
-// for good, outline for warn, destructive for bad, secondary for none.
+// for a state that is good (connected, signed in), outline for warn, destructive for bad, secondary for
+// none. A choice is not a state: a mode is secondary, and only bypass, where nothing asks, is destructive.
 
-function Page({ title, lead, children, actions }: { title: ReactNode; lead?: ReactNode; children: ReactNode; actions?: ReactNode }) {
+/**
+ * A setting's text as pine writes it: a first paragraph, then lines that say what each value means
+ * ("safe: in the sandbox, …"). Those are drawn as a short list with the value in front.
+ */
+function About({ text }: { text: string }) {
+	const [first, ...rest] = text.split("\n");
+	const values = rest.map((line) => /^([^:]{1,24}): (.+)$/.exec(line)).filter((m): m is RegExpExecArray => m !== null);
 	return (
-		<div data-slot="settings-page" className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-6 pb-16 select-text @lg/settings:px-9 @lg/settings:pt-8">
-			<div className="flex items-start gap-2">
-				<div className="min-w-0 flex-1">
-					<h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-					{lead ? <p className="mt-1 max-w-2xl text-muted-foreground">{lead}</p> : null}
-				</div>
-				{actions}
-			</div>
-			{children}
-		</div>
+		<>
+			<span className="block">{first}</span>
+			{values.length === rest.length && values.length ? (
+				<span className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+					{values.map((m) => (
+						<Fragment key={m[1]}>
+							<span className="font-medium text-foreground">{m[1]}</span>
+							<span>{m[2]}</span>
+						</Fragment>
+					))}
+				</span>
+			) : rest.length ? (
+				<span className="block whitespace-pre-line">{rest.join("\n")}</span>
+			) : null}
+		</>
 	);
 }
 
@@ -79,21 +119,139 @@ const scopeText = (scope: string, session?: string) => (scope === "global" ? "al
 // (a phone, or a wide panel beside), measured on the settings themselves, not on the window.
 const FORM_GRID = "grid grid-cols-1 @lg/settings:grid-cols-2";
 
-// A single-choice toggle group hands back a list, empty when its pressed item is pressed again: that keeps the choice.
-const one = <T,>(set: (value: T) => void) => (values: T[]) => {
-	if (values[0] !== undefined) set(values[0]);
-};
+/**
+ * One out of a few in a form, as a stock Select across the form's width. Pressed buttons were hard to tell
+ * apart in some themes; a select says the choice in words.
+ */
+function Choose<T extends string>({ id, items, value, onChange }: { id: string; items: Array<{ value: T; label: string }>; value: T; onChange: (value: T) => void }) {
+	return (
+		<Select items={items} value={value} onValueChange={(v) => v && onChange(v as T)}>
+			<SelectTrigger id={id} className="w-full">
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				<SelectGroup>
+					{items.map((o) => (
+						<SelectItem key={o.value} value={o.value}>
+							{o.label}
+						</SelectItem>
+					))}
+				</SelectGroup>
+			</SelectContent>
+		</Select>
+	);
+}
 
 // ---- general ----------------------------------------------------------------------------------------
 
-function SettingRow({ s, models, reload }: { s: Setting; models: string[]; reload: () => void }) {
+type SettingsItemProps = Omit<ComponentProps<typeof Item>, "title" | "variant" | "size"> &
+	(
+		| {
+				skeleton?: false;
+				title: ReactNode;
+				/** One line, or a few, each an ItemDescription; `children` follow them, for lines of another shape. */
+				description?: ReactNode | ReactNode[];
+				media?: ReactNode;
+				mediaVariant?: ComponentProps<typeof ItemMedia>["variant"];
+				actions?: ReactNode;
+				titleClassName?: string;
+				descriptionClassName?: string;
+				contentClassName?: string;
+				actionsClassName?: string;
+				/** data-* attributes of the actions, for a test to find a setting by. */
+				actionsProps?: { [data: `data-${string}`]: string };
+			}
+		| { skeleton: true; title?: undefined; description?: undefined; media?: undefined; actions?: undefined }
+	);
+
+/**
+ * The outline row the Settings lists are made of: a title (with its badges), a line or a few below it,
+ * and actions at its end. With `skeleton`, bars of the same shape while its list loads.
+ */
+export function SettingsItem(props: SettingsItemProps) {
+	if (props.skeleton) {
+		const { skeleton: _, title: _t, description: _d, media: _m, actions: _a, children: _c, ...rest } = props;
+		return (
+			<Item data-slot="settings-item" variant="outline" size="sm" {...rest}>
+				<ItemContent className="min-w-0 gap-2">
+					<Skeleton className="h-4 w-32" />
+					<Skeleton className="h-3.5 w-3/4" />
+				</ItemContent>
+				<ItemActions><Skeleton className="h-8 w-20" /></ItemActions>
+			</Item>
+		);
+	}
+	// A real row keeps Item's own data-slot (item): the tests find rows by it.
+	const { skeleton: _, title, description, media, mediaVariant, actions, titleClassName, descriptionClassName, contentClassName, actionsClassName, actionsProps, children, ...rest } = props;
+	const lines = Array.isArray(description) ? description : description === undefined ? [] : [description];
+	return (
+		<Item variant="outline" size="sm" {...rest}>
+			{media ? <ItemMedia variant={mediaVariant}>{media}</ItemMedia> : null}
+			<ItemContent className={cn("min-w-0", contentClassName)}>
+				<ItemTitle className={titleClassName}>{title}</ItemTitle>
+				{lines.map((line, i) => <ItemDescription key={i} className={descriptionClassName}>{line}</ItemDescription>)}
+				{children}
+			</ItemContent>
+			{actions ? <ItemActions className={actionsClassName} {...actionsProps}>{actions}</ItemActions> : null}
+		</Item>
+	);
+}
+
+/** A select whose options are still loading: its place, pending, rather than a partial list. */
+function SelectPending({ id }: { id?: string }) {
+	return <Skeleton id={id} data-pending="" className={cn(CONTROL, "h-8")} />;
+}
+
+/** A field of Settings whose value comes late: its title and line as bars, holding its place. */
+function FieldSkeleton(props: ComponentProps<"div">) {
+	return (
+		<Field orientation="responsive" {...props}>
+			<FieldContent className="min-w-0 gap-2">
+				<Skeleton className="h-4 w-36" />
+				<Skeleton className="h-3.5 w-3/4" />
+			</FieldContent>
+			<Skeleton className="h-8 w-24" />
+		</Field>
+	);
+}
+
+/** A Settings list on its first load: a few skeleton rows in place of its items. */
+function SettingsItemsSkeleton({ count = 3 }: { count?: number }) {
+	return Array.from({ length: count }, (_, i) => <SettingsItem key={i} skeleton />);
+}
+
+/** A group of General's settings while they load: its title and a few rows of bars. */
+function SettingsGroupSkeleton() {
+	return (
+		<section data-slot="settings-group-skeleton" className="flex flex-col gap-3">
+			<div className="flex flex-col gap-1.5">
+				<Skeleton className="h-5 w-40" />
+				<Skeleton className="h-4 w-2/3" />
+			</div>
+			<FieldGroup>
+				{[0, 1, 2].map((i) => (
+					<div key={i} className="flex items-center justify-between gap-4">
+						<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+							<Skeleton className="h-4 w-36" />
+							<Skeleton className="h-3.5 w-3/4" />
+						</div>
+						<Skeleton className="h-8 w-40" />
+					</div>
+				))}
+			</FieldGroup>
+		</section>
+	);
+}
+
+function SettingRow({ s, models, reload }: { s: Setting; models?: string[]; reload: () => void }) {
 	const [draft, setDraft] = useState<string>();
 	const id = useId();
+	const name = s.title ?? s.key;
 	const set = async (value: unknown) => {
 		const done = await store.attempt(() => api.setSetting(s.key, value));
 		if (!done) return;
 		setDraft(undefined);
-		store.flash(done.live ? `${s.key} is now ${done.now}.` : `${s.key} is saved; it holds from the next start of pine.`, "good", 3000);
+		store.flash(done.live ? `${name}: ${done.now}.` : `${name} is saved. It takes effect when pine restarts.`, "good", 3000);
 		reload();
 		void store.refreshTaints();
 		store.agents = await store.askAgents().catch(() => store.agents);
@@ -104,18 +262,19 @@ function SettingRow({ s, models, reload }: { s: Setting; models: string[]; reloa
 	const unset = /^not set/.test(s.now) || s.now === "none";
 	let control: ReactNode;
 	if (k === "boolean") control = <Switch id={id} checked={s.now === "true"} onCheckedChange={(on) => void set(on)} />;
+	else if (k === "model" && !models) control = <SelectPending id={id} />;
 	else if (k === "model" || (typeof k === "object" && "one" in k)) {
 		const items =
 			k === "model"
-				? [{ value: "", label: unset ? s.now : "pine's default" }, ...(!unset && !models.includes(s.now) ? [s.now] : []).concat(models).map((m) => ({ value: m, label: m }))]
+				? [{ value: "", label: unset ? s.now.replace(/^not set \((.+)\)$/, "$1") : "pine's default" },...(!unset && !models!.includes(s.now) ? [s.now] : []).concat(models!).map((m) => ({ value: m, label: m }))]
 				: [...(k.one.includes(s.now) ? [] : [{ value: "", label: s.now }]), ...k.one.map((v) => ({ value: v, label: v }))];
 		const value = k === "model" ? (unset ? "" : s.now) : k.one.includes(s.now) ? s.now : "";
 		control = (
 			<Select items={items} value={value} onValueChange={(v) => void set(v || "default")}>
-				<SelectTrigger id={id} className="w-48">
+				<SelectTrigger id={id} className={CONTROL}>
 					<SelectValue />
 				</SelectTrigger>
-				<SelectContent>
+				<SelectContent alignItemWithTrigger={false} align="end">
 					<SelectGroup>
 						{items.map((o) => (
 							<SelectItem key={o.value} value={o.value}>
@@ -127,117 +286,124 @@ function SettingRow({ s, models, reload }: { s: Setting; models: string[]; reloa
 			</Select>
 		);
 	} else {
-		const hint = typeof k === "object" ? `A whole number from ${k.from} to ${k.to}` : "A time such as 90s or 5m";
+		const hint = typeof k === "object" ? `A whole number from ${k.from} to ${k.to}. Enter to save.` : "A time such as 90s or 5m. Enter to save.";
+		// Saved on Enter or when the field is left: no button that comes and goes beside it.
+		const commit = () => (draft === undefined || draft.trim() === s.now ? setDraft(undefined) : void set(draft.trim()));
 		control = (
-			<>
-				<HoverTooltip>
-					<TooltipTrigger render={<Input id={id} className="w-28 font-mono" value={draft ?? s.now} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && draft !== undefined && void set(draft)} />} />
-					<TooltipContent>{hint}</TooltipContent>
-				</HoverTooltip>
-				{draft !== undefined && draft !== s.now ? <Button size="xs" onClick={() => void set(draft)}>Save</Button> : null}
-			</>
+			<HoverTooltip>
+				<TooltipTrigger render={<Input id={id} className={cn(CONTROL, "font-mono")} value={draft ?? s.now} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === "Enter" ? commit() : e.key === "Escape" ? setDraft(undefined) : undefined)} />} />
+				<TooltipContent>{hint}</TooltipContent>
+			</HoverTooltip>
 		);
 	}
 	return (
-		<Field orientation={k === "boolean" ? "horizontal" : "responsive"}>
-			<FieldContent>
+		<Field orientation={k === "boolean" ? "horizontal" : "responsive"} data-setting-key={s.key}>
+			<FieldContent className="min-w-0">
 				<FieldLabel htmlFor={id}>
-					<span>{s.title ?? s.key}</span>
 					{s.title ? (
 						<HoverTooltip>
-							<TooltipTrigger render={<span className="font-mono font-normal text-muted-foreground">{s.key}</span>} />
-							<TooltipContent>Its name in pine.json, and for the main agent</TooltipContent>
+							<TooltipTrigger render={<span>{s.title}</span>} />
+							<TooltipContent>
+								In pine.json: <span className="font-mono">{s.key}</span>. The main agent knows the setting by this name.
+							</TooltipContent>
 						</HoverTooltip>
-					) : null}
-					{s.live ? null : <Badge variant="secondary">from the next start</Badge>}
-					{saved ? <Badge variant="outline">saved: {saved}</Badge> : null}
+					) : (
+						<span className="font-mono">{s.key}</span>
+					)}
+					{s.live ? null : <Badge variant="secondary">after a restart</Badge>}
+					{saved ? <Badge variant="outline">after a restart: {saved}</Badge> : null}
 				</FieldLabel>
 				<FieldDescription>
-					<span className="whitespace-pre-line">{s.about}</span>
+					<About text={s.about} />
 				</FieldDescription>
 			</FieldContent>
-			<div className="flex items-center gap-1.5">{control}</div>
+			<Control>{control}</Control>
 		</Field>
 	);
 }
 
+
 function General() {
+	const s = useModel(store);
 	const overview = useLoad(() => api.overview());
 	const settings = useLoad(() => api.settings());
 	const models = useLoad(() => api.models());
-	const groups: Array<[string, string]> = [["defaults.", "What agents start from"], ["limits.", "Limits"], ["security.", "Security"]];
+	const notes = overview.data ? [...overview.data.warnings, ...overview.data.modelNotes] : [];
 	return (
-		<Page title="General" lead="pine's own settings. A change is checked by pine before it is written; one that would not load is not kept.">
-			{overview.data ? (
-				<>
-					<ItemGroup>
-						<Item variant="outline">
-							<ItemContent className="min-w-0">
-								<ItemTitle>pine {overview.data.version}</ItemTitle>
-								<ItemDescription className="line-clamp-none wrap-anywhere">{`Home: ${tilde(overview.data.home)} · main agent: ${overview.data.main} · ${overview.data.sandbox ? "sandbox available" : "no sandbox on this system"}`}</ItemDescription>
-							</ItemContent>
-							<ItemActions>
-								<Button variant="outline" size="xs" className={cn(store.remote && "hidden")} onClick={() => void bridge.reveal(overview.data!.log)}><ExternalLinkIcon data-icon="inline-start" />Show log</Button>
-							</ItemActions>
-						</Item>
-					</ItemGroup>
-					{overview.data.warnings.length || overview.data.modelNotes.length ? (
-						<>
-							<h2 className="flex items-center gap-2 text-base font-medium">Notes on this setup</h2>
-							{[...overview.data.warnings, ...overview.data.modelNotes].map((w, i) => (
-								<Alert key={i}>
-									<TriangleAlertIcon />
-									<AlertDescription className="wrap-anywhere">{w}</AlertDescription>
-								</Alert>
-							))}
-						</>
-					) : null}
-				</>
-			) : overview.error ? (
-				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{overview.error}</AlertDescription></Alert>
-			) : (
-				<Pulse label="Loading" className="m-auto" />
-			)}
+		<Page title="General" lead="This app, the pine it uses, and what all agents start from. pine checks each change before it saves it.">
+			<AppSections overview={overview.data} />
+			{notes.length ? (
+				<Section title="Worth a look" about="pine noticed these about this setup.">
+					<div className="flex flex-col gap-2">
+						{notes.map((w, i) => (
+							<Alert key={i}>
+								<TriangleAlertIcon />
+								<AlertDescription className="wrap-anywhere">{w}</AlertDescription>
+							</Alert>
+						))}
+					</div>
+				</Section>
+			) : null}
+			{!overview.data && !overview.error ? <div data-slot="settings-overview-skeleton"><SettingsItem skeleton /></div> : null}
+			{overview.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{overview.error}</AlertDescription></Alert> : null}
 			{settings.data ? (
-				groups.map(([prefix, title]) => (
-					<FieldSet key={prefix}>
-						<FieldLegend>{title}</FieldLegend>
+				GROUPS.map((g) => (
+					<Section key={g.prefix} title={g.title} about={g.about}>
 						<FieldGroup>
-							{settings.data!.filter((s) => s.key.startsWith(prefix)).map((s) => <SettingRow key={s.key} s={s} models={models.data ?? []} reload={settings.reload} />)}
+							{settings.data!.filter((x) => x.key.startsWith(g.prefix)).map((x) => <SettingRow key={x.key} s={x} models={models.data ?? (models.error ? [] : undefined)} reload={settings.reload} />)}
 						</FieldGroup>
-					</FieldSet>
+					</Section>
 				))
 			) : settings.error ? (
 				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{settings.error}</AlertDescription></Alert>
 			) : (
-				<Pulse label="Loading" className="m-auto" />
+				GROUPS.map((g) => <SettingsGroupSkeleton key={g.prefix} />)
 			)}
+			<p className="text-muted-foreground">Pine {s.versions.app}{s.local ? ` · Electron ${s.versions.electron}` : ""}</p>
 		</Page>
 	);
 }
 
 // ---- agents -----------------------------------------------------------------------------------------
 
-/** Several out of a list, on stock ToggleGroup. */
-function Checks({ label, all, value, onChange, id }: { label: string; all: string[]; value: string[]; onChange: (v: string[]) => void; id?: string }) {
+/**
+ * Several out of a list, as stock Checkboxes in two columns where there is room: each with its name and,
+ * where there is one, a few words on it.
+ */
+function CheckList({ label, items, onToggle }: { label: string; items: Array<{ value: string; label: ReactNode; about?: string; checked: boolean; disabled?: boolean }>; onToggle: (value: string, on: boolean) => void }) {
+	const id = useId();
 	return (
-		<ToggleGroup id={id} aria-label={label} multiple variant="outline" size="sm" className="flex-wrap" value={value} onValueChange={(v) => onChange(v)}>
-			{all.map((x) => (
-				<ToggleGroupItem key={x} value={x}>
-					{value.includes(x) ? <CheckIcon data-icon="inline-start" /> : null}
-					{x}
-				</ToggleGroupItem>
+		<FieldGroup role="group" aria-label={label} className="grid grid-cols-1 gap-3 @md/field-group:grid-cols-2">
+			{items.map((x) => (
+				<Field key={x.value} orientation="horizontal" data-disabled={x.disabled || undefined}>
+					<Checkbox id={`${id}-${x.value}`} checked={x.checked} disabled={x.disabled} onCheckedChange={(on) => onToggle(x.value, on === true)} />
+					<FieldContent>
+						<FieldLabel htmlFor={`${id}-${x.value}`} className="font-normal">{x.label}</FieldLabel>
+						{x.about ? <FieldDescription>{x.about}</FieldDescription> : null}
+					</FieldContent>
+				</Field>
 			))}
-		</ToggleGroup>
+		</FieldGroup>
 	);
 }
 
+/** What each built-in tool does, in a few words for the agent's page. */
+const TOOL_ABOUT: Record<string, string> = {
+	read: "Read files",
+	bash: "Run shell commands",
+	edit: "Change part of a file",
+	write: "Write whole files",
+	grep: "Search inside files",
+	find: "Find files by name",
+	ls: "List a folder",
+};
+
 const FILES: Array<{ key: "instructions" | "soul" | "tooling" | "memory" | "rules"; label: string; name: string; about: string; edit: boolean }> = [
-	{ key: "instructions", label: "AGENTS.md", name: "AGENTS.md", about: "Its purpose and how it works. The agent keeps this file itself, and you can shape it here.", edit: true },
-	{ key: "soul", label: "SOUL.md", name: "SOUL.md", about: "Who it is: character and tone.", edit: true },
-	{ key: "tooling", label: "TOOLS.md", name: "TOOLS.md", about: "Its own defaults and preferences for its tools, on top of those for all agents. May be empty.", edit: true },
-	{ key: "memory", label: "MEMORY.md", name: "MEMORY.md", about: "What it wrote down to outlive a conversation. The agent's own; shown, not changed here.", edit: false },
-	{ key: "rules", label: "Your rules", name: "agents/<id>/AGENTS.md", about: "Rules of yours that the agent reads and cannot change. Kept in pine's home; edit the file there.", edit: false },
+	{ key: "instructions", label: "AGENTS.md", name: "AGENTS.md", about: "What the agent is for and how it works. The agent keeps this file up to date, and you can change it here.", edit: true },
+	{ key: "soul", label: "SOUL.md", name: "SOUL.md", about: "The agent's character and tone.", edit: true },
+	{ key: "tooling", label: "TOOLS.md", name: "TOOLS.md", about: "How this agent prefers to use tools, on top of the notes for all agents. May be empty.", edit: true },
+	{ key: "memory", label: "MEMORY.md", name: "MEMORY.md", about: "What the agent wrote down to remember between conversations. Only the agent changes it.", edit: false },
+	{ key: "rules", label: "Your rules", name: "agents/<id>/AGENTS.md", about: "Your rules for this agent, which the agent reads and cannot change. Edit the file in pine's home.", edit: false },
 ];
 
 /** Files to read and change, one tab each: what the file is for, and the file in an editor. */
@@ -270,8 +436,8 @@ function AgentHeading({ id, color }: { id: string; color?: string }) {
 	const [editing, setEditing] = useState(false);
 	return (
 		<span className="flex items-center gap-2">
-			<AgentColorPicker agent={{ id, color }} onChange={(c) => void store.colorAgent(id, c)} trigger={<Button variant="ghost" size="icon" className="rounded-full" aria-label={`Color of ${id}`} title="Change its color" />}>
-				<AgentAvatar agent={{ id, color }} />
+			<AgentColorPicker agent={{ id, color, main: store.agent(id)?.main }} onChange={(c) => void store.colorAgent(id, c)} trigger={<Button variant="ghost" size="icon" className="rounded-full" aria-label={`Color of ${id}`} title="Change the agent's color" />}>
+				<AgentAvatar agent={{ id, color, main: store.agent(id)?.main }} />
 			</AgentColorPicker>
 			{editing ? (
 				<AgentNameInput id={id} className="max-w-60" onDone={(to) => (setEditing(false), to && void store.renameAgent(id, to))} />
@@ -281,6 +447,34 @@ function AgentHeading({ id, color }: { id: string; color?: string }) {
 				</Button>
 			)}
 		</span>
+	);
+}
+
+/** An agent's page on its first load: its heading, a group of fields and the files' editor, as bars. */
+function AgentPageSkeleton() {
+	return (
+		<div data-slot="agent-page-skeleton" className="flex flex-col gap-6">
+			<div className="flex items-center gap-3">
+				<Skeleton className="size-10 rounded-full" />
+				<Skeleton className="h-6 w-40" />
+			</div>
+			<SettingsGroupSkeleton />
+			<FilesSkeleton />
+		</div>
+	);
+}
+
+/** A set of file tabs over an editor, on its first load. */
+function FilesSkeleton() {
+	return (
+		<div data-slot="files-skeleton" className="flex flex-col gap-2">
+			<div className="flex gap-2">
+				<Skeleton className="h-8 w-28" />
+				<Skeleton className="h-8 w-24" />
+				<Skeleton className="h-8 w-24" />
+			</div>
+			<Skeleton className="h-72 w-full" />
+		</div>
 	);
 }
 
@@ -296,12 +490,8 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 	useEffect(() => (setChange({}), setTexts({})), [id, d]);
 	if (!d)
 		return (
-			<Page title={id}>
-				<Button variant="ghost" size="xs" className="self-start" onClick={back}>
-					<ChevronLeftIcon data-icon="inline-start" />
-					Agents
-				</Button>
-				{detail.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{detail.error}</AlertDescription></Alert> : <Pulse label="Loading" className="m-auto" />}
+			<Page title={id} back={{ label: "Agents", onClick: back }}>
+				{detail.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{detail.error}</AlertDescription></Alert> : <AgentPageSkeleton />}
 			</Page>
 		);
 	const now = <K extends keyof AgentDetail>(key: K): AgentDetail[K] => (key in change ? (change[key as string] as AgentDetail[K]) : d[key]);
@@ -314,7 +504,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 		const done = await store.attempt(() => api.updateAgent(id, body));
 		setBusy(false);
 		if (!done) return;
-		store.flash(`Updated ${id}; it holds from its next message on.${done.warnings.length ? ` Note: ${done.warnings.join("; ")}` : ""}`, done.warnings.length ? "warn" : "good", done.warnings.length ? 9000 : 3500);
+		store.flash(`Updated ${id}; the change applies from the next message on.${done.warnings.length ? ` Note: ${done.warnings.join("; ")}` : ""}`, done.warnings.length ? "warn" : "good", done.warnings.length ? 9000 : 3500);
 		detail.reload();
 		store.agents = await store.askAgents().catch(() => store.agents);
 		store.touch();
@@ -331,192 +521,236 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 	const forget = (change.forget as string[]) ?? [];
 	const modelItems = [{ value: "", label: d.defaultModel ? `${d.defaultModel} (the default)` : "the default" }, ...(d.model && !(models.data ?? []).includes(d.model) ? [d.model] : []).concat(models.data ?? []).map((m) => ({ value: m, label: m }))];
 	const reasoningItems = REASONING.map((r) => ({ value: r, label: r }));
+	const modeItems = MODES.map((m) => ({ value: m.value, label: m.label }));
 	const modeAbout = MODES.find((m) => m.value === mode)?.about;
+	const tools = now("tools");
+	const delegates = now("delegates");
+	const all = delegates.includes("*");
+	const toggle = (list: string[], value: string, on: boolean) => (on ? [...list.filter((x) => x !== value), value] : list.filter((x) => x !== value));
+	// The folders it has, and those added since the last save: one list, each saying which it is.
+	const folders = [
+		...d.read.map((p) => ({ p, write: false, added: false })),
+		...d.write.map((p) => ({ p, write: true, added: false })),
+		...((change.read as string[]) ?? []).map((p) => ({ p, write: false, added: true })),
+		...((change.write as string[]) ?? []).map((p) => ({ p, write: true, added: true })),
+	];
+	const leaveOut = (p: string, write: boolean) => put(write ? "write" : "read", ((change[write ? "write" : "read"] as string[]) ?? []).filter((x) => x !== p));
+	const select = (fieldId: string, items: Array<{ value: string; label: string }>, value: string, onChange: (v: string) => void) => (
+		<Control>
+			<Select items={items} value={value} onValueChange={(v) => onChange(v ?? "")}>
+				<SelectTrigger id={fieldId} className={CONTROL}>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent alignItemWithTrigger={false} align="end">
+					<SelectGroup>
+						{items.map((o) => (
+							<SelectItem key={o.value} value={o.value}>
+								{o.label}
+							</SelectItem>
+						))}
+					</SelectGroup>
+				</SelectContent>
+			</Select>
+		</Control>
+	);
 	return (
 		<Page
+			back={{ label: "Agents", onClick: back }}
 			title={<AgentHeading id={d.id} color={(store.agent(d.id) ?? d).color} />}
-			lead={d.main ? "The main agent: it administers pine, and may hand work to every other agent." : `An agent with its own workspace at ${tilde(d.workspace)}.`}
-			actions={
-				<>
-					<Button variant="outline" onClick={() => void store.openTab(id, "main")}><MessageSquareIcon data-icon="inline-start" />Open</Button>
-					<Button disabled={!dirty || busy} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Button>
-				</>
-			}
+			lead={d.main ? "The main agent. It sets up pine for you and can delegate tasks to all other agents." : d.description || `Works in ${tilde(d.workspace)}.`}
+			actions={<Button variant="outline" onClick={() => void store.openTab(id, "main")}><MessageSquareIcon data-icon="inline-start" />Open conversation</Button>}
 		>
-			<Button variant="ghost" size="xs" className="self-start" onClick={back}>
-				<ChevronLeftIcon data-icon="inline-start" />
-				Agents
-			</Button>
-			<FieldGroup className={FORM_GRID}>
-				<Field>
-					<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
-					<Select items={modelItems} value={(change.model as string) ?? d.model ?? ""} onValueChange={(v) => put("model", v || "default")}>
-						<SelectTrigger id={`${field}-model`}>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectGroup>
-								{modelItems.map((o) => (
-									<SelectItem key={o.value} value={o.value}>
-										{o.label}
-									</SelectItem>
-								))}
-							</SelectGroup>
-						</SelectContent>
-					</Select>
-				</Field>
-				<Field>
-					<FieldLabel htmlFor={`${field}-reasoning`}>Reasoning</FieldLabel>
-					<Select items={reasoningItems} value={now("thinking")} onValueChange={(v) => put("thinking", v ?? "")}>
-						<SelectTrigger id={`${field}-reasoning`}>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectGroup>
-								{reasoningItems.map((o) => (
-									<SelectItem key={o.value} value={o.value}>
-										{o.label}
-									</SelectItem>
-								))}
-							</SelectGroup>
-						</SelectContent>
-					</Select>
-					<FieldDescription>How much its model thinks before it answers.</FieldDescription>
-				</Field>
-				<Field className="col-span-full">
-					<FieldLabel htmlFor={`${field}-mode`}>Mode</FieldLabel>
-					<ToggleGroup id={`${field}-mode`} aria-label="Mode" variant="outline" className="flex-wrap" value={[mode]} onValueChange={one((m) => put("mode", m))}>
-						{MODES.map((o) => (
-							<ToggleGroupItem key={o.value} value={o.value}>
-								{o.label}
-							</ToggleGroupItem>
-						))}
-					</ToggleGroup>
-					{modeAbout ? <FieldDescription>{modeAbout}</FieldDescription> : null}
-				</Field>
-				<Field className="col-span-full">
-					<FieldLabel htmlFor={`${field}-tools`}>Built-in tools</FieldLabel>
-					<Checks id={`${field}-tools`} label="Built-in tools" all={d.allTools} value={now("tools")} onChange={(v) => put("tools", v)} />
-					<FieldDescription>Without bash, edit and write an agent only reads.</FieldDescription>
-				</Field>
-				<Field className="col-span-full">
-					<FieldLabel htmlFor={`${field}-delegates`}>May hand work to</FieldLabel>
-					{others.length ? <Checks id={`${field}-delegates`} label="May hand work to" all={["*", ...others]} value={now("delegates")} onChange={(v) => put("delegates", v)} /> : <p id={`${field}-delegates`} className="text-muted-foreground">There is no other agent yet.</p>}
-					<FieldDescription>{d.main ? "The main agent may delegate to everyone." : "Agents it can give a task to with its delegate tool."}</FieldDescription>
-				</Field>
-				<Field orientation="horizontal" className="col-span-full">
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-network`}>Network from its shell</FieldLabel>
-						<FieldDescription>In its sandbox (safe and manual mode) its commands have no network unless this is on. With it, a command can send what the agent reads anywhere.</FieldDescription>
-					</FieldContent>
-					<Switch id={`${field}-network`} checked={now("network")} onCheckedChange={(on) => put("network", on)} />
-				</Field>
-				<FieldSet className="col-span-full">
-					<FieldLegend variant="label">Folders outside its workspace</FieldLegend>
-					<FieldDescription>What it may reach in its sandbox besides its own folders.</FieldDescription>
+			<Section title="Model">
+				<FieldGroup>
+					<Field orientation="responsive" data-find="agent-model">
+						<FieldContent className="min-w-0">
+							<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
+							<FieldDescription>The model this agent thinks with.</FieldDescription>
+						</FieldContent>
+						{models.data || models.error ? select(`${field}-model`, modelItems, (change.model as string) ?? d.model ?? "", (v) => put("model", v || "default")) : <SelectPending id={`${field}-model`} />}
+					</Field>
+					<Field orientation="responsive" data-find="agent-reasoning">
+						<FieldContent className="min-w-0">
+							<FieldLabel htmlFor={`${field}-reasoning`}>Reasoning</FieldLabel>
+							<FieldDescription>How long the model thinks before it answers. A higher level takes longer.</FieldDescription>
+						</FieldContent>
+						{select(`${field}-reasoning`, reasoningItems, now("thinking"), (v) => put("thinking", v))}
+					</Field>
+				</FieldGroup>
+			</Section>
+
+			<Section title="Instructions" about="The files the agent reads with each message." data-find="agent-instructions">
+				<FileTabs files={FILES.filter((f) => f.edit || d.files[f.key] !== undefined)} value={file} onChange={setFile}>
+					{(key) => {
+						const meta = FILES.find((f) => f.key === key)!;
+						return (
+							<div className="flex h-72 overflow-hidden rounded-lg border">
+								<Editor key={`${id}:${key}`} file={`${key}.md`} text={texts[key] ?? d.files[key] ?? ""} readOnly={!meta.edit} onChange={(v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} />
+							</div>
+						);
+					}}
+				</FileTabs>
+			</Section>
+
+			<Section title="Permissions" about="What the agent may do without asking you.">
+				<FieldGroup>
+					<Field orientation="responsive" data-find="agent-mode">
+						<FieldContent className="min-w-0">
+							<FieldLabel htmlFor={`${field}-mode`}>Mode</FieldLabel>
+							<FieldDescription>{modeAbout}</FieldDescription>
+						</FieldContent>
+						{select(`${field}-mode`, modeItems, mode, (m) => m && put("mode", m))}
+					</Field>
+					<Field orientation="horizontal" data-find="agent-network">
+						<FieldContent className="min-w-0">
+							<FieldLabel htmlFor={`${field}-network`}>Network for shell commands</FieldLabel>
+							<FieldDescription>In safe and manual mode, the agent's commands have no network unless this is on. With it on, a command can send what the agent has read anywhere.</FieldDescription>
+						</FieldContent>
+						<Switch id={`${field}-network`} checked={now("network")} onCheckedChange={(on) => put("network", on)} />
+					</Field>
+					<FieldSet data-find="agent-tools">
+						<FieldLegend variant="label">Built-in tools</FieldLegend>
+						<FieldDescription>Without bash, edit and write, the agent can only read.</FieldDescription>
+						<CheckList label="Built-in tools" items={d.allTools.map((t) => ({ value: t, label: <span className="font-mono">{t}</span>, about: TOOL_ABOUT[t], checked: tools.includes(t) }))} onToggle={(t, on) => put("tools", toggle(tools, t, on))} />
+					</FieldSet>
+					<FieldSet data-find="agent-delegates">
+						<FieldLegend variant="label">Can delegate to</FieldLegend>
+						<FieldDescription>Agents it can hand a task to. A delegated task runs in the stricter of the two agents' modes.</FieldDescription>
+						{others.length ? (
+							<CheckList
+								label="Can delegate to"
+								items={[
+									{ value: "*", label: d.main ? "All other agents" : "All agents except the main one", checked: all },
+									// "*" is every agent but the main one: the main agent stays a choice of its own.
+									...others.map((o) => {
+										const covered = all && !store.agent(o)?.main;
+										return { value: o, label: o, checked: covered || delegates.includes(o), disabled: covered };
+									}),
+								]}
+								onToggle={(v, on) => put("delegates", v === "*" ? (on ? ["*"] : []) : toggle(delegates, v, on))}
+							/>
+						) : (
+							<FieldDescription>There is no other agent yet.</FieldDescription>
+						)}
+					</FieldSet>
+				</FieldGroup>
+			</Section>
+
+			<Section
+				title="Folders outside the workspace"
+				data-find="agent-folders"
+				about="Other folders the agent may use in safe and manual mode. In auto and bypass mode the agent reaches all your files anyway."
+				actions={
+					<DropdownMenu>
+						<DropdownMenuTrigger render={<Button variant="outline" />}>
+							<PlusIcon data-icon="inline-start" />
+							Add folder
+							<ChevronDownIcon data-icon="inline-end" />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuGroup>
+								<DropdownMenuItem onClick={() => void addFolder("read")}>Read only…</DropdownMenuItem>
+								<DropdownMenuItem onClick={() => void addFolder("write")}>Read and write…</DropdownMenuItem>
+							</DropdownMenuGroup>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				}
+			>
+				{folders.length ? (
 					<ItemGroup>
-						{[...d.read.map((p) => ({ p, kind: "read" })), ...d.write.map((p) => ({ p, kind: "read and change" }))].map(({ p, kind }) => {
+						{folders.map(({ p, write, added }) => {
 							const dropped = forget.includes(p);
+							const action = added ? "Leave it out" : dropped ? "Keep it" : "Take it away";
 							return (
-								<Item key={`${kind}:${p}`} variant="outline" size="xs">
-									<ItemMedia variant="icon"><FolderIcon /></ItemMedia>
-									<ItemContent className="min-w-0">
-										<ItemTitle className={cn("font-mono", dropped && "line-through")}>{tilde(p)}</ItemTitle>
-									</ItemContent>
-									<ItemActions>
-										<Badge variant="secondary">{kind}</Badge>
+								<SettingsItem
+									key={`${added ? "new" : "had"}:${write}:${p}`}
+									media={added ? <PlusIcon /> : <FolderIcon />}
+									mediaVariant="icon"
+									title={tilde(p)}
+									titleClassName={cn("font-mono", dropped && "line-through")}
+									actions={<>
+										<Badge variant="secondary">{`${write ? "read and write" : "read only"}${added ? ", not saved yet" : ""}`}</Badge>
 										<HoverTooltip>
-											<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={dropped ? "Keep it" : "Take it away"} onClick={() => put("forget", dropped ? forget.filter((x) => x !== p) : [...forget, p])}>{dropped ? <Undo2Icon /> : <XIcon />}</Button>} />
-											<TooltipContent>{dropped ? "Keep it" : "Take it away"}</TooltipContent>
+											<TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={action} onClick={() => (added ? leaveOut(p, write) : put("forget", dropped ? forget.filter((x) => x !== p) : [...forget, p]))}>{dropped ? <Undo2Icon /> : <XIcon />}</Button>} />
+											<TooltipContent>{action}</TooltipContent>
 										</HoverTooltip>
-									</ItemActions>
-								</Item>
+									</>}
+								/>
 							);
 						})}
-						{(["read", "write"] as const).flatMap((kind) =>
-							((change[kind] as string[]) ?? []).map((p) => (
-								<Item key={`new:${kind}:${p}`} variant="outline" size="xs">
-									<ItemMedia variant="icon"><PlusIcon /></ItemMedia>
-									<ItemContent className="min-w-0">
-										<ItemTitle className="font-mono">{tilde(p)}</ItemTitle>
-									</ItemContent>
-									<ItemActions>
-										<Badge>{kind === "write" ? "read and change" : "read"} · new</Badge>
-										<HoverTooltip>
-											<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Leave it out" onClick={() => put(kind, ((change[kind] as string[]) ?? []).filter((x) => x !== p))}><XIcon /></Button>} />
-											<TooltipContent>Leave it out</TooltipContent>
-										</HoverTooltip>
-									</ItemActions>
-								</Item>
-							)),
-						)}
 					</ItemGroup>
-					<div className="flex items-center gap-2">
-						<Button variant="outline" size="xs" onClick={() => void addFolder("read")}><PlusIcon data-icon="inline-start" />May read…</Button>
-						<Button variant="outline" size="xs" onClick={() => void addFolder("write")}><PlusIcon data-icon="inline-start" />May read and change…</Button>
-					</div>
-				</FieldSet>
-			</FieldGroup>
+				) : (
+					<EmptyView icon={FolderIcon} title="No other folders">The agent works in the agent's own workspace only.</EmptyView>
+				)}
+			</Section>
 
-			<h2 className="flex items-center gap-2 text-base font-medium">What it is told</h2>
-			<FileTabs files={FILES.filter((f) => f.edit || d.files[f.key] !== undefined)} value={file} onChange={setFile}>
-				{(key) => {
-					const meta = FILES.find((f) => f.key === key)!;
-					return (
-						<div className="flex h-96 overflow-hidden rounded-lg border">
-							<Editor key={`${id}:${key}`} file={`${key}.md`} text={texts[key] ?? d.files[key] ?? ""} readOnly={!meta.edit} onChange={(v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} />
-						</div>
-					);
-				}}
-			</FileTabs>
+			<Section data-find="agent-holdings" title="What this agent has" about="Ask the agent, or use the other pages of Settings, to add or remove any of these.">
+				<FieldGroup>
+					{(
+						[
+							["Conversations", d.holdings.conversations],
+							["Event sources", d.holdings.sources],
+							["MCP servers", d.holdings.servers],
+							["Schedules", d.holdings.schedules],
+							["Skills", d.holdings.skills],
+							["Routes that wake it", d.holdings.routes],
+						] as Array<[string, string[]]>
+					).map(([label, list]) => (
+						<Field key={label} orientation="responsive">
+							<FieldContent className="min-w-0">
+								<FieldTitle>{label}</FieldTitle>
+								<FieldDescription className="wrap-anywhere">{list?.length ? list.join(", ") : "none"}</FieldDescription>
+							</FieldContent>
+						</Field>
+					))}
+					<Field orientation="responsive">
+						<FieldContent className="min-w-0">
+							<FieldTitle>Workspace</FieldTitle>
+							<FieldDescription className="font-mono wrap-anywhere">{`${tilde(d.workspace)} · ${plural(d.holdings.files, "file")}`}</FieldDescription>
+						</FieldContent>
+						{store.remote ? null : (
+							<Control>
+								<Button variant="outline" onClick={() => void bridge.reveal(d.workspace)}><ExternalLinkIcon data-icon="inline-start" />Show</Button>
+							</Control>
+						)}
+					</Field>
+				</FieldGroup>
+			</Section>
 
-			<h2 className="flex items-center gap-2 text-base font-medium">What it has</h2>
-			<ItemGroup>
-				{(
-					[
-						["Conversations", d.holdings.conversations],
-						["Event sources", d.holdings.sources],
-						["MCP servers", d.holdings.servers],
-						["Schedules", d.holdings.schedules],
-						["Skills", d.holdings.skills],
-						["Routes that wake it", d.holdings.routes],
-					] as Array<[string, string[]]>
-				).map(([label, list]) => (
-					<Item key={label} variant="outline">
-						<ItemContent className="min-w-0">
-							<ItemTitle>{label}</ItemTitle>
-							<ItemDescription className="line-clamp-none wrap-anywhere">{list?.length ? list.join(", ") : "none"}</ItemDescription>
-						</ItemContent>
-					</Item>
-				))}
-				<Item variant="outline">
-					<ItemContent className="min-w-0">
-						<ItemTitle>Workspace</ItemTitle>
-						<ItemDescription className="line-clamp-none font-mono wrap-anywhere">{`${tilde(d.workspace)} · ${plural(d.holdings.files, "file")}`}</ItemDescription>
-					</ItemContent>
-					<ItemActions>
-						<Button variant="outline" size="xs" className={cn(store.remote && "hidden")} onClick={() => void bridge.reveal(d.workspace)}><ExternalLinkIcon data-icon="inline-start" />Show</Button>
-					</ItemActions>
-				</Item>
-			</ItemGroup>
 			{d.main ? null : (
-				<ItemGroup>
-					<Item variant="outline">
-						<ItemContent className="min-w-0">
-							<ItemTitle>Remove this agent</ItemTitle>
-							<ItemDescription className="line-clamp-none wrap-anywhere">{`With its conversations, sources, schedules, servers, skills, the routes that wake it, its folder and its private home.${d.holdings.outside ? " Its workspace lies outside pine's home and is left as it is." : ""}`}</ItemDescription>
-						</ItemContent>
-						<ItemActions>
-							<Button variant="destructive" onClick={() => void remove()}><Trash2Icon data-icon="inline-start" />Remove…</Button>
-						</ItemActions>
-					</Item>
-				</ItemGroup>
+				<Section data-find="agent-remove">
+					<FieldGroup>
+						<Field orientation="responsive">
+							<FieldContent className="min-w-0">
+								<FieldTitle>Remove this agent</FieldTitle>
+								<FieldDescription>{`Removes the agent with all conversations, sources, schedules, servers and skills, the routes that wake it, and the agent's folder and private home.${d.holdings.outside ? " The workspace lies outside pine's home and is left as it is." : ""}`}</FieldDescription>
+							</FieldContent>
+							<Control>
+								<Button variant="destructive" onClick={() => void remove()}><Trash2Icon data-icon="inline-start" />Remove…</Button>
+							</Control>
+						</Field>
+					</FieldGroup>
+				</Section>
 			)}
+
+			{/* While something is changed, the way to keep it stays in sight at the foot of the page, wherever the change was made. */}
+			{dirty ? (
+				<div data-slot="unsaved" className="sticky bottom-4 z-10 flex items-center gap-2 rounded-lg border bg-popover py-2 ps-4 pe-2 text-popover-foreground shadow-lg">
+					<span className="grow">Unsaved changes</span>
+					<Button variant="ghost" disabled={busy} onClick={() => (setChange({}), setTexts({}))}>Discard</Button>
+					<Button disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Button>
+				</div>
+			) : null}
 		</Page>
 	);
 }
 
-function NewAgent({ close, made }: { close: () => void; made: (id: string) => void }) {
+/**
+ * The dialog that makes a new agent, over whatever is in front (`store.newAgent`): the side bar's + and
+ * Settings > Agents open it. Once it is made, the agent's conversation opens in a tab: that is where
+ * its owner meets it, and the card at its top leads on to its settings.
+ */
+export function NewAgent({ close, made }: { close: () => void; made: (id: string) => void }) {
 	const models = useLoad(() => api.models());
 	const [f, setF] = useState({ id: "", instructions: "", model: "" });
 	const name = useRef<HTMLInputElement>(null);
@@ -546,11 +780,12 @@ function NewAgent({ close, made }: { close: () => void; made: (id: string) => vo
 						<Field>
 							<FieldLabel htmlFor={`${field}-instructions`}>Instructions</FieldLabel>
 							<Textarea id={`${field}-instructions`} className="min-h-24 max-h-64" value={f.instructions} onChange={(e) => setF({ ...f, instructions: e.target.value })} placeholder={`You are ${f.id || "books"}. You keep the household's accounts.\n\nHow you work: …`} />
-							<FieldDescription>Who it is and how it works, written to the agent itself: its AGENTS.md, which it keeps itself from then on. The first paragraph says what it is for; other agents read it when they decide whom to hand work to.</FieldDescription>
+							<FieldDescription>What the new agent is for and how it should work. This becomes the agent's AGENTS.md, which the agent keeps up to date afterwards. Other agents read the first paragraph when they decide who to give work to.</FieldDescription>
 						</Field>
 						<Field>
 							<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
-							<Select items={modelItems} value={f.model} onValueChange={(model) => setF({ ...f, model: model ?? "" })}>
+							{models.data || models.error ? (
+								<Select items={modelItems} value={f.model} onValueChange={(model) => setF({ ...f, model: model ?? "" })}>
 								<SelectTrigger id={`${field}-model`}>
 									<SelectValue />
 								</SelectTrigger>
@@ -564,6 +799,7 @@ function NewAgent({ close, made }: { close: () => void; made: (id: string) => vo
 									</SelectGroup>
 								</SelectContent>
 							</Select>
+							) : <SelectPending id={`${field}-model`} />}
 						</Field>
 					</FieldGroup>
 				</ScrollArea>
@@ -575,31 +811,35 @@ function NewAgent({ close, made }: { close: () => void; made: (id: string) => vo
 
 function Agents() {
 	const s = useModel(store);
-	// Which agent's page is open is the app's to say: the side bar opens one too. "+" is the new agent's dialog.
-	const open = s.settingsAgent !== "+" ? s.settingsAgent : undefined;
-	const adding = s.settingsAgent === "+";
+	// Which agent's page is open is the app's to say: the side bar and an agent's card open one too.
+	const open = s.settingsAgent;
 	const setOpen = (id?: string) => ((s.settingsAgent = id), s.touch());
-	const setAdding = (on: boolean) => setOpen(on ? "+" : undefined);
+	// The dialog that makes one is the app's (App.tsx), the same one the side bar's + opens.
+	const setAdding = (on: boolean) => ((s.newAgent = on), s.touch());
 	if (open && s.agents.some((a) => a.id === open)) return <AgentPage id={open} back={() => setOpen(undefined)} />;
 	return (
-		<Page title="Agents" lead="An agent is a folder with a workspace, instructions and a model. Each has its own conversations and reach." actions={<Button onClick={() => setAdding(true)}><PlusIcon data-icon="inline-start" />New agent</Button>}>
+		<Page title="Agents" lead="Each agent has separate instructions, a model, a workspace folder and conversations. Open an agent to change what it may do." actions={<Button variant="outline" onClick={() => setAdding(true)}><PlusIcon data-icon="inline-start" />New agent</Button>}>
 			<ItemGroup>
 				{s.agents.map((a) => (
-					<Item key={a.id} variant="outline" render={<button type="button" />} onClick={() => setOpen(a.id)}>
-						<ItemContent className="min-w-0">
-							<ItemTitle>
+					<SettingsItem
+						key={a.id}
+						render={<button type="button" />}
+						onClick={() => setOpen(a.id)}
+						title={<>
 								{a.id}
-								{a.main ? <Badge>main</Badge> : null}
-								<Badge variant={a.mode === "bypass" ? "destructive" : a.mode === "safe" ? "default" : "secondary"}>{a.mode}</Badge>
-							</ItemTitle>
-							<ItemDescription>{a.description || "no description"}</ItemDescription>
-							<ItemDescription className="font-mono">{a.model} · reasoning {a.thinking} · {tilde(a.workspace)}</ItemDescription>
-						</ItemContent>
-						<ItemActions><ChevronRightIcon /></ItemActions>
-					</Item>
+								{/* Said as on the agent's card: what makes it the main agent, not a word the owner has to look up. */}
+								{a.main ? <Badge variant="outline">administers pine</Badge> : null}
+								{/* A mode is a fact, gray like the mode everywhere else; only bypass, where nothing asks, is marked. */}
+								<Badge variant={a.mode === "bypass" ? "destructive" : "secondary"}>{a.mode}</Badge>
+						</>}
+						description={a.description || "no description"}
+						actions={<ChevronRightIcon />}
+					>
+						<ItemDescription className="truncate font-mono">{[a.model || "no model yet", `reasoning ${a.thinking}`, tilde(a.workspace)].join(" · ")}</ItemDescription>
+					</SettingsItem>
 				))}
 			</ItemGroup>
-			{adding ? <NewAgent close={() => setAdding(false)} made={(id) => setOpen(id)} /> : null}
+			<SharedInstructions />
 		</Page>
 	);
 }
@@ -675,12 +915,7 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 								<FieldLegend variant="label">{q.message}</FieldLegend>
 								<ItemGroup>
 									{q.options.map((o) => (
-										<Item key={o.id} variant="outline" size="sm" render={<button type="button" />} onClick={() => void send(o.id)}>
-											<ItemContent className="min-w-0">
-												<ItemTitle>{o.label}</ItemTitle>
-												{o.description ? <ItemDescription>{o.description}</ItemDescription> : null}
-											</ItemContent>
-										</Item>
+										<SettingsItem key={o.id} render={<button type="button" />} onClick={() => void send(o.id)} title={o.label} description={o.description || undefined} />
 									))}
 								</ItemGroup>
 							</FieldSet>
@@ -703,8 +938,9 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 							<AlertDescription>{state.models?.length ? `${plural(state.models.length, "model")} available, for example ${state.models.slice(0, 4).join(", ")}.` : "Signed in."}</AlertDescription>
 						</Alert>
 					) : null}
-					{/* A sign-in changes no agent's model: which of the new ones the agents run on is asked here, where they were just made available. */}
-					{state?.done && !state.error && state.models?.length ? <div className="flex items-center gap-2"><DialogClose render={<Button />} onClick={() => void store.chooseDefaultModel(state.models).then(reload)}>Choose the model your agents run on…</DialogClose><span className="text-muted-foreground">Or later: Change, on the Models page.</span></div> : null}
+					{/* Where the agents' model could not answer, pine took one of the new ones (src/owner.ts, settleModel), and says so; else the choice is offered here, where they were just made available. */}
+					{state?.done && !state.error && state.chosen ? <div className="flex items-center gap-2"><span>Your agents run on <b className="font-mono">{state.chosen}</b> now.</span><DialogClose render={<Button variant="outline" />} onClick={() => void store.chooseDefaultModel(state.models).then(reload)}>Another one…</DialogClose></div> : null}
+					{state?.done && !state.error && !state.chosen && state.models?.length ? <div className="flex items-center gap-2"><DialogClose render={<Button variant="outline" />} onClick={() => void store.chooseDefaultModel(state.models).then(reload)}>Choose the model your agents run on…</DialogClose><span className="text-muted-foreground">Or later: Change, on the Models page.</span></div> : null}
 				</div>
 			</ScrollArea>
 			<DialogFooter><DialogClose render={<Button variant={state?.done ? "default" : "outline"} />}>{state?.done ? "Done" : "Cancel"}</DialogClose></DialogFooter>
@@ -712,187 +948,276 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 	);
 }
 
-function Models() {
-	const providers = useLoad(() => api.providers());
-	const servers = useLoad(() => api.modelServers());
-	const models = useLoad(() => api.models());
+/**
+ * Subscriptions people are likely to have already, by the provider's id in pi: shown first, with words they know.
+ * Only where the sign-in is the subscription itself (OAuth); everything else is found by searching.
+ */
+const SUBSCRIPTIONS: Record<string, { title: string; about: string }> = {
+	anthropic: { title: "Claude", about: "Sign in with your Claude Pro or Max subscription" },
+	"openai-codex": { title: "ChatGPT", about: "Sign in with your ChatGPT Plus or Pro subscription" },
+	"github-copilot": { title: "GitHub Copilot", about: "Sign in with your GitHub Copilot subscription" },
+};
+
+/** One provider: whether you are signed in, and the way in (a sign-in in the browser, or an API key). */
+function ProviderRow({ p, reload }: { p: Provider; reload: () => void }) {
+	const sub = SUBSCRIPTIONS[p.id];
+	const about = p.signedIn ? `Signed in · ${plural(p.models, "model")}` : sub?.about ?? (p.oauth ? "Sign in with your account, or use an API key" : "Needs an API key");
+	return (
+		<SettingsItem
+			data-provider={p.id}
+			title={<>
+					{sub?.title ?? p.name ?? p.id}
+					{p.signedIn ? <Badge>signed in</Badge> : null}
+				</>}
+			description={about}
+			descriptionClassName="line-clamp-none wrap-anywhere"
+			actions={<>
+				{p.signedIn ? (
+					<AlertDialog>
+						<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Sign out</AlertDialogTrigger>
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>Sign out of {sub?.title ?? p.name ?? p.id}?</AlertDialogTitle>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>Cancel</AlertDialogCancel>
+								<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.logout(p.id)).then((r) => r && reload())}>Sign out</AlertDialogCancel>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
+				) : null}
+				{!p.signedIn && p.oauth ? (
+					<Dialog onOpenChange={(open) => open || reload()}>
+						<DialogTrigger render={<Button variant="outline" size="sm" />}>Sign in</DialogTrigger>
+						<DialogContent showCloseButton={false} className="sm:max-w-xl"><SignIn provider={p.id} type="oauth" reload={reload} /></DialogContent>
+					</Dialog>
+				) : null}
+				<Dialog onOpenChange={(open) => open || reload()}>
+					<DialogTrigger render={<Button variant="outline" size="sm" />}>{p.signedIn ? "New API key" : "API key"}</DialogTrigger>
+					<DialogContent showCloseButton={false} className="sm:max-w-xl"><SignIn provider={p.id} type="api_key" reload={reload} /></DialogContent>
+				</Dialog>
+			</>}
+		/>
+	);
+}
+
+/** The content of a stock Dialog: a model server of your own, by its address and a short name. */
+function NewModelServer({ made }: { made: () => void }) {
 	const [f, setF] = useState({ name: "", url: "", key: "", context: "" });
 	const [locked, setLocked] = useState(false);
 	const [busy, setBusy] = useState(false);
-	const [all, setAll] = useState(false);
 	const field = useId();
-	const s = useModel(store);
-	// The model of every agent that has none of its own, and the agents whose model cannot answer.
-	const fallback = useLoad(() => api.settings().then((all) => all.find((x) => x.key === "defaults.model")?.now ?? "none"));
-	const details = useLoad(() => Promise.all(store.agents.map((a) => api.agentDetail(a.id))));
-	const own = (details.data ?? []).filter((d) => d.model).map((d) => `${d.id} (${d.model})`);
-	const stuck = s.agents.filter((a) => a.modelProblem);
-	const reload = () => (providers.reload(), servers.reload(), models.reload(), fallback.reload(), details.reload(), void store.refreshAgents());
 	const add = async () => {
 		setBusy(true);
 		try {
 			const done = await api.addModelServer({ name: f.name.trim(), url: f.url.trim(), key: f.key.trim() || undefined, context: Number(f.context) > 0 ? Number(f.context) : undefined });
-			store.flash(`Added ${f.name} with ${done.models.join(", ")}.`, "good");
-			setF({ name: "", url: "", key: "", context: "" });
-			setLocked(false);
-			reload();
+			store.flash(`Connected ${f.name} with ${done.models.join(", ")}.${done.chosen ? ` Your agents use ${done.chosen} now.` : ""}`, "good");
+			made();
 		} catch (e: any) {
 			if (e?.data?.locked) setLocked(true);
 			store.flash(errText(e), "bad");
 		}
 		setBusy(false);
 	};
-	const mine = new Set((servers.data ?? []).map((s) => s.name));
-	const hosted = (providers.data ?? []).filter((p) => !mine.has(p.id));
-	const shown = all ? hosted : hosted.filter((p) => p.signedIn);
 	return (
-		<Page title="Models" lead="Which models your agents can run on: providers you sign in to, and model servers of your own. An agent's model is chosen on its page, or in the bar under a conversation.">
-			<h2 className="flex items-center gap-2 text-base font-medium">Model servers of your own</h2>
-			<ItemGroup>
-				{servers.data?.length ? (
-					servers.data.map((s) => (
-						<Item key={s.name} variant="outline">
-							<ItemContent className="min-w-0">
-								<ItemTitle>
-									{s.name}
-									<Badge variant="secondary" className="font-mono">{s.baseUrl}</Badge>
-									<Badge variant="secondary">key: {s.key}</Badge>
-								</ItemTitle>
-								<ItemDescription className="line-clamp-none font-mono wrap-anywhere">{s.models.map((m) => `${s.name}/${m.id}${m.contextWindow ? ` (${Math.round(m.contextWindow / 1000)}k${m.images ? ", sees pictures" : ""}${m.reasoning ? ", thinks" : ""})` : ""}`).join(" · ") || "no models"}</ItemDescription>
-							</ItemContent>
-							<ItemActions>
-								<AlertDialog>
-									<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Remove</AlertDialogTrigger>
-									<AlertDialogContent>
-										<AlertDialogHeader>
-											<AlertDialogTitle>Remove the model server {s.name}?</AlertDialogTitle>
-										</AlertDialogHeader>
-										<AlertDialogFooter>
-											<AlertDialogCancel>Cancel</AlertDialogCancel>
-											<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeModelServer(s.name)).then((r) => r && (store.flash(`Removed ${s.name}.`), reload()))}>Remove</AlertDialogCancel>
-										</AlertDialogFooter>
-									</AlertDialogContent>
-								</AlertDialog>
-							</ItemActions>
-						</Item>
-					))
-				) : servers.data ? (
-					<EmptyView icon={CpuIcon} title="No model server yet">Anything that speaks OpenAI's chat API works: llama.cpp, vLLM, LM Studio.</EmptyView>
-				) : servers.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
-				) : (
-					<Pulse label="Loading" className="m-auto" />
-				)}
-			</ItemGroup>
-			<FieldSet>
-				<FieldLegend>Add a model server</FieldLegend>
-				<FieldGroup className={FORM_GRID}>
+		<>
+			<DialogHeader>
+				<DialogTitle>Connect a model server</DialogTitle>
+				<DialogDescription>A model you run yourself with LM Studio, Ollama or llama.cpp. Start the server first; pine asks it which models it has.</DialogDescription>
+			</DialogHeader>
+			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+				<FieldGroup className="px-4 select-text">
+					<Field>
+						<FieldLabel htmlFor={`${field}-url`}>Address</FieldLabel>
+						<Input id={`${field}-url`} autoFocus className="font-mono" placeholder="http://127.0.0.1:1234/v1" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
+						<FieldDescription>LM Studio: http://127.0.0.1:1234/v1. Ollama: http://127.0.0.1:11434/v1.</FieldDescription>
+					</Field>
 					<Field>
 						<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
 						<Input id={`${field}-name`} className="font-mono" placeholder="studio" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value.toLowerCase() })} />
-						<FieldDescription>Its models are then called name/model.</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-url`}>Address</FieldLabel>
-						<Input id={`${field}-url`} className="font-mono" placeholder="http://127.0.0.1:8080" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
-						<FieldDescription>pine asks the server which models it has.</FieldDescription>
+						<FieldDescription>A short name of your choice. Its models are then called {f.name.trim() || "studio"}/model.</FieldDescription>
 					</Field>
 					{locked || f.key ? (
 						<Field>
 							<FieldLabel htmlFor={`${field}-key`}>API key</FieldLabel>
 							<Input id={`${field}-key`} className="font-mono" type="password" autoComplete="off" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })} />
-							<FieldDescription>The server wants a key. It goes into pine's .env file.</FieldDescription>
+							<FieldDescription>The server asks for a key. pine keeps it in the .env file in pine's home.</FieldDescription>
 						</Field>
 					) : null}
 					<Field>
-						<FieldLabel htmlFor={`${field}-context`}>Context (tokens)</FieldLabel>
-						<Input id={`${field}-context`} className="font-mono" placeholder="from the server" value={f.context} onChange={(e) => setF({ ...f, context: e.target.value.replace(/\D/g, "") })} />
-						<FieldDescription>Only when the server does not say.</FieldDescription>
+						<FieldLabel htmlFor={`${field}-context`}>Context size (tokens)</FieldLabel>
+						<Input id={`${field}-context`} className="font-mono" placeholder="ask the server" value={f.context} onChange={(e) => setF({ ...f, context: e.target.value.replace(/\D/g, "") })} />
+						<FieldDescription>Optional. Leave it empty and pine asks the server; fill it in only if the server cannot tell.</FieldDescription>
 					</Field>
 				</FieldGroup>
-				<Field orientation="horizontal">
-					<FieldDescription>An agent that is given one of its models sends its whole conversations there.</FieldDescription>
-					<Button disabled={!f.name.trim() || !f.url.trim() || busy} onClick={() => void add()}>{busy ? <><Pulse label="Loading" data-icon="inline-start" />Asking the server…</> : "Add server"}</Button>
-				</Field>
-			</FieldSet>
+			</ScrollArea>
+			<DialogFooter>
+				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+				<Button disabled={!f.name.trim() || !f.url.trim() || busy} onClick={() => void add()}>{busy ? <><Pulse label="Loading" data-icon="inline-start" />Asking the server…</> : "Connect"}</Button>
+			</DialogFooter>
+		</>
+	);
+}
 
-			<h2 className="flex items-center gap-2 text-base font-medium">Providers <Button variant="ghost" size="xs" onClick={() => setAll(!all)}>{all ? "Only those signed in" : `Show all ${hosted.length}`}</Button></h2>
-			<ItemGroup>
-				{providers.data ? (
-					shown.length ? (
-						shown.map((p) => (
-							<Item key={p.id} variant="outline">
-								<ItemContent className="min-w-0">
-									<ItemTitle>
-										{p.name ?? p.id}
-										{p.name && p.name !== p.id ? <Badge variant="secondary" className="font-mono">{p.id}</Badge> : null}
-										{p.signedIn ? <Badge>signed in</Badge> : null}
-									</ItemTitle>
-									<ItemDescription className="line-clamp-none wrap-anywhere">{plural(p.models, "model")}</ItemDescription>
-								</ItemContent>
-								<ItemActions>
-									{p.signedIn ? <AlertDialog>
-										<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Sign out</AlertDialogTrigger>
-										<AlertDialogContent>
-											<AlertDialogHeader>
-												<AlertDialogTitle>Sign out of {p.name ?? p.id}?</AlertDialogTitle>
-											</AlertDialogHeader>
-											<AlertDialogFooter>
-												<AlertDialogCancel>Cancel</AlertDialogCancel>
-												<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.logout(p.id)).then((r) => r && reload())}>Sign out</AlertDialogCancel>
-											</AlertDialogFooter>
-										</AlertDialogContent>
-									</AlertDialog> : null}
-									{p.oauth ? <Dialog onOpenChange={(open) => open || reload()}>
-										<DialogTrigger render={<Button variant="outline" size="xs" />}>Sign in</DialogTrigger>
-										<DialogContent showCloseButton={false} className="sm:max-w-xl"><SignIn provider={p.id} type="oauth" reload={reload} /></DialogContent>
-									</Dialog> : null}
-									<Dialog onOpenChange={(open) => open || reload()}>
-										<DialogTrigger render={<Button variant="outline" size="xs" />}>{p.signedIn ? "New key" : "API key"}</DialogTrigger>
-										<DialogContent showCloseButton={false} className="sm:max-w-xl"><SignIn provider={p.id} type="api_key" reload={reload} /></DialogContent>
-									</Dialog>
-								</ItemActions>
-							</Item>
-						))
+/**
+ * Settings > Models, in the order a newcomer needs it: what is missing, which model the agents use once there is
+ * one, the subscriptions they may have, and a model on their own computer.
+ */
+/** How many runs a model may be given at a time, as the choices of a select: pine's own limit first. */
+const RUNS = [1, 2, 3, 4, 6, 8, 12, 16];
+
+/**
+ * A model server of the owner's own: where it is, each of its models on a line of its own with what it can do,
+ * who uses it, and for each model how many runs it takes at a time: pine's own limit unless it was given a number.
+ * A model on one's own computer serves one or two requests at once, and one server's models are set up differently.
+ */
+function ModelServerCard({ server: x, inUse, fallback, reload }: { server: ModelServer; inUse: string[]; fallback?: string; reload: () => void }) {
+	const runs = x.runs ?? 8;
+	const numbers = (own?: number) => [...new Set([...RUNS, ...(own ? [own] : [])])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: `${n} at a time` }));
+	const set = (v: string, model: string) => void store.attempt(() => api.limitModel(x.name, model, v === "default" ? null : Number(v))).then((r) => r && reload());
+	return (
+		<ItemGroup data-find={`model-server:${x.name}`} data-server={x.name}>
+			<SettingsItem
+				media={<ServerIcon />}
+				mediaVariant="icon"
+				title={x.name}
+				description={x.baseUrl}
+				descriptionClassName="font-mono wrap-anywhere"
+				actions={
+					<AlertDialog>
+						<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Remove</AlertDialogTrigger>
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>Remove the model server {x.name}?</AlertDialogTitle>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>Cancel</AlertDialogCancel>
+								<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeModelServer(x.name)).then((r) => r && (store.flash(`Removed ${x.name}.`), reload()))}>Remove</AlertDialogCancel>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
+				}
+			>
+				{inUse.length ? <ItemDescription>Used by {inUse.join(", ")}.</ItemDescription> : null}
+				{x.models.length ? null : <ItemDescription>This server lists no models.</ItemDescription>}
+			</SettingsItem>
+			{/* (Each model says how many agents may use it at once, pine's own limit unless it was given a number: one server can serve models that are set up differently.) */}
+			{x.models.map((m) => {
+				const ref = `${x.name}/${m.id}`;
+				return (
+					<SettingsItem
+						key={m.id}
+						data-model={ref}
+						contentClassName="basis-full @lg/settings:basis-0"
+						titleClassName="font-mono wrap-anywhere"
+						title={<>
+								{m.id}
+								{ref === fallback ? <Badge variant="secondary" className="font-sans">default</Badge> : null}
+							</>}
+						description={[m.contextWindow ? `${Math.round(m.contextWindow / 1000)}k context` : "", m.images ? "sees pictures" : "text only", m.reasoning ? "can reason" : ""].filter(Boolean).join(" · ")}
+						actionsClassName="w-full @lg/settings:w-48 @lg/settings:shrink-0"
+						actionsProps={{ "data-setting": `model-runs:${ref}` }}
+						actions={<Choose id={`model-runs-${ref}`} items={[{ value: "default", label: `Pine default (${runs})` }, ...numbers(m.limit)]} value={m.limit ? String(m.limit) : "default"} onChange={(v) => set(v, m.id)} />}
+					/>
+				);
+			})}
+		</ItemGroup>
+	);
+}
+
+function Models() {
+	const providers = useLoad(() => api.providers());
+	const servers = useLoad(() => api.modelServers());
+	// A provider picked in the search of Settings is shown by the search of this page: without words it lists only a few.
+	const [query, setQuery] = useState(() => store.settingsFind?.filter ?? "");
+	const connecting = useRef<DialogRootActions>(null);
+	const s = useModel(store);
+	const fallback = useLoad(() => api.settings().then((all) => all.find((x) => x.key === "defaults.model")?.now));
+	// Only the first load shows a skeleton: a reload with no default set keeps what is there.
+	const [fallbackSeen, setFallbackSeen] = useState(false);
+	if (!fallbackSeen && !fallback.loading) setFallbackSeen(true);
+	const stuck = s.agents.filter((a) => a.modelProblem);
+	const reload = () => (providers.reload(), servers.reload(), fallback.reload(), void store.refreshAgents());
+	const mine = new Set((servers.data ?? []).map((x) => x.name));
+	const hosted = (providers.data ?? []).filter((p) => !mine.has(p.id) && p.id !== "mock");
+	const q = query.trim().toLowerCase();
+	const nameOf = (p: Provider) => SUBSCRIPTIONS[p.id]?.title ?? p.name ?? p.id;
+	// Without a search: what you are signed in to, then the subscriptions people have. With one: each provider whose
+	// name or id has the words.
+	const rank = (p: Provider) => (p.signedIn ? 0 : SUBSCRIPTIONS[p.id] ? 1 : p.oauth ? 2 : 3);
+	const listed = (q ? hosted.filter((p) => `${nameOf(p)} ${p.id}`.toLowerCase().includes(q)) : hosted.filter((p) => rank(p) < 2)).sort((a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b)));
+	const more = hosted.length - listed.length;
+	const anyModel = Boolean(fallback.data) && !stuck.some((a) => !a.model);
+	return (
+		<Page title="Models" lead="Your agents need a model to think with. Sign in with a subscription you already have, use an API key, or connect a model that runs on your own computer.">
+			{/* With no model at all, connecting one is said once, not for every agent. */}
+			{stuck.some((a) => !a.model) ? <ModelNotice agent="" problem="" /> : null}
+			{stuck.filter((a) => a.model).map((a) => (
+				<ModelNotice key={a.id} agent={a.id} model={a.model} problem={a.modelProblem!} />
+			))}
+
+			{!fallbackSeen ? (
+				<Section title="Default model">
+					<ItemGroup><SettingsItemsSkeleton count={1} /></ItemGroup>
+				</Section>
+			) : anyModel ? (
+				<Section title="Default model">
+					<FieldGroup>
+						<Field orientation="responsive" data-setting="fallback-model">
+							<FieldContent className="min-w-0">
+								<FieldTitle className="font-mono">{fallback.data}</FieldTitle>
+								<FieldDescription>All agents use this model, unless you pick another one for an agent on the agent's page, or in the bar under a conversation.</FieldDescription>
+							</FieldContent>
+							<Control>
+								<Button variant="outline" onClick={() => void store.chooseDefaultModel().then(reload)}>Change…</Button>
+							</Control>
+						</Field>
+					</FieldGroup>
+				</Section>
+			) : null}
+
+			<Section title="Subscriptions and API keys" about="A model from a provider on the internet." data-find="providers">
+				<InputGroup>
+					<InputGroupAddon>
+						<SearchIcon />
+					</InputGroupAddon>
+					<InputGroupInput aria-label="Search providers" placeholder={`Search ${hosted.length || ""} providers: Gemini, Mistral, OpenRouter…`} value={query} onChange={(e) => setQuery(e.target.value)} />
+				</InputGroup>
+				<ItemGroup>
+					{providers.data ? (
+						listed.length ? listed.map((p) => <ProviderRow key={p.id} p={p} reload={reload} />) : <EmptyView icon={SearchIcon} title="No provider by that name">Try another word, or connect a model of your own below.</EmptyView>
+					) : providers.error ? (
+						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{providers.error}</AlertDescription></Alert>
 					) : (
-						<EmptyView icon={CpuIcon} title="Signed in to no provider">Show all to pick one (OpenCode, Claude, ChatGPT, …), or add a model server of your own above.</EmptyView>
-					)
-				) : providers.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{providers.error}</AlertDescription></Alert>
-				) : (
-					<Pulse label="Loading" className="m-auto" />
+						<SettingsItemsSkeleton />
+					)}
+				</ItemGroup>
+				{providers.data && !q && more > 0 ? <p className="text-muted-foreground">{plural(more, "more provider")} with an API key or an account. Search to find one.</p> : null}
+			</Section>
+
+			<Section
+				title="Models on your own computer"
+				data-find="model-servers"
+				about="Run a model yourself with LM Studio, Ollama or llama.cpp, then connect it here. Set how many agents use a model at once: on your own computer usually 1 or 2."
+				actions={
+					<Dialog actionsRef={connecting}>
+						<DialogTrigger render={<Button variant="outline" />}><PlusIcon data-icon="inline-start" />Connect a server</DialogTrigger>
+						<DialogContent showCloseButton={false} className="sm:max-w-xl"><NewModelServer made={() => (connecting.current?.close(), reload())} /></DialogContent>
+					</Dialog>
+				}
+			>
+				{servers.data?.length ? (
+					<div className="flex flex-col gap-6">
+						{servers.data.map((x) => (
+							<ModelServerCard key={x.name} server={x} inUse={s.agents.filter((a) => (a.model ?? fallback.data ?? "").startsWith(`${x.name}/`)).map((a) => a.id)} fallback={fallback.data} reload={reload} />
+						))}
+					</div>
+				) : servers.error ? (
+					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
+				) : servers.data ? null : (
+					<ItemGroup><SettingsItemsSkeleton count={1} /></ItemGroup>
 				)}
-			</ItemGroup>
-
-			<h2 className="flex items-center gap-2 text-base font-medium">The model your agents run on</h2>
-			<ItemGroup>
-				<Item variant="outline" data-setting="fallback-model">
-					<ItemContent className="min-w-0">
-						<ItemTitle><span className="font-mono">{fallback.data ?? "…"}</span></ItemTitle>
-						<ItemDescription className="line-clamp-none wrap-anywhere">{`Every agent that has no model of its own runs on it${own.length ? `. With a model of their own: ${own.join(", ")}` : ""}.`}</ItemDescription>
-					</ItemContent>
-					<ItemActions>
-						<Button variant="outline" size="xs" onClick={() => void store.chooseDefaultModel().then(reload)}>Change…</Button>
-					</ItemActions>
-				</Item>
-				{stuck.map((a) => (
-					<Alert key={a.id}>
-						<TriangleAlertIcon />
-						<AlertDescription><b>{a.id}</b> cannot answer: {a.modelProblem}</AlertDescription>
-					</Alert>
-				))}
-			</ItemGroup>
-
-			<h2 className="flex items-center gap-2 text-base font-medium">Models you can use now</h2>
-			{models.data ? (
-				models.data.length ? (
-					<div className="flex flex-wrap gap-1.5">{models.data.map((m) => <Badge key={m} variant="outline" className="font-mono">{m}</Badge>)}</div>
-				) : (
-					<p className="text-muted-foreground">none: sign in to a provider or add a server</p>
-				)
-			) : (
-				<p className="text-muted-foreground">…</p>
-			)}
+			</Section>
 		</Page>
 	);
 }
@@ -907,25 +1232,91 @@ function words(line: string): string[] {
 	return out;
 }
 
-function Mcp() {
-	const servers = useLoad(() => api.mcp());
-	const states = useLoad(() => api.mcpStates());
+/** The content of a stock Dialog: an MCP server, remote by its address or a program on this computer. */
+function NewMcpServer({ made }: { made: () => void }) {
 	const [f, setF] = useState({ name: "", kind: "remote" as "remote" | "local", target: "", agent: "", description: "", taints: false });
-	const [busy, setBusy] = useState<string>();
-	const [out, setOut] = useState<string>();
 	const s = useModel(store);
 	const field = useId();
 	const forItems = whom(s.agents);
-	const reload = () => (servers.reload(), states.reload());
 	const add = async () => {
 		const argv = words(f.target);
 		const server = f.kind === "remote" ? { url: f.target.trim() } : { command: argv[0], args: argv.slice(1) };
 		const done = await store.attempt(() => api.addMcp(f.name.trim(), { ...server, ...(f.description.trim() ? { description: f.description.trim() } : {}), ...(f.taints ? { taints: true } : {}) }, f.agent || undefined));
 		if (!done) return;
-		store.flash(`Added ${f.name} for ${f.agent || "all agents"}.${f.kind === "remote" ? " If it requires a sign-in, use Sign in on its row." : ""}`, "good", 6000);
-		setF({ ...f, name: "", target: "", description: "" });
-		reload();
+		store.flash(`Added ${f.name} for ${f.agent || "all agents"}.${f.kind === "remote" ? " If it needs a sign-in, press Sign in on the server's row." : ""}`, "good", 6000);
+		made();
 	};
+	return (
+		<>
+			<DialogHeader>
+				<DialogTitle>Add an MCP server</DialogTitle>
+				<DialogDescription>The server's documentation gives an address or a command to run. Paste it here.</DialogDescription>
+			</DialogHeader>
+			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+				<FieldGroup className="px-4 select-text">
+					<Field>
+						<FieldLabel htmlFor={`${field}-kind`}>Kind</FieldLabel>
+						<Choose id={`${field}-kind`} items={[{ value: "remote" as const, label: "On the internet (an https address)" }, { value: "local" as const, label: "A program on this computer" }]} value={f.kind} onChange={(kind) => setF({ ...f, kind, target: "" })} />
+					</Field>
+					<Field>
+						<FieldLabel htmlFor={`${field}-target`}>{f.kind === "remote" ? "Address" : "Command"}</FieldLabel>
+						<Input id={`${field}-target`} className="font-mono" placeholder={f.kind === "remote" ? "https://mcp.example.com/mcp" : "npx -y @example/mcp@latest"} value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} />
+						<FieldDescription>{f.kind === "remote" ? "The server's https address." : "The program and its arguments. One program, no shell operators such as | or &&. It runs where the agent's commands run: in the sandbox in safe and manual mode."}</FieldDescription>
+					</Field>
+					<FieldGroup className={FORM_GRID}>
+						<Field>
+							<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
+							<Input id={`${field}-name`} className="font-mono" placeholder="home_link" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+							<FieldDescription>Lowercase letters, digits and _.</FieldDescription>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor={`${field}-for`}>For</FieldLabel>
+							<Select items={forItems} value={f.agent} onValueChange={(agent) => setF({ ...f, agent: agent ?? "" })}>
+								<SelectTrigger id={`${field}-for`} className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectGroup>
+										{forItems.map((o) => (
+											<SelectItem key={o.value} value={o.value}>
+												{o.label}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								</SelectContent>
+							</Select>
+							<FieldDescription>Which agents get its tools.</FieldDescription>
+						</Field>
+					</FieldGroup>
+					<Field>
+						<FieldLabel htmlFor={`${field}-description`}>What it offers</FieldLabel>
+						<Input id={`${field}-description`} placeholder="Reads and writes my notes" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
+						<FieldDescription>Optional. One sentence that tells the agents when to use it.</FieldDescription>
+					</Field>
+					<Field orientation="horizontal">
+						<FieldContent>
+							<FieldLabel htmlFor={`${field}-taints`}>Brings in outside content</FieldLabel>
+							<FieldDescription>Turn on for a server that reads the web, mail or other people's messages. pine then treats what it returns like a web page, and asks before the agent sends anything out.</FieldDescription>
+						</FieldContent>
+						<Switch id={`${field}-taints`} checked={f.taints} onCheckedChange={(taints) => setF({ ...f, taints })} />
+					</Field>
+				</FieldGroup>
+			</ScrollArea>
+			<DialogFooter>
+				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+				<Button disabled={!f.name.trim() || !f.target.trim()} onClick={() => void add()}>Add server</Button>
+			</DialogFooter>
+		</>
+	);
+}
+
+function Mcp() {
+	const servers = useLoad(() => api.mcp());
+	const states = useLoad(() => api.mcpStates());
+	const [busy, setBusy] = useState<string>();
+	const [out, setOut] = useState<string>();
+	const adding = useRef<DialogRootActions>(null);
+	const reload = () => (servers.reload(), states.reload());
 	const login = async (name: string, agent?: string) => {
 		setBusy(name);
 		setOut(undefined);
@@ -934,112 +1325,70 @@ function Mcp() {
 		if (r) (setOut(r.out.trim() || (r.code === 0 ? "Signed in." : `It ended with exit ${r.code}.`)), reload());
 	};
 	return (
-		<Page title="MCP servers" lead="Servers that offer tools to your agents: a remote one by its address, or a program on this computer, which runs where the commands of the agent that uses it run.">
-			<ItemGroup>
-				{servers.data ? (
-					servers.data.length ? (
-						servers.data.map((x) => {
-							const state = !x.enabled ? "disabled" : (states.data?.[x.name] ?? (states.loading ? "…" : x.remote ? "unknown" : "local"));
-							const agent = x.scope === "global" ? undefined : x.scope;
-							const tone = /connected|ok|local|authenticated/i.test(state) ? "good" : /needs|error|fail|unauth/i.test(state) ? "warn" : undefined;
-							return (
-								<Item key={`${x.scope}:${x.name}`} variant="outline">
-									<ItemContent className="min-w-0">
-										<ItemTitle>
-											{x.name}
-											<Badge variant={tone === "good" ? "default" : tone === "warn" ? "outline" : "secondary"}>{state}</Badge>
-											<Badge variant="secondary" className="h-auto max-w-full whitespace-normal">{x.scope === "global" ? `all: ${x.agents.join(", ") || "nobody"}` : x.session ? `only the conversation ${x.session} of ${x.scope}` : `only ${x.scope}`}</Badge>
-											{x.taints ? <Badge variant="outline">outside content</Badge> : null}
-											{x.approve !== "never" ? <Badge variant="secondary">asks: {x.approve}</Badge> : null}
-										</ItemTitle>
-										<ItemDescription className="line-clamp-none font-mono wrap-anywhere">{x.target}</ItemDescription>
-									</ItemContent>
-									<ItemActions>
-										{x.remote ? <Button variant="outline" size="xs" disabled={busy === x.name} onClick={() => void login(x.name, agent)}>{busy === x.name ? <><Pulse label="Loading" data-icon="inline-start" />In your browser…</> : "Sign in"}</Button> : null}
-										{x.target.startsWith("bundled:") ? null : <AlertDialog>
-											<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Remove</AlertDialogTrigger>
-											<AlertDialogContent>
-												<AlertDialogHeader>
-													<AlertDialogTitle>Remove the MCP server {x.name}?</AlertDialogTitle>
-												</AlertDialogHeader>
-												<AlertDialogFooter>
-													<AlertDialogCancel>Cancel</AlertDialogCancel>
-													<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeMcp(x.name, agent)).then((r) => r && (store.flash(`Removed ${x.name}.`), reload()))}>Remove</AlertDialogCancel>
-												</AlertDialogFooter>
-											</AlertDialogContent>
-										</AlertDialog>}
-									</ItemActions>
-								</Item>
-							);
-						})
+		<Page
+			title="MCP servers"
+			lead="MCP servers give your agents more tools: a calendar, a database, a service you use. A server is on the internet, reached by its address, or a program on this computer."
+			actions={
+				<Dialog actionsRef={adding}>
+					<DialogTrigger render={<Button variant="outline" />}><PlusIcon data-icon="inline-start" />Add server</DialogTrigger>
+					<DialogContent showCloseButton={false} className="sm:max-w-2xl"><NewMcpServer made={() => (adding.current?.close(), reload())} /></DialogContent>
+				</Dialog>
+			}
+		>
+			<Section>
+				<ItemGroup>
+					{servers.data ? (
+						servers.data.length ? (
+							servers.data.map((x) => {
+								const state = !x.enabled ? "turned off" : (states.data?.[x.name] ?? (states.loading ? undefined : x.remote ? "unknown" : "local"));
+								const agent = x.scope === "global" ? undefined : x.scope;
+								const tone = state === undefined ? undefined : /connected|ok|local|authenticated/i.test(state) ? "good" : /needs|error|fail|unauth/i.test(state) ? "warn" : undefined;
+								return (
+									<SettingsItem
+										key={`${x.scope}:${x.name}`}
+										data-find={`mcp:${x.scope}:${x.name}`}
+										title={<>
+												{x.name}
+												{state === undefined ? <Skeleton className="h-5 w-16 rounded-full" /> : <Badge variant={tone === "good" ? "default" : tone === "warn" ? "outline" : "secondary"}>{state}</Badge>}
+												<Badge variant="secondary" className="h-auto max-w-full whitespace-normal">{x.scope === "global" ? "all agents" : x.session ? `${x.scope}, one conversation (${x.session})` : x.scope}</Badge>
+												{x.taints ? <Badge variant="outline">brings in outside content</Badge> : null}
+												{x.approve !== "never" ? <Badge variant="secondary">asks first: {x.approve}</Badge> : null}
+											</>}
+										description={x.target}
+										descriptionClassName="line-clamp-none font-mono wrap-anywhere"
+										actions={<>
+											{x.remote ? <Button variant="outline" size="sm" disabled={busy === x.name} onClick={() => void login(x.name, agent)}>{busy === x.name ? <><Pulse label="Loading" data-icon="inline-start" />In your browser…</> : "Sign in"}</Button> : null}
+											{x.target.startsWith("bundled:") ? null : <AlertDialog>
+												<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Remove</AlertDialogTrigger>
+												<AlertDialogContent>
+													<AlertDialogHeader>
+														<AlertDialogTitle>Remove the MCP server {x.name}?</AlertDialogTitle>
+													</AlertDialogHeader>
+													<AlertDialogFooter>
+														<AlertDialogCancel>Cancel</AlertDialogCancel>
+														<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeMcp(x.name, agent)).then((r) => r && (store.flash(`Removed ${x.name}.`), reload()))}>Remove</AlertDialogCancel>
+													</AlertDialogFooter>
+												</AlertDialogContent>
+											</AlertDialog>}
+										</>}
+									/>
+								);
+							})
+						) : (
+							<EmptyView icon={PlugIcon} title="No MCP servers yet">Add one with its address or command, or ask an agent to add one for you.</EmptyView>
+						)
+					) : servers.error ? (
+						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
 					) : (
-						<EmptyView icon={PlugIcon} title="No MCP servers yet" />
-					)
-				) : servers.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
-				) : (
-					<Pulse label="Loading" className="m-auto" />
-				)}
-			</ItemGroup>
-			{out ? (
-				<CodeBlock size="sm">
-					<CodeBlockContent wrap className="max-h-60 select-text">{out}</CodeBlockContent>
-				</CodeBlock>
-			) : null}
-			<FieldSet>
-				<FieldLegend>Add a server</FieldLegend>
-				<FieldGroup className={FORM_GRID}>
-					<Field>
-						<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
-						<Input id={`${field}-name`} className="font-mono" placeholder="home_link" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-						<FieldDescription>Lowercase letters, digits and _. Its tools appear as mcp__name__tool.</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-for`}>For</FieldLabel>
-						<Select items={forItems} value={f.agent} onValueChange={(agent) => setF({ ...f, agent: agent ?? "" })}>
-							<SelectTrigger id={`${field}-for`}>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{forItems.map((o) => (
-										<SelectItem key={o.value} value={o.value}>
-											{o.label}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
-					</Field>
-					<Field className="col-span-full">
-						<FieldLabel htmlFor={`${field}-kind`}>Kind</FieldLabel>
-						<ToggleGroup id={`${field}-kind`} aria-label="Kind" variant="outline" className="flex-wrap" value={[f.kind]} onValueChange={one((kind) => setF({ ...f, kind: kind as "remote" | "local", target: "" }))}>
-							<ToggleGroupItem value="remote">Remote (https address)</ToggleGroupItem>
-							<ToggleGroupItem value="local">A program on this computer</ToggleGroupItem>
-						</ToggleGroup>
-					</Field>
-					<Field className="col-span-full">
-						<FieldLabel htmlFor={`${field}-target`}>{f.kind === "remote" ? "Address" : "Command"}</FieldLabel>
-						<Input id={`${field}-target`} className="font-mono" placeholder={f.kind === "remote" ? "https://mcp.example.com/mcp" : "npx -y @example/mcp@latest"} value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} />
-						<FieldDescription>{f.kind === "remote" ? "Its https URL." : "The program and its arguments, as its documentation gives them. One program, no shell operators."}</FieldDescription>
-					</Field>
-					<Field className="col-span-full">
-						<FieldLabel htmlFor={`${field}-description`}>What it offers</FieldLabel>
-						<Input id={`${field}-description`} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
-						<FieldDescription>One sentence, for the agents.</FieldDescription>
-					</Field>
-					<Field orientation="horizontal" className="col-span-full">
-						<FieldContent>
-							<FieldLabel htmlFor={`${field}-taints`}>Returns outside content</FieldLabel>
-							<FieldDescription>Its results mark a conversation as having read outside content (a server that reads the web, mail or other people's words).</FieldDescription>
-						</FieldContent>
-						<Switch id={`${field}-taints`} checked={f.taints} onCheckedChange={(taints) => setF({ ...f, taints })} />
-					</Field>
-				</FieldGroup>
-				<Field orientation="horizontal" className="justify-end">
-					<Button disabled={!f.name.trim() || !f.target.trim()} onClick={() => void add()}>Add server</Button>
-				</Field>
-			</FieldSet>
+						<SettingsItemsSkeleton />
+					)}
+				</ItemGroup>
+				{out ? (
+					<CodeBlock size="sm">
+						<CodeBlockContent wrap className="max-h-60 select-text">{out}</CodeBlockContent>
+					</CodeBlock>
+				) : null}
+			</Section>
 		</Page>
 	);
 }
@@ -1062,15 +1411,11 @@ function Skills() {
 	};
 	if (edit)
 		return (
-			<Page title={edit.isNew ? "A new skill" : edit.name} lead="A skill is how something is done, written down so that an agent can do it again: a name, one or two sentences on when to use it, and the steps." actions={edit.managed ? <Button disabled={!edit.name.trim() || !edit.description.trim() || !edit.instructions.trim()} onClick={() => void save()}>Save skill</Button> : undefined}>
-				<Button variant="ghost" size="xs" className="self-start" onClick={() => setEdit(undefined)}>
-					<ChevronLeftIcon data-icon="inline-start" />
-					Skills
-				</Button>
+			<Page back={{ label: "Skills", onClick: () => setEdit(undefined) }} title={edit.isNew ? "A new skill" : edit.name} lead="A skill is a way of doing something, written down so that an agent can do it again: a name, a sentence on when to use it, and the steps." actions={edit.managed ? <Button disabled={!edit.name.trim() || !edit.description.trim() || !edit.instructions.trim()} onClick={() => void save()}>Save skill</Button> : undefined}>
 				{edit.managed ? null : (
 					<Alert>
 						<InfoIcon />
-						<AlertDescription>This skill lies in a folder of yours that the configuration names. pine shows it and does not change it.</AlertDescription>
+						<AlertDescription>This skill is in a folder of yours that pine.json points to. pine shows it here but does not change it.</AlertDescription>
 					</Alert>
 				)}
 				<FieldGroup className={FORM_GRID}>
@@ -1103,7 +1448,7 @@ function Skills() {
 					<Field className="col-span-full">
 						<FieldLabel htmlFor={`${field}-description`}>When to use it</FieldLabel>
 						<Textarea id={`${field}-description`} className="min-h-14 max-h-30" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} readOnly={!edit.managed} />
-						<FieldDescription>This line is always in front of the agent; it decides by it whether to read the rest.</FieldDescription>
+						<FieldDescription>The agent always sees this line, and reads the steps below only when it fits.</FieldDescription>
 					</Field>
 				</FieldGroup>
 				<div className="flex h-104 overflow-hidden rounded-lg border">
@@ -1112,29 +1457,27 @@ function Skills() {
 			</Page>
 		);
 	return (
-		<Page title="Skills" lead="What your agents know how to do. An agent writes one when you ask it to (“make a skill for this”); here you can read them, change them and add your own." actions={<Button onClick={() => setEdit({ name: "", description: "", instructions: "", agent: "", isNew: true, managed: true })}><PlusIcon data-icon="inline-start" />New skill</Button>}>
+		<Page title="Skills" lead="Ways of doing things that your agents can reuse. An agent writes one when you ask it to (“make a skill for this”). Here you can read, change and add them." actions={<Button variant="outline" onClick={() => setEdit({ name: "", description: "", instructions: "", agent: "", isNew: true, managed: true })}><PlusIcon data-icon="inline-start" />New skill</Button>}>
 			<ItemGroup>
 				{skills.data ? (
 					skills.data.length ? (
 						skills.data.map((x) => {
 							const managed = x.managed && x.scope !== "local";
 							return (
-								<Item key={x.dir} variant="outline">
-									<ItemContent className="min-w-0">
-										<ItemTitle>
+								<SettingsItem
+									key={x.dir}
+									data-find={`skill:${x.dir}`}
+									title={<>
 											{x.name}
 											<Badge variant="secondary">{x.scope === "global" ? "all agents" : x.scope === "agent" ? x.agent : `${x.agent} · ${x.session}`}</Badge>
-											{x.managed ? null : <Badge variant="secondary">yours, from the configuration</Badge>}
-										</ItemTitle>
-										<ItemDescription className="line-clamp-none wrap-anywhere">{short(x.description, 220)}</ItemDescription>
-									</ItemContent>
-									<ItemActions>
-										<Button variant="outline" size="xs" onClick={() => setEdit({ name: x.name, description: x.description, instructions: x.instructions ?? "", agent: x.agent ?? "", isNew: false, managed })}>{managed ? "Edit" : "Read"}</Button>
+											{x.managed ? null : <Badge variant="secondary">from your own folder</Badge>}
+										</>}
+									description={short(x.description, 220)}
+									descriptionClassName="line-clamp-none wrap-anywhere"
+									actions={<>
+										<Button variant="outline" size="sm" onClick={() => setEdit({ name: x.name, description: x.description, instructions: x.instructions ?? "", agent: x.agent ?? "", isNew: false, managed })}>{managed ? "Edit" : "Read"}</Button>
 										{x.managed ? <AlertDialog>
-											<HoverTooltip>
-												<TooltipTrigger render={<AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />} aria-label="Remove this skill"><Trash2Icon /></AlertDialogTrigger>} />
-												<TooltipContent>Remove this skill</TooltipContent>
-											</HoverTooltip>
+											<AlertDialogTrigger render={<Button variant="ghost" size="sm" aria-label="Remove this skill" />}>Remove</AlertDialogTrigger>
 											<AlertDialogContent>
 												<AlertDialogHeader>
 													<AlertDialogTitle>Remove the skill {x.name}?</AlertDialogTitle>
@@ -1145,8 +1488,8 @@ function Skills() {
 												</AlertDialogFooter>
 											</AlertDialogContent>
 										</AlertDialog> : null}
-									</ItemActions>
-								</Item>
+									</>}
+								/>
 							);
 						})
 					) : (
@@ -1155,7 +1498,7 @@ function Skills() {
 				) : skills.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{skills.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
 		</Page>
@@ -1294,7 +1637,7 @@ function NewSource({ types, made }: { types: SourceType[]; made: () => void }) {
 							{plan.owner ? (
 								<Alert>
 									<TriangleAlertIcon />
-									<AlertDescription>What it reports is treated as your own words: the agent it wakes gets its full tools.</AlertDescription>
+									<AlertDescription>What it reports is treated as your own words: the agent it wakes has all tools available.</AlertDescription>
 								</Alert>
 							) : null}
 							<FieldGroup>
@@ -1311,7 +1654,7 @@ function NewSource({ types, made }: { types: SourceType[]; made: () => void }) {
 								<Field>
 									<FieldLabel htmlFor={`${field}-note`}>Subscribe right away</FieldLabel>
 									<Input id={`${field}-note`} placeholder="for example: file the scan and tell me what it is" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
-									<FieldDescription>{`What is to be done when it reports something. With a note, ${f.agent || "every agent"} is woken by its events; without one, nobody is subscribed yet.`}</FieldDescription>
+									<FieldDescription>{`What is to be done when it reports something. With a note, the source's events wake ${f.agent || "all agents"}; without one, nobody is subscribed yet.`}</FieldDescription>
 								</Field>
 							</FieldGroup>
 						</>
@@ -1389,9 +1732,9 @@ function Sources() {
 	const types = useLoad(() => api.sourceTypes());
 	const adding = useRef<DialogRootActions>(null);
 	const subscribe = async (name: string) => {
-		const agent = await store.pick({ title: `Who wakes on ${name}?`, items: [{ value: "*", label: "All agents", about: "each in its main conversation" }, ...s.agents.map((a) => ({ value: a.id, label: a.id, about: "in its main conversation" }))] });
+		const agent = await store.pick({ title: `Who wakes on ${name}?`, items: [{ value: "*", label: "All agents", about: "each in their main conversation" }, ...s.agents.map((a) => ({ value: a.id, label: a.id, about: "in the main conversation" }))] });
 		if (!agent) return;
-		const note = await store.pick({ title: "What is to be done when it reports something?", items: [{ value: "-", label: "Nothing in particular", about: "the agent decides by the event" }], free: true, placeholder: "A note that is shown with every event" });
+		const note = await store.pick({ title: "What is to be done when it reports something?", items: [{ value: "-", label: "Nothing in particular", about: "the agent decides by the event" }], free: true, placeholder: "A note that is shown with each event" });
 		if (note === undefined) return;
 		const details = note === "-" ? {} : { note };
 		const done = await store.attempt(() => (agent === "*" ? api.subscribeAll(name, details) : api.subscribe(agent, name, details)));
@@ -1403,44 +1746,39 @@ function Sources() {
 		if (done) sources.reload();
 	};
 	return (
-		<>
-			<div className="flex items-center gap-2"><p className="grow text-muted-foreground">What can wake an agent: a folder, a web address, a chat, a device. A source costs nothing until somebody is subscribed to it.</p><Dialog actionsRef={adding}>
-				<DialogTrigger render={<Button disabled={!types.data} />}><PlusIcon data-icon="inline-start" />New source</DialogTrigger>
-				<DialogContent showCloseButton={false} className="sm:max-w-2xl">{types.data ? <NewSource types={types.data} made={() => (adding.current?.close(), sources.reload())} /> : null}</DialogContent>
-			</Dialog></div>
+		<Section
+			title="Sources"
+			data-find="sources"
+			about="Something that can wake an agent: a folder, a web page, a chat, a device. A source does nothing until an agent is subscribed to it."
+			actions={
+				<Dialog actionsRef={adding}>
+					<DialogTrigger render={<Button variant="outline" disabled={!types.data} />}><PlusIcon data-icon="inline-start" />New source</DialogTrigger>
+					<DialogContent showCloseButton={false} className="sm:max-w-2xl">{types.data ? <NewSource types={types.data} made={() => (adding.current?.close(), sources.reload())} /> : null}</DialogContent>
+				</Dialog>
+			}
+		>
 			<ItemGroup>
 				{sources.data ? (
 					sources.data.length ? (
 						sources.data.map((x) => (
-							<Item key={`${x.scope}:${x.name}`} variant="outline">
-								<ItemMedia><span className={cn("size-2 rounded-full", x.error ? "bg-destructive" : x.running ? "bg-primary" : "bg-muted-foreground")} /></ItemMedia>
-								<ItemContent className="min-w-0">
-									<ItemTitle>
+							<SettingsItem
+								key={`${x.scope}:${x.name}`}
+								data-find={`source:${x.scope}:${x.name}`}
+								media={<span className={cn("size-2 rounded-full", x.error ? "bg-destructive" : x.running ? "bg-primary" : "bg-muted-foreground")} />}
+								title={<>
 										{x.name}
 										<Badge variant="secondary">{x.type}</Badge>
 										<Badge variant="secondary">{scopeText(x.scope)}</Badge>
 										{x.trust === "owner" ? <Badge>yours</Badge> : null}
-									</ItemTitle>
-									<ItemDescription className="line-clamp-none wrap-anywhere">
+									</>}
+								description={<>
 										{x.description ? <>{x.description}<br /></> : null}
 										{x.error ? `not running: ${x.error}` : x.running ? (x.status ?? "running") : "idle, nobody is subscribed"} · {x.last ? `last event ${ago(x.last.ts)}, ${x.events} since start` : "no events since start"}
-									</ItemDescription>
-									<div className="flex flex-wrap items-center gap-1">
-										{x.subscribers.map((who) => (
-											<HoverTooltip key={who}>
-												<TooltipTrigger render={<Button variant="outline" size="xs" aria-label={`End the subscription of ${who}`} onClick={() => void unsubscribe(x.name, who)}>{who}<XIcon data-icon="inline-end" /></Button>} />
-												<TooltipContent>End the subscription of {who}</TooltipContent>
-											</HoverTooltip>
-										))}
-										<Button variant="ghost" size="xs" onClick={() => void subscribe(x.name)}><PlusIcon data-icon="inline-start" />Subscribe</Button>
-									</div>
-								</ItemContent>
-								<ItemActions>
+									</>}
+								descriptionClassName="line-clamp-none wrap-anywhere"
+								actions={
 									<AlertDialog>
-										<HoverTooltip>
-											<TooltipTrigger render={<AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />} aria-label="Remove this source"><Trash2Icon /></AlertDialogTrigger>} />
-											<TooltipContent>Remove this source</TooltipContent>
-										</HoverTooltip>
+										<AlertDialogTrigger render={<Button variant="ghost" size="sm" aria-label="Remove this source" />}>Remove</AlertDialogTrigger>
 										<AlertDialogContent>
 											<AlertDialogHeader>
 												<AlertDialogTitle>Remove the event source {x.name}?</AlertDialogTitle>
@@ -1451,8 +1789,18 @@ function Sources() {
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
-								</ItemActions>
-							</Item>
+								}
+							>
+								<div className="flex flex-wrap items-center gap-1">
+										{x.subscribers.map((who) => (
+											<HoverTooltip key={who}>
+												<TooltipTrigger render={<Button variant="outline" size="sm" aria-label={`End the subscription of ${who}`} onClick={() => void unsubscribe(x.name, who)}>{who}<XIcon data-icon="inline-end" /></Button>} />
+												<TooltipContent>End the subscription of {who}</TooltipContent>
+											</HoverTooltip>
+										))}
+										<Button variant="outline" size="sm" onClick={() => void subscribe(x.name)}><PlusIcon data-icon="inline-start" />Subscribe</Button>
+									</div>
+							</SettingsItem>
 						))
 					) : (
 						<EmptyView icon={ZapIcon} title="No event sources yet">Add one, or ask an agent: “watch ~/Scans”, “tell me when the price drops”.</EmptyView>
@@ -1460,10 +1808,10 @@ function Sources() {
 				) : sources.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{sources.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
-		</>
+		</Section>
 	);
 }
 
@@ -1477,7 +1825,7 @@ const WHEN: Record<"cron" | "every" | "at" | "in", { label: string; name: string
 // A time in milliseconds as pine.json writes it: 5m, 30s, 2h.
 const span = (ms: number) => (ms % 3_600_000 === 0 ? `${ms / 3_600_000}h` : ms % 60_000 === 0 ? `${ms / 60_000}m` : ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`);
 
-const conversationOf = (session: string | undefined) => (!session || session === "main" ? "in its main conversation" : session === "new" ? "in a new conversation" : `in the conversation ${session}`);
+const conversationOf = (session: string | undefined) => (!session || session === "main" ? "in the main conversation" : session === "new" ? "in a new conversation" : `in the conversation ${session}`);
 
 /** A route in the words of the form that makes one: when what arrives, then what happens. */
 function routeSaid(r: Route): { when: string; then: string } {
@@ -1502,14 +1850,14 @@ const ROUTE_DOES = {
 	wake: { label: "Wake an agent", about: "The agent gets the event as a task, in the conversation you name.", takes: ["agent", "session", "prompt"] },
 	set: { label: "Set shared state", about: "A value is written where agents and other routes read it (state.<key>). No agent is woken.", takes: ["set"] },
 	publish: { label: "Publish an event", about: "Another event goes out, for another route, an agent subscribed to it, or a source that sends (out/source/<name>).", takes: ["publish_topic", "publish_payload"] },
-	ask: { label: "Ask a model", about: "One model call, without tools or history. Its answer goes out as an event of your own, the answer in payload.text.", takes: ["call_prompt", "call_system", "call_model", "publish_topic"] },
+	ask: { label: "Ask a model", about: "One model call, without tools or history. The answer goes out as an event of your own, the answer in payload.text.", takes: ["call_prompt", "call_system", "call_model", "publish_topic"] },
 } as const;
 
 // How often a route fires: every event, one and then a pause (throttle), or the last of a burst (debounce).
 const ROUTE_PACE = {
-	every: { label: "Every event", time: "", about: "" },
-	throttle: { label: "At most one per", time: "At most one per", about: "After one event, the next ones are ignored for this long. For an alarm that repeats." },
-	debounce: { label: "The last of a burst", time: "Once quiet for", about: "Waits until no event has come for this long, then handles the last one. For a camera that uploads five pictures." },
+	every: { label: "Each event", time: "", about: "" },
+	throttle: { label: "Limit how often", time: "At most one per", about: "After one event, the next ones are ignored for this long. For an alarm that repeats." },
+	debounce: { label: "Wait for a burst to end", time: "Once quiet for", about: "Waits until no event has come for this long, then handles the last one. For a camera that uploads five pictures." },
 } as const;
 
 /** The form for a new schedule, in a dialog: When (set times, an interval, or once), Then (whom it wakes, with what task), a name. */
@@ -1518,7 +1866,7 @@ export function NewSchedule({ made }: { made: () => void }) {
 	const [f, setF] = useState({ name: "", kind: "cron" as keyof typeof WHEN, when: "", task: "", agent: "" });
 	const [busy, setBusy] = useState(false);
 	const field = useId();
-	const forItems = [{ value: "", label: "Every agent, each in its main conversation" }, ...s.agents.map((a) => ({ value: a.id, label: `${a.id}, in its main conversation` }))];
+	const forItems = [{ value: "", label: "All agents, each in their main conversation" }, ...s.agents.map((a) => ({ value: a.id, label: `${a.id}, in the main conversation` }))];
 	const add = async () => {
 		setBusy(true);
 		const done = await store.attempt(() => api.addSchedule({ name: f.name.trim(), task: f.task.trim(), [f.kind]: f.when.trim(), agent: f.agent || undefined } as any));
@@ -1540,11 +1888,7 @@ export function NewSchedule({ made }: { made: () => void }) {
 						<FieldGroup>
 							<Field>
 								<FieldLabel htmlFor={`${field}-kind`}>It is time</FieldLabel>
-								<ToggleGroup id={`${field}-kind`} aria-label="It is time" variant="outline" className="flex-wrap" value={[f.kind]} onValueChange={one((kind) => setF({ ...f, kind: kind as keyof typeof WHEN, when: "" }))}>
-									{Object.entries(WHEN).map(([value, w]) => (
-										<ToggleGroupItem key={value} value={value}>{w.label}</ToggleGroupItem>
-									))}
-								</ToggleGroup>
+								<Choose id={`${field}-kind`} items={Object.entries(WHEN).map(([value, w]) => ({ value: value as keyof typeof WHEN, label: w.label }))} value={f.kind} onChange={(kind) => setF({ ...f, kind, when: "" })} />
 							</Field>
 							<Field>
 								<FieldLabel htmlFor={`${field}-when`}>{WHEN[f.kind].name}</FieldLabel>
@@ -1575,7 +1919,7 @@ export function NewSchedule({ made }: { made: () => void }) {
 							<Field>
 								<FieldLabel htmlFor={`${field}-task`}>With the task</FieldLabel>
 								<Textarea id={`${field}-task`} className="min-h-14 max-h-44" placeholder="Look at my calendar for today and tell me what is coming." value={f.task} onChange={(e) => setF({ ...f, task: e.target.value })} />
-								<FieldDescription>Written so that it is enough on its own: the agent reads it with nothing else.</FieldDescription>
+								<FieldDescription>Write it so it stands alone: the agent reads it with nothing else.</FieldDescription>
 							</Field>
 						</FieldGroup>
 					</FieldSet>
@@ -1596,40 +1940,43 @@ export function NewSchedule({ made }: { made: () => void }) {
 }
 
 // Whom a schedule wakes, in the words of the form that makes one.
-const wakes = (scope: string, session?: string) => (scope === "global" ? "every agent, each in its main conversation" : `${scope} ${conversationOf(session)}`);
+const wakes = (scope: string, session?: string) => (scope === "global" ? "all agents, each in their main conversation" : `${scope} ${conversationOf(session)}`);
 
 /** Settings › Events › Schedules: what a schedule is, each one as When and Then, and New schedule. */
 export function Schedules() {
 	const list = useLoad(() => api.schedules());
 	const adding = useRef<DialogRootActions>(null);
 	return (
-		<>
-			<div className="flex items-center gap-2">
-				<p className="grow text-muted-foreground">What happens because of the time: at set times, every so often, or once. A schedule wakes an agent with a task, in your name. You can also just ask an agent (“every morning at seven …”, “remind me at five”).</p>
+		<Section
+			title="Schedules"
+			data-find="schedules"
+			about="A task for an agent at set times, every so often, or once, as if you had sent it. You can also just ask an agent: “every morning at seven …”, “remind me at five”."
+			actions={
 				<Dialog actionsRef={adding}>
-					<DialogTrigger render={<Button />}><PlusIcon data-icon="inline-start" />New schedule</DialogTrigger>
+					<DialogTrigger render={<Button variant="outline" />}><PlusIcon data-icon="inline-start" />New schedule</DialogTrigger>
 					<DialogContent showCloseButton={false} className="sm:max-w-2xl"><NewSchedule made={() => (adding.current?.close(), list.reload())} /></DialogContent>
 				</Dialog>
-			</div>
+			}
+		>
 			<ItemGroup>
 				{list.data ? (
 					list.data.length ? (
 						list.data.map((x) => (
-							<Item key={`${x.scope}:${x.name}`} variant="outline">
-								<ItemContent className="min-w-0">
-									<ItemTitle>
+							<SettingsItem
+								key={`${x.scope}:${x.name}`}
+								data-find={`schedule:${x.scope}:${x.name}`}
+								title={<>
 										{x.name}
 										{x.next ? <Badge variant="secondary">next {new Date(x.next).toLocaleString("sv-SE").slice(0, 16)}</Badge> : null}
-									</ItemTitle>
-									<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">When</span> {x.when}</ItemDescription>
-									<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">Then</span> {x.task ? `wake ${wakes(x.scope, x.session)}: “${short(x.task, 160)}”` : `publish ${x.topic}`}</ItemDescription>
-								</ItemContent>
-								<ItemActions>
+									</>}
+								description={[
+									<><span className="font-medium text-foreground">When</span> {x.when}</>,
+									<><span className="font-medium text-foreground">Then</span> {x.task ? `wake ${wakes(x.scope, x.session)}: “${short(x.task, 160)}”` : `publish ${x.topic}`}</>,
+								]}
+								descriptionClassName="line-clamp-none wrap-anywhere"
+								actions={
 									<AlertDialog>
-										<HoverTooltip>
-											<TooltipTrigger render={<AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />} aria-label="Remove this schedule"><Trash2Icon /></AlertDialogTrigger>} />
-											<TooltipContent>Remove this schedule</TooltipContent>
-										</HoverTooltip>
+										<AlertDialogTrigger render={<Button variant="ghost" size="sm" aria-label="Remove this schedule" />}>Remove</AlertDialogTrigger>
 										<AlertDialogContent>
 											<AlertDialogHeader>
 												<AlertDialogTitle>Remove the schedule {x.name}?</AlertDialogTitle>
@@ -1640,8 +1987,8 @@ export function Schedules() {
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
-								</ItemActions>
-							</Item>
+								}
+							/>
 						))
 					) : (
 						<EmptyView icon={ClockIcon} title="Nothing is scheduled">An agent schedules something when you ask it to, or add one here.</EmptyView>
@@ -1649,10 +1996,10 @@ export function Schedules() {
 				) : list.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
-		</>
+		</Section>
 	);
 }
 
@@ -1693,7 +2040,7 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 							<Field>
 								<FieldLabel htmlFor={`${field}-on`}>An event arrives on</FieldLabel>
 								<Input id={`${field}-on`} className="font-mono" placeholder="source/door/message" value={f.on} onChange={(e) => setF({ ...f, on: e.target.value })} />
-								<FieldDescription>Its topic, as the event log shows it. Several: commas between. + is one part (cam/+/motion), # all below (source/door/#).</FieldDescription>
+								<FieldDescription>The event's topic, as the event log shows it. Several: commas between. + is one part (cam/+/motion), # all below (source/door/#).</FieldDescription>
 							</Field>
 							<Field>
 								<FieldLabel htmlFor={`${field}-when`}>Only if</FieldLabel>
@@ -1702,11 +2049,7 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 							</Field>
 							<Field>
 								<FieldLabel htmlFor={`${field}-pace`}>How often</FieldLabel>
-								<ToggleGroup id={`${field}-pace`} aria-label="How often" variant="outline" className="flex-wrap" value={[f.pace]} onValueChange={one((p) => setF({ ...f, pace: p as keyof typeof ROUTE_PACE }))}>
-									{Object.entries(ROUTE_PACE).map(([value, p]) => (
-										<ToggleGroupItem key={value} value={value}>{p.label}</ToggleGroupItem>
-									))}
-								</ToggleGroup>
+								<Choose id={`${field}-pace`} items={Object.entries(ROUTE_PACE).map(([value, p]) => ({ value: value as keyof typeof ROUTE_PACE, label: p.label }))} value={f.pace} onChange={(pace) => setF({ ...f, pace })} />
 							</Field>
 							{f.pace === "every" ? null : (
 								<Field>
@@ -1723,11 +2066,7 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 						<FieldGroup>
 							<Field>
 								<FieldLabel htmlFor={`${field}-does`}>What happens</FieldLabel>
-								<ToggleGroup id={`${field}-does`} aria-label="What happens" variant="outline" className="flex-wrap" value={[f.does]} onValueChange={one((d) => setF({ ...f, does: d as keyof typeof ROUTE_DOES }))}>
-									{Object.entries(ROUTE_DOES).map(([value, d]) => (
-										<ToggleGroupItem key={value} value={value}>{d.label}</ToggleGroupItem>
-									))}
-								</ToggleGroup>
+								<Choose id={`${field}-does`} items={Object.entries(ROUTE_DOES).map(([value, d]) => ({ value: value as keyof typeof ROUTE_DOES, label: d.label }))} value={f.does} onChange={(does) => setF({ ...f, does })} />
 								<FieldDescription>{does.about}</FieldDescription>
 							</Field>
 							{f.does === "wake" ? (
@@ -1750,7 +2089,7 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 									<Field>
 										<FieldLabel htmlFor={`${field}-session`}>In the conversation</FieldLabel>
 										<Input id={`${field}-session`} className="font-mono" placeholder="main" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })} />
-										<FieldDescription>Empty: its main one. “new”: a fresh one for every event. Or a name of your own.</FieldDescription>
+										<FieldDescription>Empty: the agent's main conversation. “new”: a fresh one for each event. Or a name of your own.</FieldDescription>
 									</Field>
 									<Field>
 										<FieldLabel htmlFor={`${field}-prompt`}>Telling it</FieldLabel>
@@ -1791,7 +2130,8 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 									</Field>
 									<Field>
 										<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
-										<Select items={modelItems} value={f.call_model} onValueChange={(m) => setF({ ...f, call_model: m ?? "" })}>
+										{models.data || models.error ? (
+											<Select items={modelItems} value={f.call_model} onValueChange={(m) => setF({ ...f, call_model: m ?? "" })}>
 											<SelectTrigger id={`${field}-model`}>
 												<SelectValue />
 											</SelectTrigger>
@@ -1803,6 +2143,7 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 												</SelectGroup>
 											</SelectContent>
 										</Select>
+							) : <SelectPending id={`${field}-model`} />}
 									</Field>
 									<Field>
 										<FieldLabel htmlFor={`${field}-answer`}>Publish the answer as</FieldLabel>
@@ -1834,35 +2175,38 @@ export function Routes() {
 	const list = useLoad(() => api.routes());
 	const adding = useRef<DialogRootActions>(null);
 	return (
-		<>
-			<div className="flex items-center gap-2">
-				<p className="grow text-muted-foreground">Most things need no route: an agent that reacts to a source is subscribed to it, and what happens at a time is a schedule. A route is a rule for the rest: when an event arrives, then one thing happens, often without waking an agent.</p>
+		<Section
+			title="Routes"
+			data-find="routes"
+			about="A rule: when an event arrives, one thing happens, often without waking an agent. Most setups need none: to react to a source, subscribe an agent to it; to do something at a time, add a schedule."
+			actions={
 				<Dialog actionsRef={adding}>
-					<DialogTrigger render={<Button />}><PlusIcon data-icon="inline-start" />New route</DialogTrigger>
+					<DialogTrigger render={<Button variant="outline" />}><PlusIcon data-icon="inline-start" />New route</DialogTrigger>
 					<DialogContent showCloseButton={false} className="sm:max-w-2xl"><NewRoute made={() => (adding.current?.close(), list.reload())} /></DialogContent>
 				</Dialog>
-			</div>
+			}
+		>
 			<ItemGroup>
 				{list.data ? (
 					list.data.length ? (
 						list.data.map((r) => {
 							const said = routeSaid(r);
 							return (
-								<Item key={r.name} variant="outline">
-									<ItemContent className="min-w-0">
-										<ItemTitle>
+								<SettingsItem
+									key={r.name}
+									data-find={`route:${r.name}`}
+									title={<>
 											{r.name}
 											{r.trust === "owner" ? <Badge variant="outline">counts as your words</Badge> : null}
-										</ItemTitle>
-										<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">When</span> {said.when}</ItemDescription>
-										<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">Then</span> {said.then}</ItemDescription>
-									</ItemContent>
-									<ItemActions>
+										</>}
+									description={[
+										<><span className="font-medium text-foreground">When</span> {said.when}</>,
+										<><span className="font-medium text-foreground">Then</span> {said.then}</>,
+									]}
+									descriptionClassName="line-clamp-none wrap-anywhere"
+									actions={
 										<AlertDialog>
-											<HoverTooltip>
-												<TooltipTrigger render={<AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />} aria-label="Remove this route"><Trash2Icon /></AlertDialogTrigger>} />
-												<TooltipContent>Remove this route</TooltipContent>
-											</HoverTooltip>
+											<AlertDialogTrigger render={<Button variant="ghost" size="sm" aria-label="Remove this route" />}>Remove</AlertDialogTrigger>
 											<AlertDialogContent>
 												<AlertDialogHeader>
 													<AlertDialogTitle>Remove the route {r.name}?</AlertDialogTitle>
@@ -1873,63 +2217,64 @@ export function Routes() {
 												</AlertDialogFooter>
 											</AlertDialogContent>
 										</AlertDialog>
-									</ItemActions>
-								</Item>
+									}
+								/>
 							);
 						})
 					) : (
-						<EmptyView icon={GitBranchIcon} title="No routes">You don’t need any to start. A route does a small job when an event comes in, without waking an agent: it saves a value for later, sends the event on under another name, or asks a model a quick question first.</EmptyView>
+						<EmptyView icon={GitBranchIcon} title="No routes">You don’t need any to start.</EmptyView>
 					)
 				) : list.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
-		</>
+		</Section>
 	);
 }
 
 function EventsPage() {
 	return (
-		<Page title="Events" lead="What reaches your agents without you typing: sources that report, schedules that fire, and routes between them." actions={<Button variant="outline" onClick={() => void store.openEvents()}><AudioLinesIcon data-icon="inline-start" />Open the event log</Button>}>
-			<Tabs defaultValue="sources">
-				<TabsList activateOnFocus>
-					<TabsTrigger value="sources"><ZapIcon data-icon="inline-start" />Sources</TabsTrigger>
-					<TabsTrigger value="schedules"><ClockIcon data-icon="inline-start" />Schedules</TabsTrigger>
-					<TabsTrigger value="routes"><GitBranchIcon data-icon="inline-start" />Routes</TabsTrigger>
-				</TabsList>
-				<TabsContent value="sources" className="flex flex-col gap-6"><Sources /></TabsContent>
-				<TabsContent value="schedules" className="flex flex-col gap-6"><Schedules /></TabsContent>
-				<TabsContent value="routes" className="flex flex-col gap-6"><Routes /></TabsContent>
-			</Tabs>
+		<Page title="Events" lead="What starts your agents without you typing a message: sources that report something, schedules at set times, and routes that pass events on." actions={<Button variant="outline" onClick={() => void store.openEvents()}><AudioLinesIcon data-icon="inline-start" />Event log</Button>}>
+			{/* All three at once, each with what it has: nothing set up is hidden behind a tab. Routes last, the one few need. */}
+			<Sources />
+			<Schedules />
+			<Routes />
 		</Page>
 	);
 }
 
 // ---- instructions for all agents -------------------------------------------------------------------------
 
-function Instructions() {
+/**
+ * The files for all agents in pine's home (AGENTS.md, TOOLS.md, USER.md), at the foot of Settings > Agents: one
+ * tab each, and the bar of unsaved changes as on an agent's page, which saves every file that was changed.
+ */
+function SharedInstructions() {
 	const files = useLoad(() => api.shared());
 	const [name, setName] = useState("AGENTS.md");
 	const [texts, setTexts] = useState<Record<string, string>>({});
-	const file = files.data?.find((f) => f.name === name);
-	const text = texts[name] ?? file?.text ?? "";
-	const dirty = file !== undefined && text !== file.text;
+	const [busy, setBusy] = useState(false);
+	const changed = (files.data ?? []).filter((f) => texts[f.name] !== undefined && texts[f.name] !== f.text);
 	const save = async () => {
-		if (!dirty) return;
-		const done = await store.attempt(() => api.setShared(name, text));
-		if (!done) return;
-		store.flash(`Saved ${name}. It reaches every agent with its next message.`, "good");
-		setTexts((was) => Object.fromEntries(Object.entries(was).filter(([k]) => k !== name)));
+		if (!changed.length) return;
+		setBusy(true);
+		for (const f of changed) {
+			const done = await store.attempt(() => api.setShared(f.name, texts[f.name]));
+			if (!done) return setBusy(false);
+		}
+		setBusy(false);
+		store.flash(`Saved ${changed.map((f) => f.name).join(", ")}. All agents read the change from their next message on.`, "good");
+		setTexts({});
 		files.reload();
 	};
 	return (
-		<Page title="Instructions" lead="What holds for all agents: three files in pine's home that are put into every agent's prompt. The main agent keeps them when you tell it something that is for everybody; here you can read and change them yourself." actions={<Button disabled={!dirty} onClick={() => void save()}>Save {name}</Button>}>
+		<Section data-find="shared-instructions" title="Instructions for all agents" about="Notes that all agents read with each message. The main agent keeps them up to date when you tell it something meant for everybody, and you can change them here. Something for one agent only goes into that agent's own files: open the agent above.">
 			{files.data ? (
 				<FileTabs files={files.data.map((f) => ({ key: f.name, label: f.name, about: f.about }))} value={name} onChange={setName}>
 					{(key) => (
-						<div className="flex h-116 overflow-hidden rounded-lg border">
+						<div className="flex h-72 overflow-hidden rounded-lg border">
 							<Editor key={key} file={key} text={texts[key] ?? files.data!.find((f) => f.name === key)?.text ?? ""} onChange={(v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} />
 						</div>
 					)}
@@ -1937,13 +2282,16 @@ function Instructions() {
 			) : files.error ? (
 				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{files.error}</AlertDescription></Alert>
 			) : (
-				<Pulse label="Loading" className="m-auto" />
+				<FilesSkeleton />
 			)}
-			<Alert>
-				<InfoIcon />
-				<AlertDescription>What only one agent should know or do goes into that agent's own files, on its page under Agents.</AlertDescription>
-			</Alert>
-		</Page>
+			{changed.length ? (
+				<div data-slot="unsaved" className="sticky bottom-4 z-10 flex items-center gap-2 rounded-lg border bg-popover py-2 ps-4 pe-2 text-popover-foreground shadow-lg">
+					<span className="grow">Unsaved changes in {changed.map((f) => f.name).join(", ")}</span>
+					<Button variant="ghost" disabled={busy} onClick={() => setTexts({})}>Discard</Button>
+					<Button disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Button>
+				</div>
+			) : null}
+		</Section>
 	);
 }
 
@@ -1975,33 +2323,35 @@ export function ThemePicker() {
 	return (
 		<>
 			<Field orientation="responsive" data-setting="theme">
-				<FieldContent>
+				<FieldContent className="min-w-0">
 					<FieldLabel htmlFor={id}>Theme</FieldLabel>
-					<FieldDescription>Any VS Code color theme: put its .json file into {folder}, and it is offered here. The choice is pine's (ui.theme in pine.json), so every Pine app that uses this pine shows it.</FieldDescription>
+					<FieldDescription className="wrap-anywhere">To add a VS Code color theme, put its .json file into {folder}. The choice is saved in pine, so all Pine apps that use this pine show it.</FieldDescription>
 				</FieldContent>
-				<Select items={items} value={s.theme} onValueChange={(v) => v && v !== s.theme && void s.setTheme(v)} disabled={!usable.length}>
-					<SelectTrigger id={id} className="w-56">
-						<SelectValue />
-					</SelectTrigger>
-					{/* Below the trigger, not over it: a long list next to the window's edge stays on screen. */}
-					<SelectContent alignItemWithTrigger={false} align="end" className="min-w-60">
-						{(["dark", "light"] as const).map((kind, i) => {
-							const of = usable.filter((t) => t.kind === kind);
-							return of.length ? (
-								<SelectGroup key={kind}>
-									{i && usable.some((t) => t.kind === "dark") ? <SelectSeparator /> : null}
-									<SelectLabel>{kind === "dark" ? "Dark" : "Light"}</SelectLabel>
-									{of.map((t) => (
-										<SelectItem key={t.id} value={t.id}>
-											<Swatch colors={t.colors} />
-											{t.name}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							) : null;
-						})}
-					</SelectContent>
-				</Select>
+				<Control>
+					{s.themesRead ? <Select items={items} value={s.theme} onValueChange={(v) => v && v !== s.theme && void s.setTheme(v)} disabled={!usable.length}>
+						<SelectTrigger id={id} className={CONTROL}>
+							<SelectValue />
+						</SelectTrigger>
+						{/* Below the trigger, not over it: a long list next to the window's edge stays on screen. */}
+						<SelectContent alignItemWithTrigger={false} align="end" className="min-w-60">
+							{(["dark", "light"] as const).map((kind, i) => {
+								const of = usable.filter((t) => t.kind === kind);
+								return of.length ? (
+									<SelectGroup key={kind}>
+										{i && usable.some((t) => t.kind === "dark") ? <SelectSeparator /> : null}
+										<SelectLabel>{kind === "dark" ? "Dark" : "Light"}</SelectLabel>
+										{of.map((t) => (
+											<SelectItem key={t.id} value={t.id}>
+												<Swatch colors={t.colors} />
+												{t.name}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								) : null;
+							})}
+						</SelectContent>
+					</Select> : <SelectPending id={id} />}
+				</Control>
 			</Field>
 			{broken.length ? (
 				<Alert variant="destructive">
@@ -2022,23 +2372,29 @@ export function ThemePicker() {
  * on a machine. Nothing under a bridge that has none (the desktop app uses the owner's ssh).
  */
 function DeviceKey() {
-	const [key, setKey] = useState<{ key: string; copy: () => Promise<void>; share: () => Promise<void> }>();
+	// Undefined while it is asked, null when the bridge has none.
+	const [key, setKey] = useState<{ key: string; copy: () => Promise<void>; share: () => Promise<void> } | null>();
 	// (Asked by its answer: Storybook's stand-in answers every name with a function that gives no key.)
-	useEffect(() => void (typeof bridge.deviceKey === "function" && Promise.resolve(bridge.deviceKey()).then((k) => typeof k?.key === "string" && setKey(k), () => undefined)), []);
+	useEffect(() => {
+		if (typeof bridge.deviceKey !== "function") return setKey(null);
+		Promise.resolve(bridge.deviceKey()).then((k) => setKey(typeof k?.key === "string" ? k : null), () => setKey(null));
+	}, []);
+	if (key === undefined) return <SettingsItem skeleton data-slot="device-key-skeleton" />;
 	if (!key) return null;
 	return (
-		<Item variant="outline" data-slot="device-key">
-			{/* The key takes the whole line, and the buttons go under it: beside it they would squeeze it into a column. */}
-			<ItemContent className="min-w-0 basis-full">
-				<ItemTitle>This device's key</ItemTitle>
-				<ItemDescription className="line-clamp-none font-mono text-xs wrap-anywhere select-text">{key.key}</ItemDescription>
-				<ItemDescription className="line-clamp-none">Add it as a line of ~/.ssh/authorized_keys of the user you sign in as on each machine.</ItemDescription>
-			</ItemContent>
-			<ItemActions>
-				<Button variant="outline" size="xs" onClick={() => void key.copy().then(() => store.flash("The key is on the clipboard.", "good", 3000), (e: unknown) => store.flash(errText(e), "bad"))}>Copy</Button>
-				<Button variant="outline" size="xs" onClick={() => void store.attempt(() => key.share())}>Share</Button>
-			</ItemActions>
-		</Item>
+		<SettingsItem
+			data-slot="device-key"
+			// The key takes the whole line, and the buttons go under it: beside it they would squeeze it into a column.
+			contentClassName="basis-full"
+			title="This device's key"
+			actions={<>
+				<Button variant="outline" size="sm" onClick={() => void key.copy().then(() => store.flash("The key is on the clipboard.", "good", 3000), (e: unknown) => store.flash(errText(e), "bad"))}>Copy</Button>
+				<Button variant="outline" size="sm" onClick={() => void store.attempt(() => key.share())}>Share</Button>
+			</>}
+		>
+			<ItemDescription className="line-clamp-none font-mono text-xs wrap-anywhere select-text">{key.key}</ItemDescription>
+			<ItemDescription className="line-clamp-none">Add it as a line of ~/.ssh/authorized_keys of the user you sign in as on each machine.</ItemDescription>
+		</SettingsItem>
 	);
 }
 
@@ -2062,7 +2418,9 @@ export function MachineList() {
 	const field = useId();
 	const state = s.service;
 	const key = s.keyToTrust;
-	const here = s.platform === "darwin" ? "This Mac" : "This computer";
+	const here = `This ${computerWord(s.platform)}`;
+	// How to pair, or the user@host machines over SSH: never both at once (`machinesView`).
+	const shown = s.machinesShown;
 	// WSL on Windows: the distributions this computer has, and what the app says when it brings pine into one.
 	const [distros, setDistros] = useState<string[]>([]);
 	const [installed, setInstalled] = useState<{ distro: string; sandbox: string }>();
@@ -2106,10 +2464,8 @@ export function MachineList() {
 			setError(errText(e));
 		}
 	};
-	const forget = async (h: string) => {
-		const prefs = await s.attempt(() => bridge.forgetHost(h));
-		if (prefs) (s.prefs = prefs), s.touch();
-	};
+	// A paired computer is asked about first: forgetting it here leaves its access open (`forgetMachine`).
+	const forget = (h: string) => s.forgetMachine(h);
 	/** How the pine of a row is, when it is the one the app uses; nothing is asked of the others. */
 	const status = (h?: string) => {
 		if (state.host !== h) return null;
@@ -2120,71 +2476,91 @@ export function MachineList() {
 		if (state.status === "error") return <Badge variant="destructive">not reached</Badge>;
 		return <Badge variant={s.connected ? "default" : "outline"}>{s.connected ? "in use" : "not answering"}</Badge>;
 	};
+	/** What a row says of its machine when nothing is wrong: a paired computer by its name (its id says nothing), user@host as written. */
+	const about = (h: string) => (isPaired(h) ? <>The pine of the Pine app on {s.nameOf(h)}, paired with this {s.device}.</> : <>The pine on <Breakable host={h} />, over SSH.</>);
 	const row = (h: string | undefined) => (
-		<Item key={h ?? ""} variant="outline" data-environment={h ?? "local"}>
-			<ItemMedia variant="icon">{h?.startsWith("wsl:") ? <TerminalSquareIcon /> : h ? <ServerIcon /> : <LaptopIcon />}</ItemMedia>
-			{/* The text asks for 20rem before it shares its line: where the buttons would leave it less (a phone, the Gate, the four of a machine in error), the Item wraps them onto a line of their own. */}
-			<ItemContent className="min-w-0 flex-[1_1_20rem]">
-				{/* A long host (a Tailscale Funnel name and its port) wraps where it breaks naturally, and the badge goes onto the next line: neither spills out of the row. `flex` again after `line-clamp-none`, which sets `display: block`. */}
-				<ItemTitle className="name line-clamp-none flex w-full min-w-0 flex-wrap">
-					<span className={cn("min-w-0 wrap-anywhere", h && !h.startsWith("wsl:") && "font-mono")}>{h?.startsWith("wsl:") ? `${h.slice(4)} (WSL)` : h ? <Breakable host={h} /> : here}</span>
+		<SettingsItem
+			key={h ?? ""}
+			data-environment={h ?? "local"}
+			media={h?.startsWith("wsl:") ? <TerminalSquareIcon /> : h && !isPaired(h) ? <ServerIcon /> : <LaptopIcon />}
+			mediaVariant="icon"
+			// The text asks for 20rem before it shares its line: where the buttons would leave it less (a phone, the Gate, the four of a machine in error), the Item wraps them onto a line of their own.
+			contentClassName="flex-[1_1_20rem]"
+			// A long host (a Tailscale Funnel name and its port) wraps where it breaks naturally, and the badge goes onto the next line: neither spills out of the row. `flex` again after `line-clamp-none`, which sets `display: block`.
+			titleClassName="name line-clamp-none flex w-full min-w-0 flex-wrap"
+			title={<>
+					{/* A machine with a name (a paired computer, one the owner renamed) is shown by it; user@host without one as written, in mono. */}
+					<span className={cn("min-w-0 wrap-anywhere", h && !isPaired(h) && !h.startsWith("wsl:") && !s.prefs.names?.[h] && "font-mono")}>{h?.startsWith("wsl:") ? `${h.slice(4)} (WSL)` : h ? isPaired(h) || s.prefs.names?.[h] ? s.nameOf(h) : <Breakable host={h} /> : here}</span>
 					{status(h)}
-				</ItemTitle>
-				<ItemDescription className="line-clamp-none wrap-anywhere">
-					{state.host === h && state.status === "error" ? state.message : h?.startsWith("wsl:") ? `The pine in ${h.slice(4)}, a Linux of WSL on this computer, where pine has its sandbox.` : h ? <>The pine on <Breakable host={h} />, over SSH.</> : "The pine on this computer: the one that runs, or one this app starts."}
-				</ItemDescription>
-				{key && key.host === h ? <ItemDescription className="line-clamp-none font-mono text-xs break-all select-text" data-slot="host-key-fingerprint">{key.fingerprint}</ItemDescription> : null}
-			</ItemContent>
-			<ItemActions>
-				{key && key.host === h ? <Button size="xs" data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
+				</>}
+			description={state.host === h && state.status === "error" ? state.message : h?.startsWith("wsl:") ? `The pine in ${h.slice(4)}, a Linux of WSL on this computer, where pine has its sandbox.` : h ? about(h) : "The pine on this computer: the one that runs, or one this app starts."}
+			descriptionClassName="line-clamp-none wrap-anywhere"
+			actions={<>
+				{key && key.host === h ? <Button size="sm" data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
 				{h?.startsWith("wsl:") && state.host === h && state.status === "error" && /is not installed in/.test(state.message ?? "") && bridge.wslInstall ? (
-					<Button size="xs" data-slot="wsl-install" disabled={installing === h.slice(4)} onClick={() => void install(h.slice(4))}>
+					<Button size="sm" data-slot="wsl-install" disabled={installing === h.slice(4)} onClick={() => void install(h.slice(4))}>
 						{installing === h.slice(4) ? <Pulse label="Installing" data-icon="inline-start" /> : null}Bring pine in
 					</Button>
 				) : null}
-				{state.host === h && state.status === "error" ? <Button variant="outline" size="xs" onClick={() => void bridge.retry()}>Try again</Button> : null}
-				{state.host === h ? null : <Button variant="outline" size="xs" onClick={() => void s.useMachine(h)}>Use</Button>}
-				{state.host === h && s.canDisconnect ? <Button variant="outline" size="xs" data-slot="disconnect" onClick={() => void s.disconnect()}>Disconnect</Button> : null}
+				{state.host === h && state.status === "error" ? <Button variant="outline" size="sm" onClick={() => void bridge.retry()}>Try again</Button> : null}
+				{state.host === h ? null : <Button variant="outline" size="sm" onClick={() => void s.useMachine(h)}>Use</Button>}
+				{state.host === h && s.canDisconnect ? <Button variant="outline" size="sm" data-slot="disconnect" onClick={() => void s.disconnect()}>Disconnect</Button> : null}
+				{h && s.canRename ? <Button variant="outline" size="sm" data-slot="rename-machine" onClick={() => void s.renameMachine(h)}>Rename</Button> : null}
 				{/* With no local machine to fall back on, the one in use may go when it is not reached (its host key changed, say). */}
-				{h && (state.host !== h || (!s.local && state.status === "error")) ? <Button variant="ghost" size="xs" onClick={() => void forget(h)}>Forget</Button> : null}
-			</ItemActions>
-		</Item>
+				{h && (state.host !== h || (!s.local && state.status === "error")) ? <Button variant="ghost" size="sm" onClick={() => void forget(h)}>Forget</Button> : null}
+			</>}
+		>
+				{h && reachedThrough(h, s.serviceHost) ? <ItemDescription className="line-clamp-none wrap-anywhere" data-slot="reached-through">{reachedThrough(h, s.serviceHost)}</ItemDescription> : null}
+				{key && key.host === h ? <ItemDescription className="line-clamp-none font-mono text-xs break-all select-text" data-slot="host-key-fingerprint">{key.fingerprint}</ItemDescription> : null}
+		</SettingsItem>
 	);
 	return (
 		<>
-			<ItemGroup>
-				{s.local ? row(undefined) : null}
-				{s.prefs.hosts.map(row)}
-			</ItemGroup>
-			{installed ? (
-				<Alert data-slot="wsl-installed">
-					<InfoIcon />
-					<AlertDescription>
-						<p>pine is in {installed.distro}, with a home. Its sandbox needs bubblewrap there, which takes the password of your user in {installed.distro}: run this once in a terminal of Windows, and answer its question.</p>
-						<p className="font-mono text-xs select-text">{installed.sandbox}</p>
-					</AlertDescription>
-				</Alert>
-			) : null}
-			{distros.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`)).length ? (
-				<FieldSet data-slot="wsl-distros">
-					<FieldLegend>WSL on this computer</FieldLegend>
-					<FieldDescription>A Linux of WSL runs pine with its sandbox, which pine on Windows itself does not have yet.</FieldDescription>
-					<ItemGroup>
-						{distros
-							.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`))
-							.map((d) => (
-								<Item key={d} variant="outline" data-environment={`wsl:${d}`}>
-									<ItemMedia variant="icon"><TerminalSquareIcon /></ItemMedia>
-									<ItemContent><ItemTitle>{d}</ItemTitle></ItemContent>
-									<ItemActions><Button variant="outline" size="xs" onClick={() => void addWsl(d)}><PlusIcon data-icon="inline-start" />Add</Button></ItemActions>
-								</Item>
-							))}
-					</ItemGroup>
-				</FieldSet>
-			) : null}
-			{s.local ? null : <DeviceKey />}
-			<FieldSet>
-				<FieldLegend>Add a machine</FieldLegend>
+			<div className="flex flex-col gap-3">
+				{shown.back ? (
+					<Button variant="ghost" size="icon-sm" className="self-start" data-slot="back-to-pairing" aria-label="Back to pairing" onClick={() => s.showMachines("pair")}>
+						<ArrowLeftIcon />
+					</Button>
+				) : null}
+				<ItemGroup>
+					{s.local ? row(undefined) : null}
+					{s.prefs.hosts.map(row)}
+				</ItemGroup>
+				{installed ? (
+					<Alert data-slot="wsl-installed">
+						<InfoIcon />
+						<AlertDescription>
+							<p>pine is in {installed.distro}, with a home. Its sandbox needs bubblewrap there, which takes the password of your user in {installed.distro}: run this once in a terminal of Windows, and answer its question.</p>
+							<p className="font-mono text-xs select-text">{installed.sandbox}</p>
+						</AlertDescription>
+					</Alert>
+				) : null}
+				{distros.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`)).length ? (
+					<FieldSet data-slot="wsl-distros">
+						<FieldLegend>WSL on this computer</FieldLegend>
+						<FieldDescription>A Linux of WSL runs pine with its sandbox, which pine on Windows itself does not have yet.</FieldDescription>
+						<ItemGroup>
+							{distros
+								.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`))
+								.map((d) => (
+									<Item key={d} variant="outline" data-environment={`wsl:${d}`}>
+										<ItemMedia variant="icon"><TerminalSquareIcon /></ItemMedia>
+										<ItemContent><ItemTitle>{d}</ItemTitle></ItemContent>
+										<ItemActions><Button variant="outline" size="sm" onClick={() => void addWsl(d)}><PlusIcon data-icon="inline-start" />Add</Button></ItemActions>
+									</Item>
+								))}
+						</ItemGroup>
+					</FieldSet>
+				) : null}
+				{/* The pairing view has no user@host to add, nor a key for one. */}
+				{shown.view === "pair" ? <PairHowTo /> : s.local ? null : <DeviceKey />}
+				{shown.toSsh ? (
+					<Button variant="link" size="sm" className="self-start px-0" data-slot="ssh-instead" onClick={() => s.showMachines("ssh")}>
+						Or connect to a server over SSH
+					</Button>
+				) : null}
+			</div>
+			{shown.view === "ssh" ? <Section title="Add a machine" data-find="add-machine">
 				<FieldGroup>
 					<Field>
 						<FieldLabel htmlFor={`${field}-host`}>Host</FieldLabel>
@@ -2195,59 +2571,129 @@ export function MachineList() {
 						<FieldDescription>{s.local ? "As you would write it after ssh: host, user@host, or a name from ~/.ssh/config. It is connected to when you pick it." : "As you would write it after ssh: user@host, or user@host:port. It is connected to when you pick it."}</FieldDescription>
 					</Field>
 					{error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error}</AlertDescription></Alert> : null}
+					{/* Where a relay is in play (the web client), it is said plainly, so that nobody forgets it. */}
+					{s.serviceHost ? <FieldDescription data-slot="relay-line">{relayLine(s.serviceHost)}</FieldDescription> : null}
 				</FieldGroup>
-			</FieldSet>
+			</Section> : null}
+		</>
+	);
+}
+
+/**
+ * The computers on this network, looked for while this is shown (and only then: a phone asks for the
+ * local network the first time, never at launch). A tap asks the computer without a code.
+ */
+function PairNearby() {
+	const s = useModel(store);
+	const [found, setFound] = useState<NearbyFound>({ computers: [] });
+	useEffect(() => {
+		const stop = bridge.nearby!((next) => setFound({ computers: Array.isArray(next?.computers) ? next.computers : [], denied: next?.denied === true }));
+		return () => void (typeof stop === "function" && stop());
+	}, []);
+	return <NearbyComputers found={found} device={s.device} onPick={(c) => void s.pairNearby(c)} />;
+}
+
+/**
+ * How a device is paired with a computer: first the computers found on this network where the bridge
+ * looks (the mobile app's), or the Pine app on this computer where the browser runs beside it (the
+ * web client's on a computer); then the code, in short, and where the Pine app is for a computer
+ * without it. Under a bridge that takes a link from the owner's hand (the mobile app's), the field to
+ * paste one into.
+ */
+function PairHowTo() {
+	const s = useModel(store);
+	return (
+		<>
+			{s.canFindNearby ? <PairNearby /> : null}
+			{s.canOpenApp ? (
+				<div className="flex flex-col items-start gap-1" data-slot="open-app">
+					<Button data-slot="open-pine-here" onClick={() => void store.attempt(() => bridge.openApp!())}><ExternalLinkIcon data-icon="inline-start" />Open Pine on this computer</Button>
+					<p className="text-sm text-muted-foreground">Where Pine runs on this computer with Browser access on, it opens a pairing and sends its link to this browser.</p>
+				</div>
+			) : null}
+		<SettingsItem
+			data-slot="pair-how-to"
+			contentClassName="basis-full"
+			title={s.canFindNearby ? "Or pair with a code" : "Pair with your computer"}
+			actions={<Button variant="outline" size="sm" data-slot="get-the-app" onClick={() => void store.attempt(() => bridge.open(APP_DOWNLOAD))}><ExternalLinkIcon data-icon="inline-start" />Get the Pine app</Button>}
+		>
+				<ol className="list-decimal ps-5 text-sm text-muted-foreground">
+					<li>On your computer: Pine &gt; Add a device.</li>
+					<li>{s.canPasteLink ? "Scan the code with this phone's camera and open it in Pine, or paste the link it gives below." : "Scan the code with this device's camera, or open the link it gives in this browser."}</li>
+				</ol>
+				{s.canPasteLink ? <PairLinkField onLink={(text) => s.askToPair(text)} /> : null}
+				{s.serviceHost ? <ItemDescription className="line-clamp-none wrap-anywhere" data-slot="meeting-line">{meetingLine(s.serviceHost)}</ItemDescription> : null}
+		</SettingsItem>
 		</>
 	);
 }
 
 function Environments() {
 	const s = useModel(store);
+	const pairing = s.machinesShown.view === "pair";
+	const needs = s.local
+		? [
+				<>The machine needs pine, set up there with <span className="font-mono">pine init</span>.</>,
+				<>SSH has to sign you in without a password: a key in ssh-agent, or Tailscale SSH. Connect once from a terminal (<span className="font-mono">ssh</span> and the machine's name) so that SSH knows the machine.</>,
+				<>pine there stays closed to the network: the app runs pine over SSH and forwards a port of this computer to it.</>,
+				<>Switching shows the other pine and stops neither; agents at work go on. A pine the app started on a machine stops when the app quits.</>,
+				<>With another machine's pine, a conversation's folder is a path on that machine, and the terminal and the Run buttons, which run on this computer, are not offered.</>,
+			]
+		: [
+				<>The machine needs pine, set up there with <span className="font-mono">pine init</span>.</>,
+				<>Add this device's key as a line of <span className="font-mono">~/.ssh/authorized_keys</span> of the user you sign in as.</>,
+				<>The first time, the app shows the machine's host key fingerprint. Compare it with what the machine shows, then trust it.</>,
+			];
 	return (
-		<Page title="Environments" lead={s.local ? "The pine this app uses: the one on this computer, or one on another machine that you reach with ssh. One at a time: the foot of the side bar switches between them." : "The pine this app uses: one on a machine that you reach with ssh. One at a time: the foot of the side bar switches between them."}>
+		<Page title="Environments" lead={s.local ? "Where the pine this app uses runs: on this computer, or on another machine that you reach over SSH. Switch between them at the bottom of the side bar." : pairing ? `The pine this ${s.device} uses: the Pine app's pine on a computer paired with it. Switch between them at the bottom of the side bar.` : "The pine this app uses, on a machine that you reach over SSH. Switch between them at the bottom of the side bar."}>
 			<MachineList />
-			<Alert>
-				<InfoIcon />
-				<AlertDescription>
-					{/* A port of this computer and its terminal are not said where there is no local machine. */}
-					{s.local ? (
-						<>
-							<p>The machine needs pine with a home (pine init there), and ssh that signs you in without a password: a key in ssh-agent, or Tailscale SSH. A machine ssh has not met yet is accepted once from a terminal, with ssh and its name.</p>
-							<p>Its pine stays closed to the network: the app runs pine service there over ssh and forwards a port of this computer to it. Switching shows the other pine and stops none: an agent at work in one goes on. A pine the app started there stops when the app quits; one that was running already goes on.</p>
-							<p>With another machine's pine, a conversation's folder is a path on that machine, and the terminal and the Run button of a command, which are this computer's, are not offered.</p>
-						</>
-					) : (
-						<p>The machine needs pine with a home (pine init there), and this device's key in ~/.ssh/authorized_keys of the user you name. The first time, the app shows the machine's host key fingerprint: compare it with what the machine shows, then trust it.</p>
-					)}
-				</AlertDescription>
-			</Alert>
+			{/* In the pairing view, the list's how-to is all there is to say. */}
+			{!pairing ? (
+				<Section title="What a machine needs" data-find="machine-needs">
+					<ul className="flex list-disc flex-col gap-1 ps-5 text-muted-foreground">
+						{needs.map((line, i) => <li key={i}>{line}</li>)}
+					</ul>
+				</Section>
+			) : null}
 		</Page>
 	);
 }
 
-function AppPage() {
+/** What Settings > General says of a newer app, by where its update stands (`Store.updatePhase`). */
+const UPDATE_TEXT: Record<UpdatePhase["phase"], (u: UpdatePhase) => string> = {
+	waiting: () => "The new app is downloaded, and Pine restarts to update once no conversation is at work. Call off the wait to restart or quit when you like. Your pine home stays as it is.",
+	ready: () => "The new app is downloaded. Restart to update, or it is installed when you next quit Pine. Your pine home stays as it is.",
+	downloading: () => "The new app is being downloaded.",
+	link: (u) => `${u.reason ? `${u.reason} ` : ""}The new app is ${newApp().what} on the release's page on GitHub: ${newApp().how}. Your pine home stays as it is.`,
+};
+
+/**
+ * The top of Settings > General: this app (theme, updates, notifications) and the pine it uses (its state,
+ * the log, Keep running, the command, the browser build, the home folder).
+ */
+function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.overview>> }) {
 	const s = useModel(store);
 	const set = async (change: Record<string, unknown>) => {
 		s.prefs = await bridge.prefs(change);
 		s.touch();
 	};
 	const service = s.service.status === "ready" ? s.service : undefined;
-	const newer = s.update?.status === "newer" ? s.update : undefined;
+	const update = s.updatePhase;
 	// `pine` for a terminal: what the shell has, as the app's main process sees it.
-	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; managed?: boolean; text: string }>();
+	// (null: the bridge failed to answer, and the field is left out.)
+	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; managed?: boolean; text: string } | null>();
 	// Under a bridge with no local machine (`s.local`), what only this computer has is neither asked nor shown:
 	// its home folder, Keep running, Restart, the pine command, the browser build, the Electron version.
 	const local = s.local;
-	useEffect(() => void (local && bridge.command().then(setCommand)), [local]);
+	useEffect(() => void (local && bridge.command().then(setCommand, () => setCommand(null))), [local]);
 	// (Looked at again whenever this page is opened: the browser may have been fetched in a terminal.)
 	useEffect(() => void (local && store.checkBrowser()), [local]);
 	// (And the themes: a file may have been put into the folder by hand.)
 	useEffect(() => void store.refreshThemes(), []);
 	const field = useId();
 	return (
-		<Page title="App" lead="How this window behaves, and the pine it talks to.">
-			<FieldSet>
-				<FieldLegend>This app</FieldLegend>
+		<>
+			<Section title="This app">
 				<FieldGroup>
 					<ThemePicker />
 					{s.updates ? (
@@ -2255,141 +2701,281 @@ function AppPage() {
 							<FieldContent>
 								<FieldTitle>
 									Pine {s.versions.app}
-									{newer ? <Badge variant="outline">{newer.version} is available</Badge> : s.update?.status === "latest" ? <Badge>the latest version</Badge> : null}
+									{update ? <Badge variant="outline">{update.version} is available</Badge> : s.update?.status === "latest" ? <Badge>the latest version</Badge> : null}
 								</FieldTitle>
-								<FieldDescription>{newer ? `The new app is ${newApp().what} on the release's page on GitHub: ${newApp().how}. Your pine home stays as it is.` : "The app does not update itself. It asks GitHub for pine's last release, and says so when that is newer."}</FieldDescription>
+								<FieldDescription>
+									{update ? UPDATE_TEXT[update.phase](update) : s.selfUpdate ? "The app looks on GitHub for a newer release, downloads it, and installs it when you restart or quit." : "The app does not update itself. It looks on GitHub for a newer release and tells you when there is one."}
+								</FieldDescription>
 							</FieldContent>
-							<div className="flex items-center gap-1.5">
-								{newer ? <Button variant="outline" size="xs" onClick={() => void bridge.open(newer.url)}><ExternalLinkIcon data-icon="inline-start" />Release page</Button> : null}
-								<Button variant="outline" size="xs" disabled={s.updateLooking} onClick={() => void s.lookForUpdate(true)}><RotateCwIcon data-icon="inline-start" />Check now</Button>
-							</div>
+							<Control>
+								{update?.phase === "waiting" ? <Button variant="outline" onClick={() => s.cancelUpdateWait()}><XIcon data-icon="inline-start" />Call off the wait</Button> : null}
+								{update?.phase === "ready" ? <Button onClick={() => void s.restartToUpdate()}><RotateCwIcon data-icon="inline-start" />Restart to update</Button> : null}
+								{update?.phase === "link" ? <Button variant="outline" onClick={() => void bridge.open(update.url)}><ExternalLinkIcon data-icon="inline-start" />Release page</Button> : null}
+								<Button variant="outline" disabled={s.updateLooking} onClick={() => void s.lookForUpdate(true)}><RotateCwIcon data-icon="inline-start" />Check now</Button>
+							</Control>
 						</Field>
 					) : null}
 					{s.updates ? (
-						<Field orientation="horizontal">
+						<Field orientation="horizontal" data-find="updates-at-start">
 							<FieldContent>
-								<FieldLabel htmlFor={`${field}-updates`}>Look for a newer version at the start</FieldLabel>
-								<FieldDescription>One question to GitHub each time the app starts. It says nothing about {s.platform === "darwin" ? "this Mac" : "this computer"} or your pine.</FieldDescription>
+								<FieldLabel htmlFor={`${field}-updates`}>Check for updates at start</FieldLabel>
+								<FieldDescription>One request to GitHub each time the app starts. It sends nothing about this {computerWord(s.platform)} or your pine.</FieldDescription>
 							</FieldContent>
-							<div className="flex items-center gap-1.5">
-								<Switch id={`${field}-updates`} checked={s.prefs.updates} onCheckedChange={(updates) => void set({ updates })} />
-							</div>
+							<Switch id={`${field}-updates`} checked={s.prefs.updates} onCheckedChange={(updates) => void set({ updates })} />
 						</Field>
 					) : null}
-					<Field orientation="horizontal">
+					{s.updates && s.selfUpdate ? (
+						<Field orientation="horizontal" data-find="auto-update">
+							<FieldContent>
+								<FieldLabel htmlFor={`${field}-auto-update`}>Update automatically</FieldLabel>
+								<FieldDescription>A newer release is downloaded in the background and installed when you restart or quit Pine, never while you work. Off: the app links to the release page instead.</FieldDescription>
+							</FieldContent>
+							<Switch id={`${field}-auto-update`} checked={s.prefs.autoUpdate !== false} onCheckedChange={(autoUpdate) => void set({ autoUpdate })} />
+						</Field>
+					) : null}
+					<Field orientation="horizontal" data-find="notifications">
 						<FieldContent>
 							<FieldLabel htmlFor={`${field}-notify`}>Notifications</FieldLabel>
-							<FieldDescription>When an agent is done, stops with an error, needs your approval or asks you something while the window is not in front. The text is pine's own, never the agent's.</FieldDescription>
+							<FieldDescription>While the window is in the background: when an agent is done, stops with an error, needs your approval or asks you something. The text is pine's, never the agent's.</FieldDescription>
 						</FieldContent>
-						<div className="flex items-center gap-1.5">
-							<Switch id={`${field}-notify`} checked={s.prefs.notify} onCheckedChange={(notify) => void set({ notify })} />
-						</div>
+						<Switch id={`${field}-notify`} checked={s.prefs.notify} onCheckedChange={(notify) => void set({ notify })} />
 					</Field>
 				</FieldGroup>
-			</FieldSet>
-			<FieldSet>
-				<FieldLegend>pine</FieldLegend>
+			</Section>
+			<Section title="pine" about="The program behind the app that runs your agents.">
+				{service?.olderThan ? (
+					<Alert data-notice="older-pine">
+						<TriangleAlertIcon />
+						<AlertDescription>{`This pine is ${service.version}, older than the pine of this app (${service.olderThan}). The app did not start it, so it leaves it as it is: restart that pine on ${service.olderThan} (update it with "pine update" if it was installed separately), or stop it and the app starts the pine it came with.`}</AlertDescription>
+					</Alert>
+				) : null}
 				<FieldGroup>
-					<Field orientation="responsive">
-						<FieldContent>
+					<Field orientation="responsive" data-find="pine">
+						<FieldContent className="min-w-0">
 							<FieldTitle>
 								{service ? `pine ${service.version ?? ""}` : "pine"}
 								<Badge variant={s.connected ? "default" : "outline"}>{s.connected ? "connected" : "not connected"}</Badge>
 							</FieldTitle>
-							<FieldDescription>{service?.host ? `The pine on ${service.host}, over SSH (Settings › Environments). ${service.started ? "This app started it there; it stops when the app quits." : "It was already running there, and goes on when this app quits."}` : service ? (service.started ? `Started by this app (${service.mode}), from ${service.from}. It stops when the app quits unless the switch below is on.` : "Attached to a pine that was already running. It goes on when this app quits.") : "Not running."}</FieldDescription>
+							{overview ? <FieldDescription>{`Main agent: ${overview.main} · ${overview.sandbox ? "sandbox available" : "no sandbox on this system"}`}</FieldDescription> : null}
+							<FieldDescription>{service?.host ? `The pine on ${service.host}, over SSH (see Environments). ${service.started ? "This app started it there; it stops when the app quits." : "It was already running there, and keeps running when this app quits."}` : service ? (service.started ? `Started by this app (${service.mode}), from ${service.from}. It stops when the app quits, unless the switch below is on.` : "Already running when the app started. It keeps running when this app quits.") : "Not running."}</FieldDescription>
 						</FieldContent>
-						{service?.started && local ? (
-							<div className="flex items-center gap-1.5">
-								<Button variant="outline" size="xs" onClick={() => void s.attempt(() => bridge.restart())}><RotateCwIcon data-icon="inline-start" />Restart</Button>
-							</div>
+						{(service?.started && local) || (overview && !s.remote) ? (
+							<Control>
+								{overview && !s.remote ? <Button variant="outline" onClick={() => void bridge.reveal(overview.log)}><ExternalLinkIcon data-icon="inline-start" />Show log</Button> : null}
+								{service?.started && local ? <Button variant="outline" onClick={() => void s.attempt(() => bridge.restart())}><RotateCwIcon data-icon="inline-start" />Restart</Button> : null}
+							</Control>
 						) : null}
 					</Field>
 					{local ? (
-						<Field orientation="horizontal">
+						<Field orientation="horizontal" data-find="keep-running">
 							<FieldContent>
 								<FieldLabel htmlFor={`${field}-keep-running`}>Keep pine running after the app quits</FieldLabel>
-								<FieldDescription>A pine this app starts then goes on in the background: schedules fire, sources report and Telegram answers while the window is closed. Holds from the next time the app starts pine.</FieldDescription>
+								<FieldDescription>Schedules, sources and Telegram keep working while the window is closed. Takes effect the next time the app starts pine.</FieldDescription>
 							</FieldContent>
-							<div className="flex items-center gap-1.5">
-								<Switch id={`${field}-keep-running`} checked={s.prefs.keepRunning} onCheckedChange={(keepRunning) => void set({ keepRunning })} />
-							</div>
+							<Switch id={`${field}-keep-running`} checked={s.prefs.keepRunning} onCheckedChange={(keepRunning) => void set({ keepRunning })} />
 						</Field>
 					) : null}
+					{local && command === undefined ? <FieldSkeleton data-find="command" /> : null}
 					{local && command && (command.state !== "unavailable" || command.why) ? (
-						<Field orientation="responsive">
+						<Field orientation="responsive" data-find="command">
 							<FieldContent>
 								<FieldTitle>
-									pine in a terminal
+									The pine command in a terminal
 									{command.state === "here" ? <Badge>set up</Badge> : null}
 								</FieldTitle>
 								<FieldDescription>{command.text}</FieldDescription>
 							</FieldContent>
 							{(command.state === "none" || command.state === "here") && !command.managed ? (
-								<div className="flex items-center gap-1.5">
-									{command.state === "none" ? <Button variant="outline" size="xs" onClick={() => void bridge.command("install").then(setCommand)}>Set up</Button> : <Button variant="outline" size="xs" onClick={() => void bridge.command("remove").then(setCommand)}>Remove</Button>}
-								</div>
+								<Control>
+									{command.state === "none" ? <Button variant="outline" onClick={() => void bridge.command("install").then(setCommand)}>Set up</Button> : <Button variant="outline" onClick={() => void bridge.command("remove").then(setCommand)}>Remove</Button>}
+								</Control>
 							) : null}
 						</Field>
 					) : null}
+					{local && !s.browserChecked && !s.browserFetching ? <FieldSkeleton data-setting="browser" /> : null}
 					{local && (s.browser !== undefined || s.browserFetching) ? (
 						<Field orientation="responsive" data-setting="browser">
 							<FieldContent>
 								<FieldTitle>
 									Browser for the web tools
-									<Badge variant={s.browser ? "default" : "outline"}>{`${s.browser ? "on" : "not on"} ${s.platform === "darwin" ? "this Mac" : "this computer"}`}</Badge>
+									<Badge variant={s.browser ? "default" : "outline"}>{`${s.browser ? "on" : "not on"} this ${computerWord(s.platform)}`}</Badge>
 								</FieldTitle>
-								<FieldDescription>{s.browser ? "The browser your agents open pages with, in the build this pine drives." : "Each version of pine drives a browser build of its own, and this one's is not here: it was never fetched, or it is the build of an older pine. About 600 MB, once. Until then the browser tools do not work; web search and reading a page do."}</FieldDescription>
+								<FieldDescription>{s.browser ? "The browser your agents open web pages with." : "Each version of pine uses one browser build, and the one for this version is not here yet. It is about 600 MB, fetched once. Until then the browser tools do not work; web search and reading a page do."}</FieldDescription>
 								{!s.browser && s.initLines.length ? (
 									<CodeBlock size="sm">
 										<CodeBlockContent wrap className="max-h-60 select-text">{s.initLines.slice(-12).join("\n")}</CodeBlockContent>
 									</CodeBlock>
 								) : null}
 							</FieldContent>
-							{s.browser ? null : <Button variant="outline" size="xs" disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Fetching…</> : "Fetch it"}</Button>}
+							{s.browser ? null : (
+								<Control>
+									<Button variant="outline" disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Fetching…</> : "Fetch it"}</Button>
+								</Control>
+							)}
 						</Field>
 					) : null}
 					{local ? (
-						<Field orientation="responsive">
-							<FieldContent>
+						<Field orientation="responsive" data-find="home">
+							<FieldContent className="min-w-0">
 								<FieldTitle>Home folder</FieldTitle>
 								<FieldDescription>
-									<span className="block font-mono">{tilde((service?.host ? undefined : service?.home) ?? s.prefs.home ?? "~/.pine")}</span>
-									Where this computer's pine keeps its agents and settings. Another one is another pine. Changing it restarts a pine this app started.
+									<span className="block font-mono wrap-anywhere">{tilde((service?.host ? undefined : service?.home) ?? s.prefs.home ?? "~/.pine")}</span>
+									Where pine keeps agents and settings on this computer. Another folder is another pine with agents of its own. Changing it restarts a pine this app started.
 								</FieldDescription>
 							</FieldContent>
-							<div className="flex items-center gap-1.5">
-								{s.prefs.home ? <Button variant="outline" size="xs" onClick={() => void set({ home: "" }).then(() => !s.remote && bridge.retry())}>Use ~/.pine</Button> : null}
-								<Button variant="outline" size="xs" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (s.remote ? undefined : service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
-							</div>
+							<Control>
+								{s.prefs.home ? <Button variant="outline" onClick={() => void set({ home: "" }).then(() => !s.remote && bridge.retry())}>Use ~/.pine</Button> : null}
+								<Button variant="outline" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (s.remote ? undefined : service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
+							</Control>
 						</Field>
 					) : null}
 				</FieldGroup>
-			</FieldSet>
-			<p className="text-muted-foreground">Pine {s.versions.app}{local ? ` · Electron ${s.versions.electron}` : ""}</p>
+			</Section>
+		</>
+	);
+}
+
+// ---- search -----------------------------------------------------------------------------------------
+
+/** Where a thing found in Settings is: its page opens, and the page shows it (see Settings below). */
+export function goTo(place: Place): void {
+	store.settingsFind = place.find || place.filter ? { find: place.find, filter: place.filter } : undefined;
+	store.openSettings(place.section, place.agent);
+}
+
+/**
+ * Everything the search of Settings can find, for as long as `on`: the lists are asked for when the search
+ * starts and again each time it starts anew, so that what was added since is found too.
+ */
+export function useSettingsIndex(on: boolean): Entry[] {
+	const s = useModel(store);
+	const [lists, setLists] = useState<Lists>({});
+	useEffect(() => {
+		if (!on) return;
+		let live = true;
+		const ask = <K extends keyof Lists>(key: K, p: Promise<Lists[K]>) => void p.then((v) => live && setLists((was) => ({ ...was, [key]: v })), () => undefined);
+		ask("settings", api.settings());
+		ask("providers", api.providers());
+		ask("modelServers", api.modelServers());
+		ask("mcp", api.mcp());
+		ask("skills", api.skills());
+		ask("sources", api.sources());
+		ask("schedules", api.schedules());
+		ask("routes", api.routes());
+		return () => void (live = false);
+	}, [on]);
+	const access = offersAccess(s);
+	return useMemo(
+		() => entries({ local: s.local, updates: s.updates, selfUpdate: s.selfUpdate, access }, { ...lists, agents: s.agents, machines: s.prefs.hosts.map((host) => ({ host, name: s.nameOf(host) })) }),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[lists, s.agents, s.prefs.hosts, s.local, s.updates, s.selfUpdate, access],
+	);
+}
+
+/** What fits the words, as a page of its own in place of the page that was open. */
+function Found({ query, list, pick, back }: { query: string; list: Entry[]; pick: (e: Entry) => void; back: () => void }) {
+	// Up and down go from one to the next; up from the first goes back to the field.
+	const move = (e: React.KeyboardEvent<HTMLDivElement>) => {
+		if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+		const all = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-result]")];
+		const at = all.indexOf(document.activeElement as HTMLElement);
+		e.preventDefault();
+		if (e.key === "ArrowUp" && at <= 0) return back();
+		all[Math.min(all.length - 1, e.key === "ArrowDown" ? at + 1 : at - 1)]?.focus();
+	};
+	return (
+		<Page title={`“${query.trim()}”`} lead={list.length ? `${plural(list.length, "place")} in Settings. Pick one to go there.` : undefined}>
+			{list.length ? (
+				<ItemGroup data-slot="settings-results" onKeyDown={move}>
+					{list.slice(0, 60).map((e) => (
+						<SettingsItem
+							key={e.id}
+							data-result={e.id}
+							render={<button type="button" />}
+							onClick={() => pick(e)}
+							title={e.title}
+							description={[e.path.join(" › "), e.about].filter(Boolean).join(" · ")}
+							descriptionClassName="truncate"
+							actions={<ChevronRightIcon />}
+						/>
+					))}
+				</ItemGroup>
+			) : (
+				<EmptyView icon={SearchIcon} title="Nothing in Settings fits">Try another word, or fewer of them. You can also ask the main agent: it knows every setting.</EmptyView>
+			)}
 		</Page>
 	);
 }
 
 export function Settings() {
 	const s = useModel(store);
+	const sections = offeredSections(s);
+	// A section chosen while it was offered (Browser access, before the app went to another machine's pine) opens General, which the navigation marks.
+	// Pages that were folded into others open where they went: App into General, Instructions into Agents.
+	const asked = s.section === "app" ? "general" : s.section === "instructions" ? "agents" : s.section;
+	const section = sections.some((x) => x.id === asked) ? asked : "general";
+	const [query, setQuery] = useState("");
+	const searching = query.trim() !== "";
+	const index = useSettingsIndex(searching);
+	const found = searching ? search(index, query) : [];
+	const hits = new Set(found.map((e) => e.place.section));
+	const field = useRef<HTMLInputElement>(null);
+	const root = useRef<HTMLDivElement>(null);
+	// ⌘F (the menu's Find) looks in Settings while they are in front.
+	useSignal("find", () => (field.current?.focus(), field.current?.select()));
+	const pick = (e: Entry) => (setQuery(""), goTo(e.place));
+	// What was picked is shown once its page has drawn it: scrolled to the middle and marked for a moment. A page
+	// draws what it asked the daemon for a moment later, so it is looked for a few times; then the page stays at its top.
+	const want = s.settingsFind;
+	useEffect(() => {
+		if (searching || !want) return;
+		let tries = 0;
+		let unmark: ReturnType<typeof setTimeout> | undefined;
+		const look = setInterval(() => {
+			const el = want.find ? root.current?.querySelector<HTMLElement>(`[data-slot=settings-page] ${want.find}`) : undefined;
+			if (!el && ++tries < 30) return;
+			clearInterval(look);
+			if (store.settingsFind === want) store.settingsFind = undefined;
+			if (!el) return;
+			el.scrollIntoView({ block: "center" });
+			el.setAttribute("data-found", "");
+			unmark = setTimeout(() => el.removeAttribute("data-found"), 1600);
+		}, 100);
+		return () => (clearInterval(look), clearTimeout(unmark));
+	}, [want, searching, section, s.settingsAgent]);
+	const keys = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter" && found[0]) (e.preventDefault(), pick(found[0]));
+		else if (e.key === "ArrowDown") (e.preventDefault(), root.current?.querySelector<HTMLElement>("[data-result]")?.focus());
+		else if (e.key === "Escape" && query) (e.preventDefault(), e.stopPropagation(), setQuery(""));
+	};
 	// The sections are a column beside the page where there is room, and a row above it where there is not
 	// (a narrow window, or a wide panel beside): measured on the settings themselves, not on the window.
 	// An item's title wraps (its badges go under its name where the row is narrow): set once here for every row.
+	// What the search picked is outlined for a moment (`data-found`).
 	return (
-		<div className="@container/settings flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border bg-background **:data-[slot=item-title]:flex-wrap">
+		<div ref={root} className="@container/settings flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border bg-background **:data-[slot=item-title]:flex-wrap **:data-found:rounded-md **:data-found:outline-2 **:data-found:outline-offset-4 **:data-found:outline-ring">
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col @3xl/settings:flex-row">
 				{/* A provider of its own, as in shadcn's sidebar in a dialog: the page needs one where no app side bar is around it (Storybook).
 				    Its ⌘B listener changes nothing here (open is fixed and the side bar cannot collapse); the app's provider still gets the key. */}
 				<SidebarProvider open className="min-h-0 w-full flex-none @3xl/settings:w-auto">
 					<SidebarRoot collapsible="none" className="w-full border-b border-line-soft bg-transparent @3xl/settings:w-50 @3xl/settings:border-r @3xl/settings:border-b-0">
+						<SidebarHeader className="px-2 pt-2 pb-0 @3xl/settings:pt-4">
+							<InputGroup>
+								<InputGroupAddon>
+									<SearchIcon />
+								</InputGroupAddon>
+								<InputGroupInput ref={field} type="search" aria-label="Search Settings" placeholder="Search" data-slot="settings-search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={keys} />
+							</InputGroup>
+						</SidebarHeader>
 						<SidebarContent>
 							<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade-x @3xl/settings:*:data-[slot=scroll-area-viewport]:scroll-fade">
-								<SidebarGroup role="navigation" className="py-2 @3xl/settings:py-4">
+								<SidebarGroup role="navigation" className="py-2">
 									<SidebarGroupContent>
 										<SidebarMenu className="flex-row @3xl/settings:flex-col">
-											{SECTIONS.map((x) => (
+											{sections.map((x) => (
 												<SidebarMenuItem key={x.id} className="flex-none @3xl/settings:flex-initial">
-													<SidebarMenuButton isActive={s.section === x.id} aria-current={s.section === x.id ? "page" : undefined} onClick={() => ((s.section = x.id), (s.settingsAgent = undefined), s.touch())}><x.icon />{x.label}</SidebarMenuButton>
+													{/* While searching, a section with nothing that fits fades, as in the system's settings; a click on one ends the search. */}
+													<SidebarMenuButton isActive={!searching && section === x.id} aria-current={!searching && section === x.id ? "page" : undefined} className={cn(searching && !hits.has(x.id) && "opacity-50")} onClick={() => (setQuery(""), (s.section = x.id), (s.settingsAgent = undefined), s.touch())}><x.icon />{x.label}</SidebarMenuButton>
 												</SidebarMenuItem>
 											))}
 										</SidebarMenu>
@@ -2399,8 +2985,10 @@ export function Settings() {
 						</SidebarContent>
 					</SidebarRoot>
 				</SidebarProvider>
-				<ScrollArea className="flex min-h-0 min-w-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade" key={s.section}>
-					{s.section === "agents" ? <Agents /> : s.section === "models" ? <Models /> : s.section === "mcp" ? <Mcp /> : s.section === "skills" ? <Skills /> : s.section === "events" ? <EventsPage /> : s.section === "instructions" ? <Instructions /> : s.section === "environments" ? <Environments /> : s.section === "app" ? <AppPage /> : <General />}
+				<ScrollArea className="flex min-h-0 min-w-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade" key={searching ? "search" : section}>
+					{searching ? (
+						<Found query={query} list={found} pick={pick} back={() => field.current?.focus()} />
+					) : section === "agents" ? <Agents /> : section === "models" ? <Models /> : section === "mcp" ? <Mcp /> : section === "skills" ? <Skills /> : section === "events" ? <EventsPage /> : section === "environments" ? <Environments /> : section === "access" ? <Access /> : <General />}
 				</ScrollArea>
 			</div>
 		</div>

@@ -5,7 +5,8 @@
 // running the real `pine service` on a pine home of its own whose model is the scripted mock
 // server. Nothing of this Mac's own sshd or settings is touched.
 //
-//   npm run smoke:ios [-- --shots <dir>] [-- --device <name>] [-- --keep]
+//   npm run smoke:ios [-- --shots <dir>] [-- --device <name>] [-- --keep] [-- --pairing-only]
+// (--pairing-only, while working on pairing: the pairing run alone, which is not the smoke run)
 //
 // The test (ios/App/AppTests/SmokeTests.swift) runs inside the app and drives its page as a person
 // would: it reads the phone's key and shares it, adds the machine, trusts its host key and shows
@@ -17,9 +18,16 @@
 // the home indicator and above the keyboard, the side bar clear of the sensor housing in landscape),
 // and a host key's fingerprint within the screen's width;
 // the app back from the background still connected; the status bar in a dark and a light
-// theme. A second run of the app then checks that the Keychain kept the phone's key. Last, a
+// theme. A second run of the app then checks that the Keychain kept the phone's key. Then a
 // release build of the app, made with Capacitor's own inspector switch on (CAPACITOR_DEBUG=true, as
-// a debug build has it), checks that PineViewController turns the web inspector off there.
+// a debug build has it), checks that PineViewController turns the web inspector off there. Last,
+// the app on fresh data pairs with a computer: the Pine app's real access host
+// (mobile/test/support/access-host.ts) on this Mac's loopback, whose daemon is the same pine, behind
+// a TLS front of the run's own whose authority the simulator is told to trust (the app takes an
+// https meeting service only). It pairs by a pasted link and by a `pine:` address the system opens
+// the app with (asked by the app itself: `simctl openurl` makes SpringBoard ask "Open in Pine?"
+// first, which no test inside the app can answer), is reached again after the background with its connection cut, refuses a malformed
+// address and one of an http service and says so, and a `pine:` address never navigates the page.
 //
 // What only the Mac can do (a screenshot, sending the app to the background) the test asks for
 // through files in the run's folder, which this script answers. Screenshots (agents.png,
@@ -29,13 +37,15 @@
 // the machine.
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import tls from "node:tls";
 import { parseArgs } from "node:util";
 import { startMock } from "../../baseline/tests/mock.mjs";
 
-const { values: opts } = parseArgs({ options: { shots: { type: "string" }, device: { type: "string" }, keep: { type: "boolean" } } });
+const { values: opts } = parseArgs({ options: { shots: { type: "string" }, device: { type: "string" }, keep: { type: "boolean" }, "pairing-only": { type: "boolean" } } });
 const mobile = path.resolve(import.meta.dirname, "..");
 const repo = path.resolve(mobile, "..");
 const javaHome = process.env.JAVA_HOME ?? "/Applications/Android Studio.app/Contents/jbr/Contents/Home";
@@ -57,6 +67,9 @@ async function cleanup() {
 	if (!opts.keep) fs.rmSync(work, { recursive: true, force: true });
 }
 process.on("SIGINT", () => void cleanup().then(() => process.exit(130)));
+
+/** The computer the app pairs with (`computer()`), once it is up. */
+let pairing;
 
 const run = (cmd, args, cwd = mobile) => execFileSync(cmd, args, { cwd, env, stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 }).toString();
 const simctl = (...args) => execFileSync("xcrun", ["simctl", ...args], { env, maxBuffer: 64 * 1024 * 1024 }).toString();
@@ -80,6 +93,86 @@ function tone() {
 	head.write("data", 36);
 	head.writeUInt32LE(samples.length, 40);
 	return Buffer.concat([head, samples]);
+}
+
+/**
+ * A certificate authority of the run's own and a certificate for `localhost` it signed, in `dir`: the
+ * simulator is told to trust the authority, so that the app reaches the run's meeting service over
+ * https, as a pairing link must name it. Nothing of this Mac's own keychain is touched.
+ */
+function certificates(dir) {
+	const at = (name) => path.join(dir, name);
+	fs.mkdirSync(dir, { recursive: true });
+	const openssl = (...args) => execFileSync("openssl", args, { cwd: dir, stdio: ["ignore", "ignore", "pipe"] });
+	openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", at("ca.key"), "-out", at("ca.pem"), "-days", "30", "-sha256", "-subj", "/CN=Pine smoke run", "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,cRLSign");
+	openssl("req", "-newkey", "rsa:2048", "-nodes", "-keyout", at("leaf.key"), "-out", at("leaf.csr"), "-subj", "/CN=localhost");
+	write(at("leaf.ext"), "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n");
+	openssl("x509", "-req", "-in", at("leaf.csr"), "-CA", at("ca.pem"), "-CAkey", at("ca.key"), "-CAcreateserial", "-out", at("leaf.pem"), "-days", "30", "-sha256", "-extfile", at("leaf.ext"));
+	return { ca: at("ca.pem"), key: fs.readFileSync(at("leaf.key")), cert: fs.readFileSync(at("leaf.pem")) };
+}
+
+/**
+ * The computer the app pairs with: the Pine app's real access host (mobile/test/support/access-host.ts,
+ * whose top comment is its protocol), waiting at a meeting service on this Mac's loopback, its daemon
+ * the run's real pine (`serviceLine`). The helper's service is http; the app takes https only, so a
+ * TLS front of the run's own carries it at https://localhost:<port>, with the certificate the
+ * simulator trusts. `ask` sends one command and gives its answer; `asked` gives the next pairing
+ * request the owner is asked about.
+ */
+async function computer(serviceLine, tlsKeys) {
+	const child = spawn(process.execPath, [path.join(mobile, "test", "support", "access-host.ts"), "--service-line", serviceLine, "--computer-name", "Smoke Mac"], { env, stdio: ["pipe", "pipe", "inherit"] });
+	const answers = [];
+	const requests = [];
+	const waitingFor = [];
+	let ready;
+	const first = new Promise((resolve, reject) => {
+		ready = resolve;
+		child.on("exit", (code) => reject(new Error(`the access host ended (${code})`)));
+	});
+	readline.createInterface({ input: child.stdout }).on("line", (line) => {
+		const said = JSON.parse(line);
+		if (said.t === "ready" || said.t === "missing") return ready(said);
+		if (said.t === "asked") return waitingFor.length ? waitingFor.shift()(said) : requests.push(said);
+		if (["paired", "connected", "left"].includes(said.t)) return;
+		answers.shift()?.(said);
+	});
+	const up = await first;
+	if (up.t !== "ready") throw new Error(up.message);
+	const port = Number(new URL(up.service).port);
+	// The front: TLS, then the bytes as they are, both ways (HTTP and the meeting's WebSocket alike).
+	const front = (host) =>
+		new Promise((resolve, reject) => {
+			const server = tls.createServer({ key: tlsKeys.key, cert: tlsKeys.cert }, (socket) => {
+				const back = net.connect(port, "127.0.0.1");
+				socket.pipe(back).pipe(socket);
+				socket.on("error", () => back.destroy());
+				back.on("error", () => socket.destroy());
+			});
+			server.once("error", reject);
+			server.listen(host.port ?? 0, host.address, () => resolve(server));
+		});
+	const v4 = await front({ address: "127.0.0.1" });
+	const tlsPort = v4.address().port;
+	// localhost may be ::1 to the simulator: the same port there too, where this Mac has it.
+	const v6 = await front({ address: "::1", port: tlsPort }).catch(() => undefined);
+	return {
+		service: up.service,
+		https: `https://localhost:${tlsPort}`,
+		machineId: up.machineId,
+		ask: (command) =>
+			new Promise((resolve) => {
+				answers.push(resolve);
+				child.stdin.write(`${command}\n`);
+			}),
+		asked: () => (requests.length ? Promise.resolve(requests.shift()) : new Promise((resolve) => waitingFor.push(resolve))),
+		stop: async () => {
+			v4.close();
+			v6?.close();
+			const gone = new Promise((resolve) => child.once("exit", resolve));
+			child.stdin.end();
+			await gone;
+		},
+	};
 }
 
 /** The simulator of the run: one of its own, made once, so that a simulator somebody uses is left alone. */
@@ -117,11 +210,22 @@ function answer(udid) {
 				fs.mkdirSync(shots, { recursive: true });
 				simctl("io", udid, "screenshot", file);
 				step(`screenshot: ${file}`);
-			} else if (command === "background") {
+			} else if (command === "background" || command === "background-cut") {
 				// Another app in front, as the owner going home would leave it; then the app again.
 				simctl("launch", udid, "com.apple.Preferences");
+				// Meanwhile the computer lets go of the phone's connections, as a network that went would.
+				if (command === "background-cut") step(`the computer cut ${(await pairing.ask("cut")).count} connection(s) of the phone`);
 				await sleep(5000);
 				simctl("launch", udid, APP);
+			} else if (command === "pair-open") {
+				// The computer shows a new pairing code: its link, as the phone's camera would read it, on the run's own https service.
+				const { link } = await pairing.ask("open");
+				write(path.join(work, "pair-link.txt"), link.replace(pairing.service, pairing.https));
+			} else if (command === "pair-allow") {
+				// The owner presses Allow at the computer, once it asks: what it was told is noted for the test.
+				const asked = await pairing.asked();
+				write(path.join(work, "pair-asked.json"), JSON.stringify(asked));
+				await pairing.ask("allow");
 			}
 			fs.writeFileSync(path.join(work, `done-${n}`), "");
 			n++;
@@ -194,7 +298,9 @@ try {
 	build(udid, "Debug", derived);
 	// Capacitor's switch on, as in a debug build, so that only pine's own line can turn the inspector
 	// off; testable, so that the test reaches PineViewController.
-	build(udid, "Release", derivedRelease, "CAPACITOR_DEBUG=true", "ENABLE_TESTABILITY=YES");
+	// The simulator's own architecture only: a release build makes every one by default, and the WebRTC
+	// library's simulator slice is arm64 alone.
+	build(udid, "Release", derivedRelease, "CAPACITOR_DEBUG=true", "ENABLE_TESTABILITY=YES", "ONLY_ACTIVE_ARCH=YES");
 
 	// ---- the machine ------------------------------------------------------------------------------
 	step("starting the machine: the mock model, a pine home, and an SSH server on this Mac's loopback");
@@ -202,7 +308,7 @@ try {
 	cleanups.push(() => mock.close());
 	const home = path.join(work, "far");
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
-	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, main: "main", defaults: { model: "mock/m", mode: "safe" }, security: { askAccess: false } }, null, 2));
+	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, main: "main", defaults: { model: "mock/m", mode: "safe", introduce: false }, security: { askAccess: false } }, null, 2));
 	write(path.join(home, "agents", "main", "agent.json"), JSON.stringify({ description: "The main agent: it administers pine" }));
 	write(path.join(home, "agents", "main", "workspace", "AGENTS.md"), "You are the main agent.\n");
 	write(path.join(home, "agents", "scout", "agent.json"), JSON.stringify({ description: "Looks things up on the web" }));
@@ -226,7 +332,19 @@ try {
 	});
 	const host = `me@127.0.0.1:${said.port}`;
 	step(`machine ${host}, host key ${said.fingerprint}`);
-	write(path.join(work, "machine.json"), JSON.stringify({ host, fingerprint: said.fingerprint, keys, toneBytes: String(wav.length) }));
+	// The same pine, for the computer the app pairs with: `pine service` on that home says where its
+	// daemon answers (and starts it), and the line is what the access host hands a paired phone.
+	const service = spawn(process.execPath, [path.join(repo, "bin", "pine.js"), "service", "--home", home], { env: { ...env, PINE_SKIP_DOWNLOADS: "1" }, stdio: ["pipe", "pipe", "inherit"] });
+	cleanups.push(() => service.stdin.end());
+	const serviceLine = await new Promise((resolve, reject) => {
+		readline.createInterface({ input: service.stdout }).once("line", resolve);
+		service.on("exit", (code) => reject(new Error(`pine service ended (${code})`)));
+	});
+	const tlsKeys = certificates(path.join(work, "tls"));
+	pairing = await computer(serviceLine, tlsKeys);
+	cleanups.push(() => pairing.stop());
+	step(`computer ${pairing.machineId}, its meeting service at ${pairing.https} (in front of ${pairing.service})`);
+	write(path.join(work, "machine.json"), JSON.stringify({ host, fingerprint: said.fingerprint, keys, toneBytes: String(wav.length), service: pairing.https, plainService: pairing.service, machineId: pairing.machineId }));
 
 	// ---- the runs ---------------------------------------------------------------------------------
 	step("the app on fresh data: no app, no key in the Keychain");
@@ -239,13 +357,25 @@ try {
 	const stop = answer(udid);
 	cleanups.push(stop);
 
-	step("the app from its first start to the agents, its hardening, its life and its status bar");
-	await test(udid, "testFromFirstStartToTheAgents");
-	step("the app started again: the Keychain kept the phone's key");
-	await test(udid, "testTheKeySurvivesARelaunch");
-	step("the release build: no web inspector, even with Capacitor's switch on");
-	await test(udid, "testInspectorOffInARelease", derivedRelease);
-	step("done: the app reached the pine of the machine and shows its agents");
+	if (!opts["pairing-only"]) {
+		step("the app from its first start to the agents, its hardening, its life and its status bar");
+		await test(udid, "testFromFirstStartToTheAgents");
+		step("the app started again: the Keychain kept the phone's key");
+		await test(udid, "testTheKeySurvivesARelaunch");
+		step("the release build: no web inspector, even with Capacitor's switch on");
+		await test(udid, "testInspectorOffInARelease", derivedRelease);
+	}
+
+	step("the app on fresh data again, this run's authority trusted: pairing with the computer");
+	try {
+		simctl("uninstall", udid, APP);
+	} catch {
+		// not installed (--pairing-only)
+	}
+	simctl("keychain", udid, "reset");
+	simctl("keychain", udid, "add-root-cert", tlsKeys.ca);
+	await test(udid, "testPairing");
+	step(opts["pairing-only"] ? "done: the pairing run alone (--pairing-only), not the whole smoke run" : "done: the app reached the pine of the machine and shows its agents, and paired with the computer");
 } catch (e) {
 	console.error(`smoke run failed: ${e instanceof Error ? e.message : e}`);
 	process.exitCode = 1;

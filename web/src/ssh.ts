@@ -9,7 +9,7 @@ import {
 	SshClientSession,
 	SshDisconnectReason,
 	SshSessionConfiguration,
-	WebSocketStream,
+	BaseStream,
 	type KeyPair,
 	type SshChannel,
 	type Signer,
@@ -223,15 +223,34 @@ function wrap(channel: SshChannel): Channel {
 	};
 }
 
+/**
+ * A duplex byte stream that carries the SSH bytes, open: the WebSocket to the relay
+ * (`relayStream`), or a data channel to a paired computer. The SSH code after it is the same for both.
+ */
+export type Transport = {
+	/** Sends bytes; settles when the transport took them (one that waits for room settles later). */
+	write(bytes: Uint8Array): Promise<void>;
+	/** Receives what the other end sends. Given once, as soon as the transport is open: bytes that arrive before are the transport's to keep. */
+	onData(listener: (bytes: Uint8Array) => void): void;
+	/**
+	 * Settles when the transport ended, whoever ended it. With an error that says why when the
+	 * transport knows (the relay's close code, the meeting's refusal): `connect` throws it when SSH
+	 * could not get going, in place of the library's own error.
+	 */
+	ended: Promise<Error | undefined>;
+	close(): void;
+};
+
+/** Opens a transport: what `connect` is given in place of an address. It throws when none can be had, with an error that says why. */
+export type OpenStream = () => Promise<Transport>;
+
 export type ConnectOptions = {
-	/** The WebSocket that carries the SSH bytes (the relay's address). */
-	url: string;
+	/** Opens the stream that carries the SSH bytes. */
+	open: OpenStream;
 	user: string;
 	key: CryptoKeyPair;
 	/** The host key fingerprint the owner confirmed, `SHA256:...`. Any other key is refused. */
 	hostFingerprint: string;
-	/** How long the relay has to open the WebSocket; none: 20 seconds. The tests make it short. */
-	openMs?: number;
 };
 
 export type Connection = {
@@ -259,6 +278,21 @@ export class RelayClosed extends Error {
 	}
 }
 
+/**
+ * The way to a paired computer could not be opened: no computer waits at the meeting service under
+ * its id ("absent"), the computer is there but no direct connection could be made from this network
+ * ("no-path"), or the meeting service is over its limits ("limits"). Thrown by the peer transport's
+ * opener (peer.ts); the bridge tells the owner each in words of its own.
+ */
+export class PeerClosed extends Error {
+	readonly reason: "absent" | "no-path" | "limits";
+	constructor(reason: "absent" | "no-path" | "limits", message?: string) {
+		super(message ?? `The way to the paired computer could not be opened (${reason}).`);
+		this.name = "PeerClosed";
+		this.reason = reason;
+	}
+}
+
 /** Why a connection was refused: a host key other than the one confirmed, or a key not authorised. */
 export class SshRefused extends Error {
 	readonly reason: "host-key" | "not-authorized";
@@ -274,7 +308,7 @@ export class SshRefused extends Error {
 }
 
 /** The relay's WebSocket, open. A relay that never answers counts as one that did not open it: a browser has no time limit of its own for this. */
-function open(url: string, ms: number): Promise<WebSocket> {
+function openSocket(url: string, ms: number): Promise<WebSocket> {
 	return new Promise((resolve, reject) => {
 		const socket = new WebSocket(url);
 		socket.binaryType = "arraybuffer";
@@ -294,7 +328,57 @@ function open(url: string, ms: number): Promise<WebSocket> {
 }
 
 /**
- * An SSH connection over a WebSocket. The server's host key is checked against the confirmed
+ * The WebSocket to the relay at `url` as a transport. `openMs`: how long the relay has to open
+ * it; none: 20 seconds (the tests make it short). It ends with `RelayClosed` when the relay closed
+ * it with a code of its own (4000 and up), which says why.
+ */
+export function relayStream(url: string, openMs = 20_000): OpenStream {
+	return async () => {
+		const socket = await openSocket(url, openMs);
+		let listener: ((bytes: Uint8Array) => void) | undefined;
+		socket.onmessage = (e) => listener?.(new Uint8Array(e.data as ArrayBuffer));
+		const ended = new Promise<Error | undefined>((resolve) => {
+			socket.addEventListener("close", (e) => resolve(e.code >= 4000 ? new RelayClosed(e.code, e.reason) : undefined));
+		});
+		return {
+			write: async (bytes) => socket.send(bytes as Uint8Array<ArrayBuffer>),
+			onData: (next) => void (listener = next),
+			ended,
+			close: () => socket.close(),
+		};
+	};
+}
+
+/** A transport in the library's terms. */
+class TransportStream extends BaseStream {
+	private readonly transport: Transport;
+
+	constructor(transport: Transport) {
+		super();
+		this.transport = transport;
+		transport.onData((bytes) => this.onData(Buffer.from(bytes)));
+		void transport.ended.then(() => {
+			this.onEnd();
+			this.fireOnClose();
+		});
+	}
+
+	async write(data: Buffer): Promise<void> {
+		await this.transport.write(new Uint8Array(data));
+	}
+
+	async close(): Promise<void> {
+		this.transport.close();
+	}
+
+	dispose(): void {
+		this.transport.close();
+		super.dispose();
+	}
+}
+
+/**
+ * An SSH connection over the transport `options.open` opens. The server's host key is checked against the confirmed
  * fingerprint before anything of ours is sent: on a mismatch the browser's key is never offered.
  */
 export async function connect(options: ConnectOptions): Promise<Connection> {
@@ -311,18 +395,18 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
 			return seen === options.hostFingerprint ? {} : null;
 		})();
 	});
-	const socket = await open(options.url, options.openMs ?? 20_000);
-	// How the relay closed, if it did: read when the session fails, so that its reason is said.
-	let shut: { code: number; reason: string } | undefined;
+	const transport = await options.open();
+	// Why the transport ended, if it did and knows: read when the session fails, so that its reason is said.
+	let why: Error | undefined;
 	const closed = new Promise<void>((resolve) => {
-		socket.addEventListener("close", (e) => {
-			shut = { code: e.code, reason: e.reason };
+		void transport.ended.then((error) => {
+			why = error;
 			resolve();
 		});
 		session.onClosed(() => resolve());
 	});
 	try {
-		await session.connect(new WebSocketStream(socket));
+		await session.connect(new TransportStream(transport));
 		if (!(await session.authenticateServer())) {
 			throw new SshRefused("host-key", `The server's host key is ${seen ?? "unknown"}, not the confirmed ${options.hostFingerprint}.`, seen);
 		}
@@ -331,8 +415,8 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
 		}
 	} catch (error) {
 		await session.close(SshDisconnectReason.byApplication).catch(() => {});
-		socket.close();
-		if (!(error instanceof SshRefused) && shut && shut.code >= 4000) throw new RelayClosed(shut.code, shut.reason);
+		transport.close();
+		if (!(error instanceof SshRefused) && why) throw why;
 		throw error;
 	}
 	return {
@@ -359,7 +443,7 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
 		},
 		async close() {
 			await session.close(SshDisconnectReason.byApplication);
-			socket.close();
+			transport.close();
 		},
 		closed,
 	};

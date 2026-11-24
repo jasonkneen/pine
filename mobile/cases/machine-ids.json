@@ -1,0 +1,15 @@
+{
+	"about": "A machine id (the SHA-256 of the paired computer's SSH host key blob, base64url without padding: keyId in desktop/electron/access/store.ts) as the fingerprint a host key is compared with during key exchange (pairedFingerprint in web/src/pairing.ts). id is the machine id as given. blob is null, or the wire blob (base64) of a key whose machine id it is: its fingerprint, as fingerprints.json computes one, has to be expect. expect is the fingerprint as OpenSSH prints it, or null when id is not a machine id.",
+	"cases": [
+		{"name": "ed25519, the key of fingerprints.json", "id": "B5IL6HvjP-x66mzgtrtt447XrwHKB2n5qq7O5jRB8oE", "blob": "AAAAC3NzaC1lZDI1NTE5AAAAIJHkhBgh8x7P1fbaUKi4lIq5I7OM+7RZ9y5zUowkOsIW", "expect": "SHA256:B5IL6HvjP+x66mzgtrtt447XrwHKB2n5qq7O5jRB8oE"},
+		{"name": "ed25519 with both characters base64url changes", "id": "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs", "blob": "AAAAC3NzaC1lZDI1NTE5AAAAIPlQ8eWBvXprbZIU5w6NMXvMWol4OeLASGgljQU1cXVB", "expect": "SHA256:EKN2VkO6uLv7SOTEAyIGDru/1I/cTOGadqwTlLFm+qs"},
+		{"name": "rsa 2048, the key of fingerprints.json", "id": "CA3kKu9844sYaSEWgaiQqzEOTLJl8MDyORj92HPOZLk", "blob": "AAAAB3NzaC1yc2EAAAADAQABAAABAQDV81l4VjT0ANYa0cXBv9S2cinqTZLy+yR9U7iNZ/rl+7OW7uu4NIMkNWQbgbi5K0C1gBCxHxP8l5NkJG4yblkirE1Y0KYRsbeJ+7lBt9jOrBQ7313nnGLUtA3P7tyxyLR2ucWxECCmdHZmRb1yFdBVYNRHfRYYEI5ZY5YhHaBHr7jmfoRf6kBLxpg13xEp5AdfgIhoKtyjk+WkUP5/Ocq1BRazCUDx85F4uR2VHIyviPrvG7YoOusx76axrbN+kWwAm+O22p9euas91TFDGqnWe3iZRdLmylCipzRVX8Q1oeCM47bnHRBt8q1exE6jc1P9InvxHxOADE01HFmZkl53", "expect": "SHA256:CA3kKu9844sYaSEWgaiQqzEOTLJl8MDyORj92HPOZLk"},
+		{"name": "one character short", "id": "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-q", "blob": null, "expect": null},
+		{"name": "one character long", "id": "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qsA", "blob": null, "expect": null},
+		{"name": "base64 rather than base64url", "id": "B5IL6HvjP+x66mzgtrtt447XrwHKB2n5qq7O5jRB8oE", "blob": null, "expect": null},
+		{"name": "with padding", "id": "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-q=", "blob": null, "expect": null},
+		{"name": "a fingerprint already", "id": "SHA256:EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs", "blob": null, "expect": null},
+		{"name": "nothing", "id": "", "blob": null, "expect": null},
+		{"name": "a space", "id": "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-q ", "blob": null, "expect": null}
+	]
+}

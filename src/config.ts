@@ -75,7 +75,7 @@ export const SOURCE_TYPES = ["folder", "mqtt", "webhook", "ftp", "telegram", "ht
 export const EVERYDAY_TYPES = ["folder", "mqtt", "webhook", "ftp", "telegram", "http", "command"];
 
 /** Topics only the daemon itself publishes on: the publish_event tool and route definitions refuse them. */
-export const RESERVED_TOPICS = ["approval/#", "agent/#", "pine/#", "state/#", "timer/#"];
+export const RESERVED_TOPICS = ["approval/#", "agent/#", "pine/#", "state/#", "timer/#", "board/#"];
 
 /**
  * A subscription: one conversation of an agent listens to one source, and each event of the source
@@ -203,6 +203,10 @@ export const LEVELS: Level[] = ["auto", "safe", "manual", "bypass"];
 export const MODES: Mode[] = [...LEVELS, "plan"];
 /** Whether a level leaves the sandbox off: the owner's whole account and the network. */
 export const unsandboxed = (level: Level) => level === "auto" || level === "bypass";
+/** The levels from the one that asks most and reaches least to the one that asks nothing and reaches everything. */
+const NARROW_TO_WIDE: Level[] = ["manual", "safe", "auto", "bypass"];
+/** The stricter of an agent's level and a cap on it (a delegated run is held to its caller's level). No cap: the level. */
+export const stricter = (level: Level, cap?: Level): Level => (cap && NARROW_TO_WIDE.indexOf(cap) < NARROW_TO_WIDE.indexOf(level) ? cap : level);
 
 export interface SandboxConfig {
 	/** Shell commands may open network connections. */
@@ -223,6 +227,8 @@ export interface UntrustedProfile {
 	publish: string[];
 	stateWrite: boolean;
 	subagents: boolean;
+	/** Whether such a run has the board tools. What it posts is marked as coming from outside. */
+	board: boolean;
 }
 
 export interface AgentConfig {
@@ -282,9 +288,19 @@ export interface PineConfig {
 	logLevel: LogLevel;
 	main?: string;
 	/** `mode`: for every agent that names none. Not set: auto for the main agent, safe for the others. */
-	defaults: { model?: string; /** The model that judges whether a goal is met, as "provider/id". Not set: the agent's own. */ judge?: string; thinking: string; mode?: Mode; bashTimeoutSec: number; taskTimeoutSec: number; idleMs: number; settings: Record<string, unknown> };
+	defaults: { model?: string; /** The model that judges whether a goal is met, as "provider/id". Not set: the agent's own. */ judge?: string; /** The model that checks a swarm's answer, as "provider/id". Not set: the agent's own. */ checker?: string; /** Agents introduce themselves in their answer to the first message their owner writes to them. */ introduce: boolean; thinking: string; mode?: Mode; bashTimeoutSec: number; taskTimeoutSec: number; idleMs: number; settings: Record<string, unknown> };
 	limits: {
 		maxConcurrentRuns: number;
+		/**
+		 * Runs at a time on one model, by its whole name ("local/qwen3-coder"), where that is to be fewer or more than
+		 * `maxConcurrentRuns`: a model on the owner's own computer serves one or two at once, a hosted one many, and
+		 * one endpoint can serve models that are set up differently. Such a model has a queue of its own.
+		 */
+		models: Record<string, number>;
+		/** Sub-agents one conversation runs at a time: the default of `subagents.maxParallel` for an agent that names none. */
+		maxSubagents: number;
+		/** The most tasks one call of `subagent` puts onto a board and starts (a pool). */
+		maxPoolTasks: number;
 		maxDelegationDepth: number;
 		/** Largest file the download tool fetches. */
 		maxDownloadMb: number;
@@ -307,6 +323,8 @@ export interface PineConfig {
 		goalIdleRounds: number;
 		/** How long the judge of a goal may take before its silence counts as no verdict. */
 		goalJudgeMs: number;
+		/** A swarm (src/swarm.ts): how many turns its lead gets before it stops with work left and the owner has to say that it goes on. */
+		swarmRounds: number;
 		/**
 		 * Whether pine has the idle slots of a llama.cpp server read what every conversation of an
 		 * agent begins with (the tools and instructions), after the owner has used the model: the
@@ -338,8 +356,9 @@ export interface PineConfig {
 		 */
 		askAccess: boolean;
 	};
-	/** How pine's UIs look: `theme` names a file in <home>/themes (src/themes.ts). Not set: pmndre. */
-	ui: { theme?: string };
+	/** How pine's UIs look: `theme` names a file in <home>/themes (src/themes.ts). Not set: pmndre. `view` names a
+	 *  view in <home>/views for the Pine app's panel (src/views.ts), or "off"; not set: the first view there is. */
+	ui: { theme?: string; view?: string };
 	/** Values that must never leave the daemon in events or messages. */
 	secrets: string[];
 	mcp: Record<string, McpServerConfig>;
@@ -423,7 +442,7 @@ function loadAgent(id: string, dir: string, raw: any, cfg: PineConfig, problems:
 	// The mode is the one setting that says whether an agent works in a sandbox and how far it
 	// reaches. What said it before is gone, and a file that still has it says what to write instead.
 	if (raw.sandbox === false || raw.sandbox?.enabled === false) problems.push(`${where}: "sandbox": false is gone. The mode says whether an agent works in a sandbox: set "mode" to "auto" to work without one, and take the "sandbox" entry out`);
-	if (raw.sandbox?.scope !== undefined) problems.push(`${where}: sandbox.scope is gone. The mode says how far an agent reaches: set "mode" to "auto" (your whole account, no sandbox) or "safe" (its own folders, in the sandbox), and take the "scope" entry out`);
+	if (raw.sandbox?.scope !== undefined) problems.push(`${where}: sandbox.scope is gone. The mode says how far an agent reaches: set "mode" to "auto" (your whole account, no sandbox) or "safe" (the agent's own folders, in the sandbox), and take the "scope" entry out`);
 	const chosen: Mode | undefined = raw.mode ?? cfg.defaults.mode;
 	const sub = raw.subagents === false ? { enabled: false } : raw.subagents === true || raw.subagents === undefined ? {} : raw.subagents;
 	const state = raw.state ?? {};
@@ -446,8 +465,8 @@ function loadAgent(id: string, dir: string, raw: any, cfg: PineConfig, problems:
 		extensions: paths(raw.extensions, dir),
 		skills: paths(raw.skills, dir),
 		context: paths(raw.context, dir),
-		delegates: strings(raw.delegates, id === cfg.main ? ["*"] : []),
-		subagents: { enabled: sub.enabled ?? true, maxParallel: sub.maxParallel ?? 4, tools: sub.tools, mcp: sub.mcp ?? true },
+		delegates: strings(raw.delegates, ["*"]),
+		subagents: { enabled: sub.enabled ?? true, maxParallel: sub.maxParallel ?? cfg.limits.maxSubagents, tools: sub.tools, mcp: sub.mcp ?? true },
 		publish: strings(raw.publish, []),
 		state: { read: strings(state.read, ["#"]), write: strings(state.write, [`agent/${id}/#`]), inject: strings(state.inject, []) },
 		trustWorkspace: raw.trustWorkspace === true,
@@ -474,6 +493,7 @@ function loadAgent(id: string, dir: string, raw: any, cfg: PineConfig, problems:
 						publish: strings(raw.untrusted?.publish, []),
 						stateWrite: raw.untrusted?.stateWrite === true,
 						subagents: raw.untrusted?.subagents === true,
+						board: raw.untrusted?.board === true,
 					},
 		bashTimeoutSec: raw.bashTimeoutSec ?? cfg.defaults.bashTimeoutSec,
 		bashDeny: strings(raw.bashDeny, []),
@@ -546,6 +566,16 @@ function loadSchedules(raw: unknown, problems: string[], file = "pine.json", age
 }
 
 /** Read `<home>/pine.json`, `<home>/.env` and every `<home>/agents/<id>/agent.json`. Throws ConfigError. */
+/** The most runs at a time a model can be given. */
+export const MAX_MODEL_RUNS = 64;
+/** The name of a model server or provider, as it stands before the "/" of a model. */
+export const SERVER_KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/;
+export const modelLimit = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= MAX_MODEL_RUNS;
+/** A model's whole name: its server or provider, a "/", and its id as the server names it. */
+export const MODEL_KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,60}\/[A-Za-z0-9._:@/+=,()[\]-]{1,160}$/;
+/** `limits.models` as it is used: only what is a model's name and a number that can be one. (What is wrong with the rest, `problems` says.) */
+const modelLimits = (raw: unknown): Record<string, number> => Object.fromEntries(Object.entries(raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}).filter(([name, n]) => MODEL_KEY.test(name) && modelLimit(n))) as Record<string, number>;
+
 export function loadConfig(home = defaultHome()): PineConfig {
 	const problems: string[] = [];
 	home = path.resolve(expandHome(home));
@@ -561,7 +591,7 @@ export function loadConfig(home = defaultHome()): PineConfig {
 	const raw = interpolate(readJson(file, problems), "pine.json", problems, env);
 	noPlugins(raw?.plugins, "pine.json: plugins", problems);
 	const d = raw.defaults ?? {};
-	if (d.scope !== undefined) problems.push('pine.json: defaults.scope is gone. The mode says how far an agent reaches: set defaults.mode to "safe" to keep every agent in its sandbox or to "auto" to give every agent your whole account, and take the "scope" entry out');
+	if (d.scope !== undefined) problems.push('pine.json: defaults.scope is gone. The mode says how far an agent reaches: set defaults.mode to "safe" to keep all agents in the sandbox or to "auto" to give all agents your whole account, and take the "scope" entry out');
 	// Source types of the owner's own: a name and the module behind it.
 	const sourceTypes: Record<string, string> = {};
 	for (const [name, file] of Object.entries(raw.sourceTypes && typeof raw.sourceTypes === "object" ? raw.sourceTypes : {})) {
@@ -578,7 +608,9 @@ export function loadConfig(home = defaultHome()): PineConfig {
 		defaults: {
 			model: d.model,
 			judge: typeof d.judge === "string" && d.judge ? d.judge : undefined,
-			thinking: d.thinking ?? "off",
+			checker: typeof d.checker === "string" && d.checker ? d.checker : undefined,
+			introduce: d.introduce !== false,
+			thinking: d.thinking ?? "medium",
 			mode: d.mode,
 			bashTimeoutSec: d.bashTimeoutSec ?? 900,
 			taskTimeoutSec: d.taskTimeoutSec ?? 7200,
@@ -586,7 +618,10 @@ export function loadConfig(home = defaultHome()): PineConfig {
 			settings: d.settings ?? {},
 		},
 		limits: {
-			maxConcurrentRuns: l.maxConcurrentRuns ?? 2,
+			maxConcurrentRuns: l.maxConcurrentRuns ?? 8,
+			models: modelLimits(l.models),
+			maxSubagents: l.maxSubagents ?? 4,
+			maxPoolTasks: l.maxPoolTasks ?? 100,
 			maxDelegationDepth: l.maxDelegationDepth ?? 3,
 			maxDownloadMb: l.maxDownloadMb ?? 200,
 			warmSlots: l.warmSlots ?? true,
@@ -602,6 +637,7 @@ export function loadConfig(home = defaultHome()): PineConfig {
 			goalRounds: Math.max(1, Math.floor(Number(l.goalRounds ?? 20)) || 20),
 			goalIdleRounds: Math.max(0, Math.floor(Number(l.goalIdleRounds ?? 3)) || 0),
 			goalJudgeMs: parseDuration(l.goalJudgeTimeout ?? "90s"),
+			swarmRounds: Math.max(1, Math.floor(Number(l.swarmRounds ?? 8)) || 8),
 		},
 		security: {
 			approvalTimeoutMs: parseDuration(raw.security?.approvalTimeout ?? "5m"),
@@ -610,7 +646,7 @@ export function loadConfig(home = defaultHome()): PineConfig {
 			bypassWhenTainted: raw.security?.bypassWhenTainted === true,
 			askAccess: raw.security?.askAccess !== false,
 		},
-		ui: { theme: typeof raw.ui?.theme === "string" && raw.ui.theme ? raw.ui.theme : undefined },
+		ui: { theme: typeof raw.ui?.theme === "string" && raw.ui.theme ? raw.ui.theme : undefined, view: typeof raw.ui?.view === "string" && raw.ui.view ? raw.ui.view : undefined },
 		secrets: Object.values(fileEnv).filter((v) => v.length >= 8),
 		mcp: raw.mcp ?? {},
 		sources: loadSources(raw.sources, home, "pine.json: sources", problems, Object.keys(sourceTypes)),
@@ -627,8 +663,11 @@ export function loadConfig(home = defaultHome()): PineConfig {
 	for (const key of ["review", "reviewer", "reviewTimeout", "rules"]) {
 		if (raw.security?.[key] !== undefined) problems.push(`pine.json: security.${key} is gone: pine has no reviewer any more. In auto and safe mode you are asked about critical actions, and after outside content about what is sent out. Take the entry out${key === "reviewer" ? ' (the model that judges goals is "defaults.judge" now)' : ""}`);
 	}
-	if (raw.ui?.theme !== undefined && !(typeof raw.ui.theme === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(raw.ui.theme))) problems.push('pine.json: ui.theme names a theme by its file in the themes folder, without .json, for example "pmndre"');
+	if (raw.ui?.theme !== undefined && !(typeof raw.ui.theme === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(raw.ui.theme))) problems.push('pine.json: ui.theme names a theme by the file name in the themes folder, without .json, for example "pmndre"');
+	if (raw.ui?.view !== undefined && !(typeof raw.ui.view === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(raw.ui.view))) problems.push('pine.json: ui.view names a view by the file name in the views folder, without .ts, for example "house", or is "off"');
 	if (d.judge !== undefined && !/^[^/\s]+\/\S+$/.test(String(d.judge))) problems.push("pine.json: defaults.judge names a model as provider/model-id");
+	if (l.models !== undefined && (typeof l.models !== "object" || !l.models || Array.isArray(l.models) || Object.entries(l.models).some(([name, n]) => !MODEL_KEY.test(name) || !modelLimit(n)))) problems.push(`pine.json: limits.models gives a model (as provider/model-id) the number of runs it takes at a time, a whole number from 1 to ${MAX_MODEL_RUNS}: { "local/qwen3-coder": 2 }`);
+	if (d.checker !== undefined && !/^[^/\s]+\/\S+$/.test(String(d.checker))) problems.push("pine.json: defaults.checker names a model as provider/model-id");
 	if (cfg.http) {
 		for (const [name, h] of Object.entries<any>(raw.http?.hooks ?? {})) {
 			if (!/^[A-Za-z0-9_-]+$/.test(name)) problems.push(`pine.json: invalid hook name "${name}"`);
@@ -660,7 +699,6 @@ export function loadConfig(home = defaultHome()): PineConfig {
 		if (!a.modeSet) a.mode = plain;
 		a.level = a.mode === "plan" || !MODES.includes(a.mode) ? plain : a.mode;
 		if (!MODES.includes(a.mode)) problems.push(`agents/${a.id}/agent.json: mode must be one of ${MODES.join(", ")} (got "${a.mode}")`);
-		if (!(a.model ?? cfg.defaults.model)) problems.push(`agents/${a.id}/agent.json: no model (set "model" or defaults.model in pine.json)`);
 		for (const t of a.delegates) if (t !== "*" && !cfg.agents[t]) problems.push(`agents/${a.id}/agent.json: delegates names unknown agent "${t}"`);
 		if (Array.isArray(a.globalMcp)) for (const n of a.globalMcp) if (!cfg.mcp[n]) problems.push(`agents/${a.id}/agent.json: globalMcp names unknown server "${n}"`);
 		for (const n of Object.keys(a.mcp)) if (!/^[A-Za-z0-9_-]+$/.test(n)) problems.push(`agents/${a.id}/agent.json: invalid MCP server name "${n}"`);
@@ -705,6 +743,24 @@ export const WORKSPACE_FILES = ["AGENTS.md", "SOUL.md", "TOOLS.md", "MEMORY.md"]
  * known about the owner. An agent's own files say what is different for it.
  */
 export const SHARED_FILES = ["AGENTS.md", "TOOLS.md", "USER.md"];
+
+/**
+ * What pine put into the files an agent keeps (and the files for all agents) before they started empty:
+ * a line on what the file is for, which the prompt and the Settings page say anyway. A home made then
+ * still has it wherever nobody wrote anything. It is read as an empty file: left out of the prompt
+ * (`instructionFiles` in src/agents.ts) and shown empty to the owner (src/owner.ts).
+ */
+export const FORMER_TEMPLATES = new Set([
+	"# All agents\n\nTraits and behaviour for every agent: how your owner wants agents to be and to act, whoever\ndoes the work. Nothing yet. The main agent writes it here.",
+	"# Tools\n\nTooling for every agent: defaults and preferences for the tools (skills, MCP servers, shell\ncommands, schedules, event sources), and other technical or functional details of this setup.\nNothing yet. The main agent writes it here.",
+	"# User\n\nWhat every agent knows about its owner: their name, what they do, how they like to be\nanswered. Nothing yet. The main agent adds to it as it learns.",
+	"# Soul\n\nWho you are: your character and your tone. Nothing is set yet. Write it down as it takes\nshape, in your own words.",
+	"# Tools\n\nHow you use your tools: your own defaults and preferences for them, and technical or\nfunctional details of your work. What holds for all agents is in the TOOLS.md of pine's home;\nthis file says what is different or more for you. Nothing yet.",
+	"# Memory\n\nWhat matters beyond a single conversation: decisions, facts, preferences, open ends. Nothing\nyet. Add to it as you learn, and tidy it when it grows long.",
+]);
+
+/** A file's text as pine reads it: empty where it still says only what pine once put there. */
+export const ownText = (text: string): string => (FORMER_TEMPLATES.has(text.trim()) ? "" : text);
 export const sharedFiles = (cfg: PineConfig): string[] => SHARED_FILES.map((f) => path.join(cfg.home, f));
 
 /**
@@ -714,7 +770,7 @@ export const sharedFiles = (cfg: PineConfig): string[] => SHARED_FILES.map((f) =
  */
 export const globalSkillsDir = (cfg: Pick<PineConfig, "home">) => path.join(cfg.home, "skills");
 /** The most of an agent's purpose that is shown: one line, for other agents' rosters and the owner's lists. */
-const PURPOSE_MAX = 160;
+const PURPOSE_MAX = 240;
 const purposes = new Map<string, { stamp: string; text: string }>();
 
 /**
@@ -909,8 +965,21 @@ export function sourceFor(cfg: PineConfig, agentId: string, name: string): { sou
 
 export const mcpTaints = (server: McpServerConfig) => server.taints ?? (server.pine ? (BUNDLED[server.pine]?.taints ?? false) : false);
 
-/** Agents `from` may delegate to. */
+/** Whom an agent may hand work to, in words: "*" said as what it means. */
+export function delegatesText(cfg: PineConfig, a: AgentConfig): string {
+	const main = mainAgentId(cfg);
+	const named = a.delegates.filter((d) => d !== "*");
+	if (!a.delegates.includes("*")) return named.join(", ") || "nobody";
+	const all = a.id === main ? "all other agents" : `all agents except the main one (${main})`;
+	return `${all} ("*")${named.length ? `, and ${named.join(", ")}` : ""}`;
+}
+
+/**
+ * Agents `from` may delegate to. "*" is every other agent but the main one: the administrator
+ * takes work from the owner, and from another agent only where that agent's list names it.
+ */
 export function delegateTargets(cfg: PineConfig, from: AgentConfig): AgentConfig[] {
 	const all = from.delegates.includes("*");
-	return Object.values(cfg.agents).filter((a) => a.id !== from.id && (all || from.delegates.includes(a.id)));
+	const main = mainAgentId(cfg);
+	return Object.values(cfg.agents).filter((a) => a.id !== from.id && (from.delegates.includes(a.id) || (all && a.id !== main)));
 }

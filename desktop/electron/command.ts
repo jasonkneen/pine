@@ -136,7 +136,7 @@ export function look(resources: string | undefined, env: NodeJS.ProcessEnv, home
 export function said(c: Command, platform: string = process.platform): string {
 	const first = c.why ? `${c.why} ` : "";
 	if (c.state === "here") return `${first}pine in a terminal is the pine of this app (${c.at}).${c.managed ? " The installer put it there, and uninstalling Pine takes it away." : ""}`;
-	if (c.state === "other") return `${first}pine in a terminal is another pine (${c.at}), installed by itself. This app leaves it alone and runs its own.`;
+	if (c.state === "other") return `${first}pine in a terminal is another pine (${c.at}), installed by itself. This app leaves it alone and uses the pine it came with.`;
 	if (c.state === "none") return `${first}Not set up. Pine can put a pine command into ${path.dirname(c.at ?? SHARED)}, so that a terminal has the pine of this app.${c.password ? (platform === "darwin" ? " macOS asks for your password." : " The system asks for your password.") : ""}`;
 	return c.why ?? "";
 }

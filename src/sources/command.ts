@@ -38,12 +38,12 @@ const AGAIN = [250, 500, 1000, 2000, 5000, 15_000, 60_000, 300_000];
 const BRIEF = 5000;
 
 export const type: SourceType = {
-	summary: "a command run again and again: reports when what it prints, or how it ends (its exit code), changes. For what only a command can tell: free disk space, a build, a branch that moved, a log, whether a machine answers. It runs like a command in your own shell, with the same limits",
+	summary: "a command run again and again: reports when what it prints, or how it ends (the exit code), changes. For what only a command can tell: free disk space, a build, a branch that moved, a log, whether a machine answers. It runs like a command in your own shell, with the same limits",
 	options: Type.Object(
 		{
 			run: Type.String({ description: 'the command line, run by bash from your workspace, e.g. "df -h /" or "git -C ~/dev/app rev-parse origin/main". One that only looks: it runs unattended, again and again' }),
 			every: Type.Optional(Type.String({ description: 'how often to run it, e.g. "1m", "1h". Default "1m", at least "5s"' })),
-			match: Type.Optional(Type.String({ description: 'watch only what this regular expression finds in what it prints (its first group, if it has one), e.g. "([0-9]+)% used". Without it everything it prints counts' })),
+			match: Type.Optional(Type.String({ description: 'watch only what this regular expression finds in what it prints (the first group, if there is one), e.g. "([0-9]+)% used". Without it everything it prints counts' })),
 			timeout: Type.Optional(Type.String({ description: 'how long one run may take before it is stopped. Default "30s"' })),
 			follow: Type.Optional(Type.Boolean({ description: 'true for a command that keeps running and prints a line whenever something happens ("tail -n0 -F app.log", "log stream --predicate ...", "docker events"): it is started once, and every line it prints is reported as it comes. "every" and "timeout" are not used then. Not on Linux' })),
 			perMinute: Type.Optional(Type.Number({ description: "with follow: report at most this many lines a minute, the rest are counted and left out. Default 30" })),
@@ -57,12 +57,12 @@ export const type: SourceType = {
 		if (o.match) pattern(o.match);
 		if (o.follow === true) {
 			if (o.every !== undefined || o.timeout !== undefined) throw new Error('a command that is followed runs all the time: leave "every" and "timeout" out');
-			if (process.platform === "linux") throw new Error('"follow" does not work on Linux: its sandbox cleans up after a command, and a followed command does not end. Leave "follow" out and give "every": the command is then run again and again');
+			if (process.platform === "linux") throw new Error('"follow" does not work on Linux: the sandbox there cleans up after a command, and a followed command does not end. Leave "follow" out and give "every": the command is then run again and again');
 			const perMinute = o.perMinute ?? 30;
 			if (!(perMinute >= 1 && perMinute <= 600)) throw new Error('"perMinute" is a number from 1 to 600');
 			return {
 				options: { ...o, run },
-				does: [`start this command and keep it running, unattended, with the rights of ${setup.agent}'s shell (its sandbox): ${run}`, `report ${o.match ? `every line it prints in which /${o.match}/ finds something` : "every line it prints"}, at most ${perMinute} a minute`, "start it again whenever it ends"],
+				does: [`start this command and keep it running, unattended, with the rights of ${setup.agent}'s shell (the agent's sandbox): ${run}`, `report ${o.match ? `every line it prints in which /${o.match}/ finds something` : "every line it prints"}, at most ${perMinute} a minute`, "start it again whenever it ends"],
 				opens: true,
 				tell: "It runs from now on; what it prints from here on is reported, line by line. The sources tool shows whether it is running.",
 			};
@@ -73,9 +73,9 @@ export const type: SourceType = {
 		if (o.timeout && parseDuration(o.timeout) < 1000) throw new Error('"timeout" must be at least "1s"');
 		return {
 			options: { ...o, run },
-			does: [`run this command every ${every}, unattended, with the rights of ${setup.agent}'s shell (its sandbox): ${run}`, `report when ${o.match ? `what /${o.match}/ finds in what it prints` : "what it prints"} or its exit code changes`],
+			does: [`run this command every ${every}, unattended, with the rights of ${setup.agent}'s shell (the agent's sandbox): ${run}`, `report when ${o.match ? `what /${o.match}/ finds in what it prints` : "what it prints"} or the exit code changes`],
 			opens: true,
-			tell: "Its first run is the starting point and reports nothing; from then on only a change does. The sources tool shows how the last run went.",
+			tell: "The first run is the starting point and reports nothing; from then on only a change does. The sources tool shows how the last run went.",
 		};
 	},
 };

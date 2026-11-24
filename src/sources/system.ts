@@ -52,7 +52,7 @@ const AGAIN = [500, 2000, 10_000, 60_000, 300_000];
 export const standIn: { program?: string[]; system?: NodeJS.Platform } = {};
 
 const NOT_HERE = "the system source works on macOS, Linux and Windows, and not on this system";
-const NO_COMPILER = "it needs Apple's command line developer tools, once, to build its helper, and they are not installed on this Mac. Your owner installs them by typing this into a terminal: xcode-select --install. Then subscribe again";
+const NO_COMPILER = "it needs Apple's command line developer tools, once, to build the system source's helper, and they are not installed on this Mac. Your owner installs them by typing this into a terminal: xcode-select --install. Then subscribe again";
 const NO_APPS = '"apps" works on a Mac and on Windows: Linux has no clean way to hear apps start and quit. Leave "apps" out';
 
 /** The system whose rules apply: this one, or the one a test's stand-in plays. */
@@ -93,7 +93,7 @@ export const type: SourceType = {
 		if (apps.length && rules() === "linux") throw new Error(NO_APPS);
 		if (!watch.length && !apps.length) throw new Error(`there is nothing to report: name something in "watch" (${KINDS.join(", ")}) or in "apps"`);
 		if (o.battery !== undefined && !(o.battery >= 1 && o.battery <= 99)) throw new Error('"battery" is a percentage from 1 to 99');
-		const says: Record<string, string> = { sleep: "goes to sleep and wakes", lock: "is locked and unlocked", power: "changes between mains and battery, or runs low", network: "loses or gets its network", volumes: "gets a disk plugged in or taken out" };
+		const says: Record<string, string> = { sleep: "goes to sleep and wakes", lock: "is locked and unlocked", power: "changes between mains and battery, or runs low", network: "loses or gets the network", volumes: "gets a disk plugged in or taken out" };
 		return {
 			options: { ...(o.watch ? { watch } : {}), ...(apps.length ? { apps } : {}), ...(o.battery !== undefined ? { battery: o.battery } : {}) },
 			does: [`report when this computer ${watch.map((k) => says[k]).join(", ") || "starts or quits one of the apps below"}`, ...(apps.length ? [`report when ${apps.join(", ")} ${apps.length === 1 ? "starts or quits" : "start or quit"}`] : []), rules() === "linux" ? "run a small helper of pine's, which listens to the system on D-Bus and nothing else" : "build a small helper program the first time, which listens to the system and nothing else"],
@@ -126,7 +126,7 @@ export async function buildHelper(dir: string, source = SWIFT, run: Run = runPro
 	if (built.code !== 0 || !fs.existsSync(tmp)) {
 		fs.rmSync(tmp, { force: true });
 		const why = built.stderr.split("\n").filter((l) => /error/i.test(l)).slice(0, 3).join(" | ") || built.stderr.trim().split("\n").slice(-2).join(" | ");
-		throw new Error(`its helper could not be built (${why.slice(0, 400) || "the compiler gave no reason"}). Apple's command line developer tools may need an update: xcode-select --install, or Software Update`);
+		throw new Error(`the helper could not be built (${why.slice(0, 400) || "the compiler gave no reason"}). Apple's command line developer tools may need an update: xcode-select --install, or Software Update`);
 	}
 	fs.renameSync(tmp, file);
 	for (const old of fs.readdirSync(dir)) if (old.startsWith("pine-system-") && path.join(dir, old) !== file && !old.includes(".tmp")) fs.rmSync(path.join(dir, old), { force: true });
@@ -290,7 +290,7 @@ export default async function system(source: SourceApi): Promise<void> {
 			await once();
 			if (stop.signal.aborted) return;
 			fails = Date.now() - from < 10_000 ? fails + 1 : 0;
-			source.status(`its helper ended at ${clock()}, starting it again`);
+			source.status(`the helper ended at ${clock()}, starting it again`);
 			await new Promise<void>((r) => {
 				const done = () => (clearTimeout(t), stop.signal.removeEventListener("abort", done), r());
 				const t = setTimeout(done, AGAIN[Math.min(fails, AGAIN.length - 1)]);

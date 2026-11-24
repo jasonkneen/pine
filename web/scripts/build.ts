@@ -31,6 +31,12 @@ writeFileSync(
 			html, body { margin: 0; height: 100%; background: #1b1e28; color: #e4e6ee; font: 16px system-ui, sans-serif; }
 			iframe { display: block; border: 0; width: 100%; height: 100%; }
 			.unsupported { max-width: 32rem; margin: 20vh auto; padding: 0 16px; line-height: 1.5; }
+			.choice { position: fixed; inset: 0; overflow: auto; box-sizing: border-box; padding: 20vh max(16px, calc(50% - 16rem)) 16px; background: #1b1e28; line-height: 1.5; }
+			.choice h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+			.choice p { margin: 0 0 1.5rem; }
+			.choice .note { margin: 1rem 0 0; }
+			.choice button { display: block; width: 100%; margin: 0 0 0.75rem; padding: 0.75rem 1rem; border: 1px solid #3a3f52; border-radius: 0.5rem; background: transparent; color: inherit; font: inherit; }
+			.choice button[data-choice="app"] { background: #e4e6ee; color: #1b1e28; border-color: #e4e6ee; }
 		</style>
 	</head>
 	<body>

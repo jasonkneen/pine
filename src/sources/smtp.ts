@@ -43,7 +43,7 @@ export const type: SourceType = {
 			port: Type.Number({ description: "port to listen on, e.g. 2525" }),
 			user: Type.Optional(Type.String({ description: 'user name the device logs in with. Default "device"' })),
 			password: Type.Optional(Type.String({ description: 'password the device logs in with, 8 characters or more. Leave it out and pine makes one (or, with "allow", no login is asked for)', secret: true })),
-			allow: Type.Optional(Type.Array(Type.String(), { description: 'only these client addresses, as prefixes: ["192.168.1.40", "192.168.2."]. For a device that cannot log in, give its address here and no password' })),
+			allow: Type.Optional(Type.Array(Type.String(), { description: 'only these client addresses, as prefixes: ["192.168.1.40", "192.168.2."]. For a device that cannot log in, give the device\'s address here and no password' })),
 			host: Type.Optional(Type.String({ description: 'address to listen on. Default "0.0.0.0", so that devices on the network reach it' })),
 			to: Type.Optional(Type.Array(Type.String(), { description: 'recipient addresses it accepts, e.g. ["alerts@pine.home"]; mail for any other is refused. Default: any recipient' })),
 			maxMb: Type.Optional(Type.Number({ description: "largest message accepted, in MB. Default 10" })),

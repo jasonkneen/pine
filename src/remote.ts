@@ -73,7 +73,7 @@ export function loopbackEnd(base: string): string {
 	}
 	const port = Number(url.port);
 	const host = url.hostname === "[::1]" ? "[::1]" : /^127(\.\d{1,3}){3}$/.test(url.hostname) ? url.hostname : undefined;
-	if (url.protocol !== "http:" || url.username || url.password || !host || !Number.isInteger(port) || port < 1 || port > 65535) throw new RemoteError("failed", `The other machine's pine says it answers at ${base.slice(0, 80)}, which is not a port of its own loopback. Only that is connected to.`);
+	if (url.protocol !== "http:" || url.username || url.password || !host || !Number.isInteger(port) || port < 1 || port > 65535) throw new RemoteError("failed", `The other machine's pine says it answers at ${base.slice(0, 80)}, which is not a port on that machine's own loopback. Only that is connected to.`);
 	return `${host}:${port}`;
 }
 
@@ -139,9 +139,9 @@ function sshTrouble(host: string, a: Exclude<Answer, { said: any }>): string {
 	if (a.failed === "spawn") return `ssh could not be started (${a.detail}). Is ssh installed?`;
 	if (a.failed === "timeout") return check ? `Tailscale SSH wants you to confirm it is you before ${host} lets you in. Open ${check}, sign in, then try again.` : `${host} did not answer over SSH within a minute.${said ? ` ssh said: ${said}` : ""}`;
 	if (a.failed === "garbage") return `${host} answered with something that is not pine's service line: ${a.detail}`;
-	if (a.detail === "127") return `pine is not installed on ${host}, or not on the PATH of its login shell. ${said}`;
+	if (a.detail === "127") return `pine is not installed on ${host}, or not on the PATH of the login shell there. ${said}`;
 	// Whether a new machine is the right one is ssh's question, which a terminal can answer once.
-	if (/host key verification failed|no \S+ host key is known|remote host identification has changed/i.test(said)) return `${host} is not among the machines ssh knows yet. Connect to it once from a terminal (ssh ${host}) and accept its key, then try again. ssh said: ${said}`;
+	if (/host key verification failed|no \S+ host key is known|remote host identification has changed/i.test(said)) return `${host} is not among the machines ssh knows yet. Connect to it once from a terminal (ssh ${host}) and accept the machine's key, then try again. ssh said: ${said}`;
 	if (a.detail === "255") return `Could not connect to ${host} over SSH. ${said || "ssh gave no reason."}${/permission denied|password|publickey/i.test(said) ? " A password cannot be typed here: it needs a key in ssh-agent (ssh-add) or Tailscale SSH." : ""}`;
 	return said || `ssh to ${host} ended (exit ${a.detail}) without saying why.`;
 }
@@ -237,7 +237,7 @@ export async function connectRemote(value: string, opts: { env?: NodeJS.ProcessE
 			if (r.code === 0) port = p;
 			else err = r.err.trim();
 		}
-		if (!port) throw new RemoteError("ssh", gone ? `The SSH connection to ${host} ended before a port of this computer could be forwarded to its pine.` : `No port of this computer could be forwarded to the pine on ${host}.${err ? ` ssh said: ${err.slice(-400)}` : ""}`);
+		if (!port) throw new RemoteError("ssh", gone ? `The SSH connection to ${host} ended before a port of this computer could be forwarded to the pine there.` : `No port of this computer could be forwarded to the pine on ${host}.${err ? ` ssh said: ${err.slice(-400)}` : ""}`);
 		return {
 			base: `http://127.0.0.1:${port}`,
 			token: String(said.token),

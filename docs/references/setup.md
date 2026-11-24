@@ -155,13 +155,18 @@ Which model the agent runs on is told to it with your message, so it needs no to
 | `create_agent` `id` `instructions` [`model`] [`tools`] [`color`] | Main agent only. See below. Changing and removing one, and pine's settings: "The main agent administers pine". |
 | **Model servers** | |
 | `add_model_server` `name` `url` [`context`] | Main agent only. Adds a model server of your own by its address; pine asks the server for its models. See "Adding a model server". |
-| `remove_model_server` `name` | Main agent only. Takes one out again, with the key pine keeps for it. Refused while an agent, the default or the judge of goals (`defaults.judge`) uses one of its models. You are asked. |
+| `remove_model_server` `name` | Main agent only. Takes one out again, with the key pine keeps for it. Refused while an agent, the default, the judge of goals (`defaults.judge`) or the check of a swarm's answer (`defaults.checker`) uses one of its models. You are asked. |
+| **Signing in** | |
+| `sign_in` `provider` [`way`] | Main agent only. Signs (logs) pine in to a model provider, such as a Claude or ChatGPT subscription: `way` is `browser` (an account or subscription: Claude, ChatGPT, GitHub Copilot) or `key` (an API key); left out, the provider's usual way. You confirm it, then pine's own dialog asks you for what the sign-in needs: the page to open (with its address and, for some providers, a code), the key in a hidden field, or a code to paste back. What you type goes to pine and never to the agent; the credential is kept in `auth.json`, which no agent can read. Say no to the page's question to stop the sign-in. When the agents had no model that answers, pine chooses one of the new ones. Refused in a conversation that has read outside content. The same as Settings > Models in the Pine app and `pine login`. |
+| `sign_out` `provider` | Main agent only. Removes pine's sign-in to a model provider; you are told which agents use its models, and asked. |
+| `sign_in_mcp_server` `name` [`agent`] | Main agent only. Signs in to a remote MCP server that needs one: you confirm it, and the server's page opens in the browser of the computer pine runs on, where you sign in. pine keeps the token. The same as Sign in under Settings > MCP servers and `pine mcp login <name>`. |
 | **Not setup: the other tools pine gives an agent** | |
 | `request_access` [`path`] [`write`] [`network`] `reason` | Asks you for access the conversation does not have: a file or folder outside the workspace (`path`; with `write: true` also to change it), or the network from the shell (`network: true`). You decide; a yes holds for the conversation until it is reset or pine restarts. pine's home is never granted. An agent does not have to call it: when a file tool or a shell command needs something outside, pine asks you the same question itself. See "When a call needs something outside" and "Modes" in [security.md](security.md). |
-| `delegate` `agent` `task` [`wait`] [`thread`] | Hands a task to another agent and gets its answer. Only there when the agent's `delegates` list is not empty. See [agents.md](agents.md). |
-| `subagent` `tasks` [`model`] [`thinking`] | Runs several copies of the agent side by side, one task each, and returns their answers. With `model` the copies run on another model than the agent's, with `thinking` at another reasoning level. They never ask you anything. See [agents.md](agents.md), "Sub-agents". |
+| `delegate` `agent` `task` [`wait`] [`thread`] | Hands a task to another agent and gets its answer. Only there when the agent's `delegates` list is not empty, which by default names every agent but the main one. The other agent works in its own mode or the caller's, whichever is stricter. See [agents.md](agents.md). |
+| `subagent` `tasks` [`model`] [`thinking`] [`pool`] [`ids`] [`note`] [`check`] | Runs several copies of the agent side by side, one task each, and returns their answers. With `pool` there can be many more tasks than run at once: they are worked through on the conversation's board ([boards.md](boards.md)). With `ids` the copies work tasks that are on a board already and settle them there. With `model` the copies run on another model than the agent's, with `thinking` at another reasoning level. They never ask you anything. See [agents.md](agents.md), "Sub-agents". |
 | `models` | Lists the models that are set up, as `provider/model`, with what each can do (see pictures, reason) and which one is the agent's own. This is how an agent answers "which models are there", and where it finds what `subagent` takes as `model`. |
 | `download` `url` `path` | Fetches a file from a web address into the workspace, byte for byte. It is how an agent gets a file that a remote MCP server made: by the link in the tool's answer, never by a file path from it. See "Downloads" in [security.md](security.md) and "Files and pictures from a remote server" in [mcp.md](mcp.md). |
+| `boards`, `board_read`, `board_post`, `board_claim`, `board_done`, `board_answer`, `board_remove` | The tasks of a job that several work on: a conversation and its sub-agents, or several agents. A task is taken by one at a time, its result stays on the board, and one that cannot be done without a decision asks and is answered. A board whose work is finished is removed with `board_remove`; one that others use only after your yes. See [boards.md](boards.md). |
 | `publish_event` `topic` [`text`] [`data`] | Publishes an event on a topic of the agent's `publish` list. Without that list the tool is not there. See [events.md](events.md). |
 | `state_get` `key`, `state_set` `key` `value` | Read and write shared state, within `state.read` and `state.write`. See "Shared state" in [agents.md](agents.md). |
 | `manual` [`search`] [`read`] | Searches and reads this manual. See "The manual tool" in [agents.md](agents.md). |
@@ -199,6 +204,10 @@ no stored key can be pointed at another address. You can do the same yourself wi
 in [configuration.md](configuration.md), "models.json".
 
 ## Creating an agent
+
+Sub-agents are no new agents. Asked to "create new sub-agents", any agent starts them itself
+with `subagent`, copies of itself for one task each, and needs nobody for it: no agent is made,
+and the main agent is not asked ([agents.md](agents.md), "Sub-agents").
 
 Ask the main agent: "create an agent that keeps my books". It calls `create_agent` with an id,
 its instructions, whose first paragraph says what the agent is for (other agents read that
@@ -281,7 +290,7 @@ Tell the main agent what to change about another agent ("give the books agent an
 | `model`, `thinking` | Its model (`"default"` for pine's default) and how much it reasons |
 | `mode` | `auto` (no sandbox: its shell and file tools reach your whole account and the network), `safe` (in the sandbox: its own folders), `manual` (in the sandbox, every action waits), `bypass`, `plan`, or `default` for what pine gives an agent that names none. This is also how far its shell and file tools reach |
 | `tools` | Its built-in tools, all of them: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` |
-| `delegates` | The agents it may hand work to, all of them; `*` is every agent |
+| `delegates` | The agents it may hand work to, all of them; `*` is every agent but the main one |
 | `network` | Whether its shell may use the network when it works in the sandbox |
 | `read`, `write`, `forget` | Folders outside its workspace that it may read, or read and change, from now on; and folders to take away again. This is how a folder is opened for an agent for good |
 
@@ -413,10 +422,14 @@ What holds for them:
 | `defaults.model` | Model: the model every agent runs on, unless the agent has one of its own |
 | `defaults.thinking` | Reasoning: how much a model thinks before it answers, for every agent that does not set its own |
 | `defaults.mode` | Mode: how freely agents work, and with that how far they reach, for every agent that does not set its own. A rule or a preference for all agents (how to behave, a default for a tool) is not a setting: the main agent writes it into `AGENTS.md` or `TOOLS.md` in pine's home ([agents.md](agents.md), "What holds for all agents") |
+| `defaults.introduce` | Every agent introduces itself in its answer to the first message its owner writes to it, once |
 | `defaults.judge` | Judge of goal mode: the model that says after each round whether a goal is met. Not set: the agent's own |
+| `defaults.checker` | Check of a swarm's answer: the model the sub-agent runs on that checks the answer before a swarm is done. Not set: the agent's own |
 | `defaults.bashTimeoutSec` | Longest shell command, in seconds. From the next start |
 | `defaults.taskTimeoutSec` | Longest task, in seconds: how long an agent may work on one message or event. From the next start |
-| `limits.maxConcurrentRuns` | Agents at work at once; the others wait their turn. From the next start |
+| `limits.maxConcurrentRuns` | Agents at work at once: how many agents and sub-agents can work at the same time, all conversations together; the others wait their turn. 8 unless you changed it. From the next start |
+| `limits.maxSubagents` | Sub-agents at a time: how many sub-agents one conversation runs at once, for every agent that does not set its own. 4 unless you changed it |
+| `limits.maxPoolTasks` | Largest batch of sub-agent tasks: the most tasks one batch (a pool) takes. 100 unless you changed it |
 | `limits.maxDownloadMb` | Largest download, in megabytes |
 | `security.askAccess` | Ask when an agent needs more: whether pine asks you when an agent in the sandbox needs a file or folder outside it, or the network |
 | `security.approvalTimeout` | How long a question waits for your answer before it counts as a no. From the next start |

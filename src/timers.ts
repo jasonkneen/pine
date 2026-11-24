@@ -235,7 +235,7 @@ export class Scheduler {
 		if (!/^[a-z][a-z0-9_-]{0,39}$/.test(name)) throw new Error(`"${name}" is not a usable name: lowercase letters, digits, - and _, starting with a letter (for example morning, dentist)`);
 		if (this.all().some((e) => e.name === name)) throw new Error(`a schedule named "${name}" exists already; pick another name, or remove that one first`);
 		const task = String(raw.task ?? "").trim();
-		if (!task) throw new Error(`a schedule needs a "task": what you are to do when it is time, written so that it is enough on its own`);
+		if (!task) throw new Error(`a schedule needs a "task": what you are to do when it is time, written so that it is self-contained`);
 		if (task.length > 4000) throw new Error("that task is too long for a schedule (4000 characters at most). Write the procedure down as a skill and name it in the task");
 		if (raw.cron) parseCron(raw.cron);
 		return { name, ...(raw.cron ? { cron: raw.cron.trim() } : {}), ...(raw.every ? { every: raw.every } : {}), ...(raw.at !== undefined ? { at: typeof raw.at === "number" ? localTime(raw.at) : raw.at } : {}), task, ...(raw.session && raw.session !== "main" ? { session: raw.session } : {}) };

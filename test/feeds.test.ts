@@ -320,7 +320,7 @@ test("feed: the first look reports nothing, then one event for each new entry, t
 
 	// A page is not a feed, and what it says is not repeated where agents read it without a mark. Another host is not followed.
 	await until(() => /failing since/.test(info(h, "page").status ?? "") && /failing since/.test(info(h, "away").status ?? ""), 4000, "the two that cannot work");
-	assert.match(info(h, "page").status!, /that address is a web page, not a feed\. A site's feed has an address of its own/);
+	assert.match(info(h, "page").status!, /that address is a web page, not a feed\. A site's feed has a separate address/);
 	assert.ok(!info(h, "page").status!.includes("ignore your rules"));
 	assert.match(info(h, "away").status!, /it sends on to localhost:\d+, which is not the address that was confirmed/);
 	assert.equal(web.seen.filter((r) => r.host.startsWith("localhost")).length, 0);

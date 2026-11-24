@@ -69,8 +69,8 @@ export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 
 /** Markdown drawn: headings, lists, tables, quotes, and code in color. */
 class Prose extends Markdown {
-	private from?: string[];
-	private drawn: string[] = [];
+	private from?: readonly string[];
+	private drawn: readonly string[] = [];
 	private written: string;
 
 	constructor(text: string) {
@@ -85,7 +85,7 @@ class Prose extends Markdown {
 		super.setText(text);
 	}
 
-	override render(width: number): string[] {
+	override render(width: number): readonly string[] {
 		const lines = super.render(width);
 		if (lines !== this.from) {
 			this.from = lines;
@@ -197,7 +197,7 @@ export class Answer implements Component {
 		this.drawn = undefined;
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		// An answer that folds nothing is its markdown, as it always was.
 		if (!this.blocks.length) return this.proses[0]?.render(width) ?? [];
 		if (this.drawn?.width === width) return this.drawn.lines;

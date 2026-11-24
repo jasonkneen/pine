@@ -56,7 +56,7 @@ Before pine was written, 59 checks charted how pi 1.5.1 behaves when embedded
 | The MCP extension reads `mcp.json` from pi's global folder, not the session's | Servers are registered per session from pine's configuration; pi's global folder is redirected |
 | Session files default to pi's global folder | Explicit session folders per agent |
 | The shell tool has no default time limit | A limit the model cannot raise |
-| Instruction files are read once | Reload when a file changed |
+| Instruction files are read once, and reading them again restarts the session's MCP servers | The owner's conversations read the files at every request, so the browser stays open when an agent writes its memory; a run started from outside is reloaded when a file changed |
 | `prompt()` resolves even when the model call failed | The result is read from the last assistant message |
 | No built-in sub-agents; the shipped example breaks when embedded | `delegate` and `subagent` are pine tools running child sessions in-process |
 | Malformed tool calls come back to the model as readable errors | Nothing to do; it is why a weaker local model is workable |

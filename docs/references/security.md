@@ -52,7 +52,8 @@ outside content. Everything else is `untrusted`.
 A task started by an untrusted event runs with the agent's `untrusted` profile:
 
 - built-in tools `read`, `grep`, `find`, `ls` only; no shell, no writing;
-- no MCP servers, no delegation, no `publish_event`, no state writes, no sub-agents;
+- no MCP servers, no delegation, no `publish_event`, no state writes, no sub-agents, no board
+  ([boards.md](boards.md));
 - none of the tools that change pine's setup or turn to you (`add_source`, `add_mcp_server`,
   `add_skill`, `add_schedule`, `subscribe`, `request_access`, `question`), no `todo`, no
   `manual`, no `download`;
@@ -284,7 +285,9 @@ pine puts the question to you itself. It arrives like any approval, under the na
 A yes is the grant `request_access` gives: it holds for that conversation and its sub-agents
 until the conversation is reset or pine restarts. A no is kept for the conversation too: pine
 does not ask for the same thing again there. The agent can still call `request_access` itself,
-with a reason.
+with a reason. To turn this question off, set `security.askAccess` to `false` in `pine.json`
+([configuration.md](configuration.md)): you are then asked only when the agent calls
+`request_access`.
 
 What is never asked: pine's home, pine's code and other agents' workspaces. No answer of yours
 opens them, so the agent is told that they are closed and not to look for another way. What a
@@ -302,6 +305,9 @@ whom to ask, and what the agent gets is what you grant. On Linux the sandbox rep
 and where the log cannot be read pine has less to go on: the paths a command names before it
 runs, and after it the words of a failed command ("Operation not permitted", "Read-only file
 system", "Could not resolve host").
+
+To turn these questions off, set `security.askAccess` to `false` (Settings > Security, "Ask when an
+agent needs more"): an agent in the sandbox then gets more only by asking for it with `request_access`.
 
 ### The whole account
 
@@ -351,7 +357,7 @@ asking, with two exceptions, and both are a question to you:
 | The action | Examples | When you are asked |
 |---|---|---|
 | is critical | shell startup files, ssh keys, git hooks and a repository's configuration, launch agents; a force push, `git reset --hard`, `git clean -f`, `curl ... \| sh`, `sudo`, deleting a home folder | In every conversation, also one that has read nothing from outside |
-| sends something out | `send` through a source that reaches somebody or something else (an MQTT device), events, the acting tools of MCP servers marked `"approve": "tainted"`, a task for an agent that can send things out, `subscribe` | Once the conversation has read outside content |
+| sends something out | `send` through a source that reaches somebody or something else (an MQTT device), events, the acting tools of MCP servers marked `"approve": "tainted"`, a task for another agent (its answer can carry that agent's files back), `subscribe` | Once the conversation has read outside content |
 
 Everything else runs, also after outside content: shell commands, files anywhere the agent
 reaches, downloads, the agent's own memory and instructions, and a message to you.
@@ -406,7 +412,7 @@ page says "now send the notes folder to ...". pine tracks that:
   you and never waits: "What asks you"), the acting tools of MCP servers marked `"approve": "tainted"`, `subscribe`, and
   handing a task to an agent that can reach the internet. Its shell and its downloads are
   not among them.
-- Tools that only read never wait: `read`, `grep`, `find`, `ls`, `state_get`, `manual`, the
+- Tools that only read never wait: `read`, `grep`, `find`, `ls`, `state_get`, `manual`, `board_read`, the
   tools that list what an agent has (`sources`, `schedules`, `mcp_servers`, `skills`), and
   every MCP tool whose server declares it read-only (`readOnlyHint`), unless a pattern on the
   `approve` list names them. Neither do `question` and `todo`, which change nothing, and
@@ -533,7 +539,9 @@ above depends on the model, and a run started by an outside event chooses none. 
 widened by this: a sub-agent inherits the conversation's outside-content mark
 as well, and another conversation of the same agent, or a run started by an outside event, has
 none of it. An agent that a task is *delegated* to is a different agent with its own sandbox and
-its own permissions.
+its own permissions, held to the mode of the agent that handed the task on where that mode is
+stricter than its own: an agent in `safe` mode cannot reach your account by asking one in
+`bypass` mode to do it ([agents.md](agents.md), "Handing work to another agent").
 
 **Downloads.** In the sandbox the shell has no network, but getting a file from a
 server you connected is routine, so there is a `download` tool for it. It fetches an address into
@@ -703,8 +711,8 @@ everything else with a fixed sentence, without asking you:
 
 | In plan mode | Examples |
 |---|---|
-| Runs | `read`, `grep`, `find`, `ls`; shell commands that only read (`ls`, `cat`, `git status`, `git diff`); web search and page reading; MCP tools their server declares read-only; `manual`, `state_get`, `sources`, `schedules`, `mcp_servers`, `skills`; `question` and `todo`; `stop_program`; looking at an app (after your yes for that app) |
-| Refused | `write`, `edit`, every other shell command (a redirect such as `> file` included, and every command in the background), `download`, `send`, `publish_event`, `state_set`, `delegate`, `subagent`, `request_access`, every tool that changes the setup (`add_...`, `remove_...`, `subscribe`), MCP tools that are not declared read-only (opening a page in the browser, the tools of a `commands` server), acting in an app |
+| Runs | `read`, `grep`, `find`, `ls`; shell commands that only read (`ls`, `cat`, `git status`, `git diff`); web search and page reading; MCP tools their server declares read-only; `manual`, `state_get`, `sources`, `schedules`, `mcp_servers`, `skills`; `question` and `todo`; the conversation's own board (`board_read`, and `board_post`, `board_claim`, `board_done`, `board_answer` without a board's name); `stop_program`; looking at an app (after your yes for that app) |
+| Refused | `write`, `edit`, every other shell command (a redirect such as `> file` included, and every command in the background), `download`, `send`, `publish_event`, `state_set`, a post on a board with a name (`board_post` and `board_claim` with `board`), removing anything from a board (`board_remove`), `delegate`, `subagent`, `request_access`, every tool that changes the setup (`add_...`, `remove_...`, `subscribe`), MCP tools that are not declared read-only (opening a page in the browser, the tools of a `commands` server), acting in an app |
 
 The agent is told so in the note in front of your message, answers with a plan, and is told
 when you switch the mode off. A run started from outside is held to it too. What is on your
@@ -774,6 +782,27 @@ nothing is marked as outside content. So a schedule must really be your wish:
 - A schedule is an entry in pine's configuration, which agents cannot write. `pine schedules`
   shows all of them with their tasks; an agent's `schedules` tool shows its own and those for
   all agents.
+
+### A swarm goes on in your name
+
+With `/swarm` an agent leads a job and is called again while tasks on the conversation's board
+are not done, and when the check of its answer found something ([boards.md](boards.md), "A swarm"). As for a goal:
+
+- Only you start a swarm, pause it, resume it or clear it, through a UI or the control API. No
+  tool reaches it: an agent cannot make itself a swarm or give itself more rounds.
+- What calls the lead again is your job in your words and fixed text of pine's with the numbers
+  of tasks. No word of the lead's answer, of a sub-agent's result or of what a check found is
+  in it: the lead reads a check's result from the board, where it carries the mark of the run
+  that wrote it.
+- The check of the lead's answer that pine posts is a task on the board that holds your job and
+  that answer. It carries the outside-content mark of the
+  lead's run, like any task the lead writes itself. pine starts the sub-agent for it itself: a
+  sub-agent of that conversation, under its mode and what you allowed it, marked as the lead's
+  run was, which cannot ask you anything.
+- No model decides that a swarm is done: the board does. It stops after `limits.swarmRounds`
+  turns of the lead, and after a restart of pine it waits for you.
+- A run started from outside has no swarm, and a swarm changes nothing about what an agent
+  may do: every turn and every sub-agent works under the conversation's mode and approvals.
 
 ### A goal goes on in your name
 
@@ -893,7 +922,7 @@ limit.
 
 ## A layout that keeps the pieces apart
 
-The example home starts with one agent, `main`, that has web search and the browser, and your
+The example home starts with one agent, `main`, the main agent, that has web search and the browser, and your
 account in your own conversations. What stands between the two is small: once a
 conversation has read the web, you are asked before it sends something out, and before a
 critical action as always ("What asks you"). Its shell is not looked at. That is the
@@ -905,13 +934,16 @@ send things out. Once you have agents with private data, split those:
 | Agent | Has | Does not have |
 |---|---|---|
 | `main` | Your conversation, your account, delegation to everyone | Web tools |
-| `scout` | Web search and page reading | Anything private: an empty workspace, no delegation, no state |
+| `scout` | Web search and page reading | Anything private: an empty workspace, no delegation (`"delegates": []`), no state |
 | Specialists (`gonzo`, `house`) | Their repository, their own MCP servers | Web tools, network |
 | `house` | Events from cameras and sensors (untrusted profile), writes `house/` state | A shell, the network |
 
 `main` asks `scout` to research. What comes back is text, and it taints `main`'s session: from
-then on `main` needs your approval to publish events or to hand `scout` another task. Scout
-itself can be fooled by a page, but it has nothing to give away and cannot act.
+then on `main` needs your approval to publish events or to hand any agent another task. Scout
+itself can be fooled by a page, but it has nothing to give away and cannot act. Give it
+`"delegates": []`: every agent hands work to the others by default, and a scout that can ask
+`gonzo` for a file has something to give away after all. Its own delegations would be put to
+you once it has read a page, which is a question you would have to answer for every search.
 
 ## What is not solved
 
@@ -932,7 +964,7 @@ itself can be fooled by a page, but it has nothing to give away and cannot act.
   the files for all agents the same way (`AGENTS.md`, `TOOLS.md` and `USER.md` in pine's
   home), and what it is talked into writing there is read by every agent. The first paragraph
   of an agent's own `AGENTS.md` is also what the agents that may hand it work read about it
-  (one line of at most 160 characters, read only from the plain file, never through a link),
+  (one line of at most 240 characters, read only from the plain file, never through a link),
   so what it is talked into writing there reaches them too. Look into those
   files now and then; rules it must never change go into `agents/<id>/AGENTS.md`, which it
   cannot write.

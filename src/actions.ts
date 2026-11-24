@@ -22,9 +22,11 @@ export type ActionClass = "look" | "local" | "reach" | "send" | "tell" | "own" |
 /** Tools that only look. */
 /** Tools that carry a call out as a nested call of another tool (src/catalogue.ts). */
 export const ROUTERS = new Set<string>();
-export const LOOK_TOOLS = ["read", "grep", "find", "ls", "state_get", "sources", "read_source", "tool_search", "manual", "schedules", "mcp_servers", "skills", "models", "stop_program", "question", "todo", "agents", "settings", "routes", "find_tools", "conversations", "read_conversation"];
+export const LOOK_TOOLS = ["read", "grep", "find", "ls", "state_get", "sources", "read_source", "tool_search", "manual", "schedules", "mcp_servers", "skills", "models", "stop_program", "question", "todo", "agents", "settings", "routes", "find_tools", "conversations", "read_conversation", "boards", "board_read"];
+/** The tools that write on a board (src/boards.ts). */
+const BOARD_WRITES = ["board_post", "board_claim", "board_done", "board_answer"];
 /** Tools that change pine's setup or ask for access. Each asks the owner where it matters, so the gate does not ask again. */
-export const SETUP_TOOLS = ["request_access", "add_mcp_server", "remove_mcp_server", "add_source", "remove_source", "add_source_type", "remove_source_type", "add_skill", "remove_skill", "add_schedule", "remove_schedule", "create_agent", "update_agent", "rename_agent", "remove_agent", "set_setting", "add_route", "remove_route", "add_model_server", "remove_model_server", "set_conversation", "remove_conversation", "rename_group", "remove_group"];
+export const SETUP_TOOLS = ["request_access", "add_mcp_server", "remove_mcp_server", "add_source", "remove_source", "add_source_type", "remove_source_type", "add_skill", "remove_skill", "add_schedule", "remove_schedule", "create_agent", "update_agent", "rename_agent", "remove_agent", "set_setting", "add_route", "remove_route", "add_model_server", "remove_model_server", "sign_in", "sign_out", "sign_in_mcp_server", "set_conversation", "remove_conversation", "rename_group", "remove_group"];
 
 /**
  * Files and folders in the owner's home that make other programs run, or that are the keys to
@@ -141,8 +143,6 @@ export interface ActionContext {
 	sends: boolean;
 	/** For the send tool: whether the source it names reaches the owner and nobody else (`toOwner` of its type). */
 	toOwner?: boolean;
-	/** Whether the agent a task is handed to can send things out. */
-	canSendOut(agent: string): boolean;
 	/** Whether an address is one the agent can read anyway. */
 	reachable(url: unknown): boolean;
 	/** For a shell without a sandbox: why a command is critical because of what it names (pine's own program files), or undefined. */
@@ -167,6 +167,12 @@ export function classify(tool: string, input: any, ctx: ActionContext): Action {
 	// Subscribing changes what wakes the agent. The gate asks about it where the conversation has read outside content.
 	if (SETUP_TOOLS.includes(tool) || tool === "subscribe" || tool === "unsubscribe") return { cls: "setup" };
 	if (LOOK_TOOLS.includes(tool)) return { cls: "look" };
+	// A conversation's own board is its list of work, shared with its sub-agents, like its list of steps:
+	// it changes nothing outside pine. A board with a name is read by other conversations and agents.
+	if (BOARD_WRITES.includes(tool)) return input?.board ? { cls: "local", note: "a post on a board that other conversations read" } : { cls: "look" };
+	// Taking something off a board cannot be undone: it is asked about in manual mode. (A board that others use
+	// is put to the owner by the tool itself, in every mode.)
+	if (tool === "board_remove") return { cls: "local", note: "removes from a board for good" };
 	// App control. Looking at an app only reads. Acting in one is what the owner said yes to, app by
 	// app, for the conversation: it is not asked about click by click. An owner who wants each
 	// action looked at sets "approve" on the server.
@@ -189,7 +195,9 @@ export function classify(tool: string, input: any, ctx: ActionContext): Action {
 		return { cls: mine.some((r) => isInside(r, p)) ? "local" : "reach" };
 	}
 	if (tool === "download") return { cls: ctx.reachable(input?.url) ? "local" : "reach" };
-	if (tool === "delegate") return { cls: ctx.canSendOut(String(input?.agent ?? "")) ? "send" : "local", note: "hands a task to an agent that can send things out" };
+	// What another agent hands back can carry its files into this conversation, and one that read
+	// outside content could send them on: after outside content every delegation is put to the owner.
+	if (tool === "delegate") return { cls: "send", note: "hands a task to another agent, whose answer can bring that agent's files back" };
 	return { cls: "local" };
 }
 

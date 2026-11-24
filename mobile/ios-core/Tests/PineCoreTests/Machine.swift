@@ -225,6 +225,11 @@ final class Exchange: @unchecked Sendable {
 
 	func write(_ text: String) { write(Array(text.utf8)) }
 
+	/** Writes a body without chunks and waits until it left: closing the connection drops what still waits to be written. */
+	func written(_ bytes: [UInt8]) async {
+		try? await channel.writeAndFlush(ByteBuffer(bytes: bytes)).get()
+	}
+
 	/** The end of the answer: the connection closes. */
 	func finish() {
 		if chunked { channel.write(ByteBuffer(string: "0\r\n\r\n"), promise: nil) }

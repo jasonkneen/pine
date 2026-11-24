@@ -16,7 +16,7 @@ process.on("exit", () => fs.rmSync(HOME, { recursive: true, force: true }));
 const owner = { trust: "owner" as const };
 const sandbox = { skip: !sandboxAvailable() };
 const call = (name: string, args: any) => ({ name, args });
-/** An agent that works in its own folders, without the shared temp folder (the test's home lies in it). */
+/** An agent that works in the agent's own folders, without the shared temp folder (the test's home lies in it). */
 const spec = () => ({ pine: { main: "main", security: { askAccess: true } }, agents: { main: {}, banks: { agent: { description: "money", tools: ["read", "bash", "edit", "write", "grep", "find", "ls"], sandbox: { sharedTmp: false } } } } }) as any;
 const put = (rel: string, content: string) => {
 	const file = path.join(HOME, rel);
@@ -108,7 +108,7 @@ test("access: a file tool that is given a path outside the sandbox makes pine as
 	assert.equal(asked.length, 1, "asked once, by pine: the agent did not call request_access");
 	assert.equal(asked[0].tool, "request_access");
 	assert.equal(asked[0].summary, `read ${bill}\nfor: read ${bill}`);
-	assert.match(asked[0].why, /banks is about to do this, and it lies outside its sandbox\. A yes holds for this conversation/);
+	assert.match(asked[0].why, /banks is about to do this, and it lies outside the agent's sandbox\. A yes holds for this conversation/);
 	out = await run(call("read", { path: bill }), call("bash", { command: `cat ${bill}` }));
 	assert.ok(out[0].includes("BILL-219") && out[1].includes("BILL-219"), "the yes holds for the conversation, for the shell too");
 	assert.equal(asked.length, 1);
@@ -175,7 +175,7 @@ test("access: a shell command that names a path outside is asked about before it
 
 	// The agent is told both things before it tries.
 	const note = notesOf(h.mock.state.requests.at(-1)).at(-1)!;
-	assert.match(note, /You work freely inside your workspace\. When a command or a file tool needs a file or folder of your owner's outside it, pine asks your owner and tells you the answer\./);
+	assert.match(note, /You work freely inside your workspace\. Never search from \/ \(no "find \/"\): it takes minutes, finds nothing you may open, and is not run\. When a command or a file tool needs a file or folder of your owner's outside it, pine asks your owner and tells you the answer\./);
 	assert.match(note, /In your shell, ~ and \$HOME are a private home of your own \(.*sandbox\/banks\), not your owner's home/);
 	await h.close();
 });
@@ -244,7 +244,7 @@ test("access: what the sandbox refused a command that named nothing is put to th
 	assert.equal(asked.length, 1);
 	assert.equal(asked[0].tool, "request_access");
 	assert.equal(asked[0].summary, `read ${ledger}\nfor: bash: ${hidden}`);
-	assert.match(asked[0].why, /a command of banks tried this, and its sandbox stopped it\. A yes holds for this conversation, until it is reset; the agent is told to run the command again/);
+	assert.match(asked[0].why, /a command of banks tried this, and the sandbox stopped it\. A yes holds for this conversation, until it is reset; the agent is told to run the command again/);
 	out = await run(call("bash", { command: hidden }));
 	assert.equal(out[0].trim(), "LEDGER-ROW", "and then it works, with nothing added");
 
@@ -276,7 +276,7 @@ test("access: what the sandbox refused a command that named nothing is put to th
 	// A cache it could not write, and a service of the system it did not get: said, not asked.
 	system.reports("file-write-create /private/var/folders/zz/C/clang/ModuleCache/A/x.pcm");
 	out = await run(call("bash", { command: "echo 'error: unable to open output file'; exit 1" }));
-	assert.match(out[0], /Not writable for the command: \/private\/var\/folders\/zz\/C\/clang\/ModuleCache\/A\/x\.pcm\. A program that wants a folder for its cache or settings can be given one/);
+	assert.match(out[0], /Not writable for the command: \/private\/var\/folders\/zz\/C\/clang\/ModuleCache\/A\/x\.pcm\. A program that wants a folder for a cache or settings can be given one/);
 	system.reports("mach-lookup com.apple.windowserver.active");
 	out = await run(call("bash", { command: "false" }));
 	assert.match(out[0], /asked for system services it does not get in your sandbox \(com\.apple\.windowserver\.active\)/);
@@ -325,7 +325,7 @@ test("access: on macOS the system's own log says what a command was refused", { 
 	assert.equal(asked.length, 1);
 });
 
-test("access: the sandbox of an agent that works in its own folders points programs at its own home, and its refusals carry the command's text", { skip: process.platform !== "darwin" || !sandboxAvailable() }, async () => {
+test("access: the sandbox of an agent that works in the agent's own folders points programs at its own home, and its refusals carry the command's text", { skip: process.platform !== "darwin" || !sandboxAvailable() }, async () => {
 	const h = await harness(spec());
 	answering(h, () => true);
 	const out = await runner(h)(call("bash", { command: 'echo "$CFFIXED_USER_HOME|$CLANG_MODULE_CACHE_PATH|$HOME"' }));
@@ -348,6 +348,6 @@ test("access: download says what to do with a file that is on this computer", as
 	const h = await harness(spec());
 	answering(h, () => true);
 	const out = await runner(h)(call("download", { url: "file:///Users/o/scans/a.pdf", path: "a.pdf" }));
-	assert.match(out[0], /download fetches web addresses \(https\)\. A file on this computer is read with the read tool or copied with the shell, by its path\./);
+	assert.match(out[0], /download fetches web addresses \(https\)\. A file on this computer is read with the read tool or copied with the shell, by path\./);
 	await h.close();
 });

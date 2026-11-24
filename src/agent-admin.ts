@@ -58,7 +58,7 @@ export function createAgent(cfg: PineConfig, spec: NewAgent): AgentConfig {
 	try {
 		fs.writeFileSync(path.join(dir, "agent.json"), `${JSON.stringify({ ...(color ? { color } : {}), ...(spec.model ? { model: spec.model } : {}), tools }, null, 2)}\n`, { mode: 0o600 });
 		fs.writeFileSync(path.join(dir, "workspace", "AGENTS.md"), `${spec.instructions.trim()}\n`, { mode: 0o600 });
-		// The rest starts as the stubs a new home has.
+		// The rest starts as in a new home: empty files, which the agent fills when it has something for them.
 		for (const name of WORKSPACE_FILES.slice(1)) {
 			const stub = path.join(PINE_ROOT, "examples", "home", "agents", "main", "workspace", name);
 			if (fs.existsSync(stub)) fs.copyFileSync(stub, path.join(dir, "workspace", name)), fs.chmodSync(path.join(dir, "workspace", name), 0o600);

@@ -286,9 +286,9 @@ were restored and which, what was left alone, and how to bring it back.
 ```
  ↶ taken back: “make the total include shipping”
    2 files restored in ~/dev/shop (1 changed back, 1 removed): src/cart.ts, src/shipping.ts
-   not taken back: what commands did outside this folder, files git ignores or that are over 2 MB, and anything that was sent out
-   the message is in the input again, to change and send
-   /redo brings it back, until you send a new message
+   not undone: changes made outside this folder, files git ignores, files over 2 MB, and anything that was sent out
+   what you wrote is back in the message box: edit it and send it again
+   /redo restores it until you send something new
 ```
 
 ### What is restored, and what is not

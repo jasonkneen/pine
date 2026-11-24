@@ -122,8 +122,9 @@ export function followEvents(daemon: Daemon, signal: AbortSignal, on: EventHandl
  * page may connect (a development server's socket for reloading); `script` adds to where scripts
  * come from (the nonce of the scripts a development server writes into the page).
  */
-export function pageCsp(opts: { media?: string[]; connect?: string[]; script?: string[] } = {}): string {
+export function pageCsp(opts: { media?: string[]; connect?: string[]; script?: string[]; frame?: string[] } = {}): string {
 	const media = (opts.media ?? ["pine-media:"]).map((s) => ` ${s}`).join("");
+	const frame = opts.frame?.length ? opts.frame.join(" ") : "'none'";
 	const connect = (opts.connect ?? []).map((s) => ` ${s}`).join("");
 	const script = (opts.script ?? []).map((s) => ` ${s}`).join("");
 	return [
@@ -138,7 +139,28 @@ export function pageCsp(opts: { media?: string[]; connect?: string[]; script?: s
 		`connect-src 'self'${connect}`,
 		"base-uri 'none'",
 		"form-action 'none'",
-		"frame-src 'none'",
+		`frame-src ${frame}`,
 		"object-src 'none'",
 	].join("; ");
 }
+
+/**
+ * The policy of the frame a view of the owner's runs in (view.html, src/view-frame.ts): scripts from the
+ * app and from the view's own code (a blob the frame makes of it), and nothing else. No address at all:
+ * not the daemon, not the web, not a frame of its own. With the frame's sandbox (scripts only, an opaque
+ * origin) the view reaches neither the bridge nor the page's storage, and can tell nobody what it saw.
+ */
+export const VIEW_CSP = [
+	"default-src 'none'",
+	"script-src 'self' blob:",
+	"style-src 'self' 'unsafe-inline'",
+	"img-src data: blob:",
+	"font-src 'self' data:",
+	"connect-src 'none'",
+	"media-src 'none'",
+	"worker-src 'none'",
+	"base-uri 'none'",
+	"form-action 'none'",
+	"frame-src 'none'",
+	"object-src 'none'",
+].join("; ");

@@ -71,7 +71,10 @@ class PinesTest {
 	fun `with no machine the page is told to add one, and a machine not yet known asks the owner for its host key`() {
 		pines.ready()
 		assertEquals("error", page.status())
-		assertTrue(page.last!!.optString("message").contains("Add the machine"))
+		// Both ways to a pine: pairing with a computer by its link, and user@host over SSH.
+		val none = page.last!!.optString("message")
+		assertTrue(none.contains("Pair this phone with your computer"), none)
+		assertTrue(none.contains("user@host"), none)
 		assertTrue(!page.last!!.has("host"))
 		rig.known.forget("127.0.0.1", rig.machine.port)
 		pines.addHost(rig.host)
@@ -191,5 +194,72 @@ class PinesTest {
 		eventually("the first shown again") { page.status() == "ready" && page.last!!.optString("host") == rig.host }
 		assertTrue(pines.connected)
 		assertEquals(true, page.ups.last())
+	}
+
+	private val id = "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs"
+	/** The project's meeting service, as a pairing link of the Pine app names it. */
+	private val OFFICIAL = "https://pine-main.drcmda.workers.dev"
+	private val computer = "paired:$id"
+
+	@Test
+	fun `a paired computer is listed beside user@host machines, with its service and its name, and kept`() {
+		pines.addHost("me@server")
+		assertEquals(listOf("me@server", computer), pines.addPaired(id, "https://pine.example.com:8443", "Studio\u0007 Mac"))
+		assertEquals(PairedComputer(id, "https://pine.example.com:8443", "Studio Mac"), pines.paired(computer))
+		assertEquals(mapOf(computer to "Studio Mac"), pines.names, "the name the page shows, cleaned")
+		assertNull(pines.paired("me@server"))
+		// Paired again: one entry, the service and the name it gave this time.
+		assertEquals(listOf("me@server", computer), pines.addPaired(id, OFFICIAL, ""))
+		assertEquals(PairedComputer(id, OFFICIAL, null), pines.paired(computer))
+		assertEquals(emptyMap(), pines.names, "no name given: the page says \"your computer\"")
+		val again = Pines(rig.remote, rig.known, shelf, SeenPage())
+		assertEquals(listOf("me@server", computer), again.hosts, "kept on the shelf")
+		assertEquals(PairedComputer(id, OFFICIAL, null), again.paired(computer))
+	}
+
+	@Test
+	fun `a paired computer comes only from a pairing, with a machine id and an https service`() {
+		assertFailsWith<RemoteError> { pines.addHost(computer) }
+		assertFailsWith<RemoteError> { pines.addHost("paired:22") }
+		assertFailsWith<RemoteError> { pines.addPaired(id, "http://pine.example.com", null) }
+		assertFailsWith<RemoteError> { pines.addPaired(id, "https://pine.example.com/x", null) }
+		assertFailsWith<RemoteError> { pines.addPaired(id.drop(1), OFFICIAL, null) }
+		assertEquals(emptyList(), pines.hosts)
+		assertNull(shelf.entries["paired"])
+	}
+
+	@Test
+	fun `paired computers count among the twenty machines`() {
+		(1..19).forEach { pines.addHost("me@host$it") }
+		pines.addPaired(id, OFFICIAL, null)
+		assertFailsWith<RemoteError> { pines.addPaired("B5IL6HvjP-x66mzgtrtt447XrwHKB2n5qq7O5jRB8oE", OFFICIAL, null) }
+		assertFailsWith<RemoteError> { pines.addHost("me@one-too-many") }
+		assertEquals(20, pines.hosts.size)
+	}
+
+	@Test
+	fun `a paired computer is selected and forgotten like any machine, and forgetting it forgets its service`() {
+		pines.addHost("me@server")
+		pines.addPaired(id, OFFICIAL, "Studio")
+		pines.use(computer)
+		assertEquals(computer, pines.use)
+		// Nothing reaches a paired computer yet: the page is told so, and the machine can go.
+		eventually("not reached") { page.status() == "error" && page.last!!.optString("host") == computer }
+		pines.forgetKey(computer)
+		assertEquals(listOf("me@server"), pines.forgetHost(computer))
+		assertNull(pines.paired(computer))
+		assertNull(pines.use)
+		assertEquals(emptyMap(), pines.names)
+	}
+
+	@Test
+	fun `a list stored before paired computers existed still loads`() {
+		shelf.entries["hosts"] = """["me@server","you@other:2222"]"""
+		shelf.entries["use"] = "you@other:2222"
+		val old = Pines(rig.remote, rig.known, shelf, SeenPage())
+		assertEquals(listOf("me@server", "you@other:2222"), old.hosts)
+		assertEquals("you@other:2222", old.use)
+		assertEquals(emptyMap(), old.names)
+		assertEquals(listOf("me@server", "you@other:2222", computer), old.addPaired(id, OFFICIAL, null))
 	}
 }

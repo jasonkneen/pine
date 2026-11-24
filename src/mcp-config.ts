@@ -53,7 +53,7 @@ export function splitCommand(line: string): string[] {
 			if (cur || open) out.push(cur);
 			cur = "";
 			open = false;
-		} else if ("|&;<>`$()".includes(ch)) throw new Error(`a server is one program with its arguments. "${ch}" means something to a shell only, and no shell runs this; leave it out`);
+		} else if ("|&;<>`$()".includes(ch)) throw new Error(`a server is one program with arguments. "${ch}" means something to a shell only, and no shell runs this; leave it out`);
 		else cur += ch;
 	}
 	if (quote) throw new Error("a quote in the command is not closed");

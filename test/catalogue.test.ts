@@ -31,7 +31,7 @@ test("families: a group of tools is one declared tool, and a call is carried out
 	assert.deepEqual(fam.parameters.properties.action.enum, ["add_schedule", "remove_schedule"]);
 	// The lists are a tool of their own, which takes several at once.
 	const lists = tool(first, "pine_list");
-	assert.deepEqual([...lists.parameters.properties.what.items.enum].sort(), ["agents", "conversations", "mcp_servers", "models", "routes", "schedules", "settings", "skills", "sources"]);
+	assert.deepEqual([...lists.parameters.properties.what.items.enum].sort(), ["agents", "boards", "conversations", "mcp_servers", "models", "routes", "schedules", "settings", "skills", "sources"]);
 	assert.match(lists.description, /- schedules: what is scheduled for you/);
 	assert.deepEqual(fam.parameters.properties.scope.enum, ["local", "agent", "global"]);
 	assert.deepEqual(tool(first, "pine_sources").parameters.properties.type.enum, SOURCE_TYPES);
@@ -180,6 +180,28 @@ test("cache: a request begins with the one before it, whatever changed in betwee
 	assert.match(head(last()), /water only/);
 	assert.doesNotMatch(head(last()), /likes tea/);
 	assert.match(textOf(last().wire.messages.at(-1).content), /hello from elsewhere$/);
+	await h.close();
+});
+
+test("an agent that writes its own instruction files keeps its MCP servers, and the browser the owner looks at", async () => {
+	const h = await harness({ agents: { main: { agent: { mcp: { feed } }, files: { "MEMORY.md": "# Memory\n\n- The owner likes tea.\n", "SOUL.md": "# Soul\n\n- Dry humour.\n" } } } });
+	const say = (prompt: string) => h.pine.agents.run({ agent: "main", prompt, ...owner });
+	const pid = async () => {
+		await say(mockMsg([{ tools: [call("feed", { action: "whoami" })] }, { text: "done" }]));
+		return JSON.parse(h.toolResults().at(-1) ?? "{}").pid as number;
+	};
+	const head = () => rawTextOf(h.mock.state.requests.at(-1).wire.messages[1].content);
+	const first = await pid();
+	assert.ok(first > 0);
+	// A line in its memory (what ttt wrote after every game): told in the note, and the server is the same process.
+	fs.appendFileSync(path.join(h.workspace("main"), "MEMORY.md"), "- Two draws so far.\n");
+	assert.equal(await pid(), first, "a line in MEMORY.md started the MCP servers anew");
+	assert.match(rawTextOf(h.mock.state.requests.at(-2).wire.messages.at(-1).content), /New in your MEMORY\.md[\s\S]*Two draws so far/);
+	// A rule taken back: the files are read anew for the model, still without starting anything again.
+	fs.writeFileSync(path.join(h.workspace("main"), "SOUL.md"), "# Soul\n\n- Plain and brief.\n");
+	assert.equal(await pid(), first, "a changed SOUL.md started the MCP servers anew");
+	assert.match(head(), /Plain and brief/);
+	assert.doesNotMatch(head(), /Dry humour/);
 	await h.close();
 });
 
@@ -718,6 +740,6 @@ test("catalogue: a server's tool is declared under the name pine tells the agent
 	assert.equal(serverTool("mcp__manual"), "mcp_manual", "pine's own manual keeps its name");
 	for (const server of ["notes", "manual"]) {
 		assert.ok(named(req).includes(serverTool(`mcp__${server}`)), `${serverTool(`mcp__${server}`)} in ${named(req).join(", ")}`);
-		assert.match(req.wire.messages.map((m: any) => rawTextOf(m.content)).join("\n"), new RegExp(`${server} \\(one tool, "${serverTool(`mcp__${server}`)}", with an action for each of its tools\\)`));
+		assert.match(req.wire.messages.map((m: any) => rawTextOf(m.content)).join("\n"), new RegExp(`${server} \\(one tool, "${serverTool(`mcp__${server}`)}", with an action for each of the server's tools\\)`));
 	}
 });

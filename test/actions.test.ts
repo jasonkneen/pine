@@ -31,7 +31,7 @@ test("actions: every tool call has a class, and the class is what decides", asyn
 	const cfg = loadConfig(h.home);
 	const roots = rootsFor(cfg, cfg.agents.main);
 	const ws = roots.workspace;
-	const base = { roots, cwd: ws, shellReaches: true, sends: false, canSendOut: (id: string) => id === "scout", reachable: () => false };
+	const base = { roots, cwd: ws, shellReaches: true, sends: false, reachable: () => false };
 	const cls = (tool: string, input: any, more: Record<string, unknown> = {}) => classify(tool, input, { ...base, ...more } as any).cls;
 
 	assert.equal(cls("read", { path: "/etc/hosts" }), "look");
@@ -59,8 +59,9 @@ test("actions: every tool call has a class, and the class is what decides", asyn
 	assert.equal(cls("send", { source: "telegram" }, { sends: true, toOwner: true }), "tell", "a message to the owner themself is not information leaving");
 	assert.equal(cls("publish_event", { topic: "out/x" }, { sends: true, toOwner: true }), "send", "only the send tool tells the owner");
 	assert.equal(cls("publish_event", { topic: "out/x" }, { sends: true }), "send");
+	// An answer can carry the other agent's files back: a delegation sends, whoever the agent is.
 	assert.equal(cls("delegate", { agent: "scout" }), "send");
-	assert.equal(cls("delegate", { agent: "books" }), "local");
+	assert.equal(cls("delegate", { agent: "books" }), "send");
 	assert.equal(cls("mcp__notes__lookup", {}, { mcp: { readOnly: true, watched: true } }), "look");
 	assert.equal(cls("mcp__notes__delete", {}, { mcp: { readOnly: false, watched: true } }), "send");
 	assert.equal(cls("mcp__browser__browser_click", {}, { mcp: { readOnly: false, watched: false } }), "local", "a server the owner did not mark is not second-guessed");

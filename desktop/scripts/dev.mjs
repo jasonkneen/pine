@@ -4,12 +4,12 @@
 // and this process ends with whatever started it (scripts/leash.mjs).
 //   npm run dev
 import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { createServer } from "vite";
 import { buildMain } from "./build.mjs";
 import { ports } from "./launch-json.mjs";
 import { whenParentGone } from "./leash.mjs";
+import { devElectron } from "./dev-electron.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 let server;
@@ -32,8 +32,8 @@ await server.listen();
 // The starter went while Vite was starting: Electron is not started for nobody.
 if (leaving) process.exit(0);
 const url = server.resolvedUrls.local[0];
-const electron = createRequire(import.meta.url)("electron");
-child = spawn(electron, [root, ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, PINE_DESKTOP_DEV_URL: url } });
+// Started as Pine, so that the menu bar and the Dock say Pine (scripts/dev-electron.mjs).
+child = spawn(devElectron(), [root, ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, PINE_DESKTOP_DEV_URL: url } });
 child.on("close", async (code) => {
 	await server.close();
 	process.exit(code ?? 0);

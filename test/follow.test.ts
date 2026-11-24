@@ -79,6 +79,6 @@ test("command, followed, by asking: the owner sees that it will keep running; wh
 	assert.match(out[2], /"perMinute" is a number from 1 to 600/);
 	assert.match(out[3], /Added the event source "log" \(command\)\. It runs from now on/);
 	assert.equal(asked.length, 1);
-	assert.match(asked[0].summary, /It will: start this command and keep it running, unattended, with the rights of main's shell \(its sandbox\): tail -n0 -F x\.log; report every line it prints in which \/ERROR\/ finds something, at most 30 a minute; start it again whenever it ends\./);
+	assert.match(asked[0].summary, /It will: start this command and keep it running, unattended, with the rights of main's shell \(the agent's sandbox\): tail -n0 -F x\.log; report every line it prints in which \/ERROR\/ finds something, at most 30 a minute; start it again whenever it ends\./);
 	await h.close();
 });

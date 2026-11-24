@@ -3,7 +3,15 @@
 package pine.mobile.core
 
 /** Why a connection did not come about. `kind` is "ssh" (not reached, or pine is not there) or "failed" (its pine said why it did not start), as `RemoteError` in src/remote.ts. */
-open class RemoteError(val kind: String, message: String) : Exception(message)
+open class RemoteError(
+	val kind: String,
+	message: String,
+	/**
+	 * A trouble that may pass by itself (the network, a computer that sleeps): a paired computer is
+	 * tried again after it, with a growing wait. One only the owner can fix is not.
+	 */
+	val passing: Boolean = false,
+) : Exception(message)
 
 /**
  * The machine's host key is not the one the owner confirmed, or none was confirmed yet. `fingerprint`
@@ -23,6 +31,8 @@ fun sshHost(value: String?): SshHost? {
 	val given = value?.trim() ?: return null
 	if (given.isEmpty()) return null
 	val refused = RemoteError("ssh", "\"${given.take(80)}\" is not a host for ssh. Write it as host, user@host or user@host:port.")
+	// A paired computer (Paired.kt), never a host "paired" whose port follows the colon.
+	if (given.startsWith(PAIRED)) throw refused
 	val colon = given.lastIndexOf(':')
 	val name = if (colon < 0) given else given.substring(0, colon)
 	val port = if (colon < 0) 22 else given.substring(colon + 1).takeIf { Regex("^[0-9]{1,5}$").matches(it) }?.toInt() ?: throw refused

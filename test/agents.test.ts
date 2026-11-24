@@ -87,7 +87,10 @@ test("the main agent hands a task to a specialist and gets the answer back", asy
 	assert.ok(h.toolsOffered(mainReq).includes("delegate"));
 	// Who there is to hand work to is said in the note: the instructions are the same for every conversation.
 	assert.match(notesOf(mainReq).join("\n"), /Agents you can hand tasks to: gonzo \(German law[^)]*\); kevin \(house/);
-	assert.ok(!h.toolsOffered(childReqs[0]).includes("delegate"), "a specialist without delegates gets no delegate tool");
+	// By default every agent hands work to every other but the main one.
+	assert.ok(h.toolsOffered(childReqs[0]).includes("delegate"), "a specialist hands work on by default");
+	assert.match(notesOf(childReqs[0]).join("\n"), /Agents you can hand tasks to: kevin \(house/);
+	assert.doesNotMatch(notesOf(childReqs[0]).join("\n"), /hand tasks to:[^\n]*\bmain\b/, "but not to the main agent");
 	assert.ok(!JSON.stringify(childReqs[0].body.messages).includes("MAIN-PRIVATE-CONTEXT"), "the specialist sees only the task text");
 	assert.ok(users(childReqs[0])[0].startsWith("[task from agent main]"));
 
@@ -98,6 +101,21 @@ test("the main agent hands a task to a specialist and gets the answer back", asy
 	assert.deepEqual(child.meta.chain, ["main"]);
 	assert.equal(child.meta.trust, "owner");
 	assert.ok(child.session.startsWith("_t"));
+	await h.close();
+});
+
+test("tasks handed to several agents in one message are worked on side by side, and every answer comes back", async () => {
+	const h = await harness({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: {}, a: {}, b: {} } });
+	h.mock.state.scripts.slow = [{ delayMs: 600, text: "took my time" }];
+	const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "delegate", args: { agent: "a", task: "@@REF:slow@@ one" } }, { name: "delegate", args: { agent: "b", task: "@@REF:slow@@ two" } }] }]), ...owner });
+	const runs = h.pine.tasks.list({ limit: 10 }).filter((x: any) => x.kind === "delegate");
+	assert.deepEqual(runs.map((x: any) => x.agent).sort(), ["a", "b"]);
+	// Each began before the other ended.
+	assert.ok(runs.every((x: any) => runs.every((y: any) => x.started < y.finished)), JSON.stringify(runs.map((x: any) => [x.agent, x.started, x.finished])));
+	assert.deepEqual(h.toolResults().slice(-2).map((t: string) => t.slice(0, 4)).sort(), ["[a] ", "[b] "]);
+	assert.equal(r.status, "done");
+	// And the tool says so, in both of its wordings: a model that is not told sends them one by one.
+	assert.match(JSON.stringify(h.mock.state.requests[0].body.tools), /call delegate for each of them in the same message/);
 	await h.close();
 });
 
@@ -129,6 +147,27 @@ test("delegation loops and over-deep chains are refused with a message the model
 
 	const no = await h.pine.agents.run({ agent: "b", prompt: mockMsg([{ tools: [{ name: "delegate", args: { agent: "main", task: "x" } }] }]), ...owner });
 	assert.ok(/cannot delegate to "main"/.test(no.text), no.text);
+	await h.close();
+});
+
+test("by default every agent hands work to every other but the main one; naming main opens the way to it, and a run from outside hands nothing on", async () => {
+	const h = await harness({
+		pine: { main: "main", routes: [{ on: "hook/in", agent: "b" }] },
+		agents: { main: {}, a: { agent: { delegates: ["*", "main"] } }, b: {}, c: { agent: { delegates: [] } } },
+	});
+	const to = (agent: string) => ({ name: "delegate", args: { agent, task: `hello ${agent}` } });
+	const fromB = await h.pine.agents.run({ agent: "b", prompt: mockMsg([{ tools: [to("main"), to("a")] }]), ...owner });
+	assert.match(fromB.text, /cannot delegate to "main"\. Available: a, c/);
+	assert.ok(fromB.text.includes("[a] ECHO"), fromB.text);
+	const fromA = await h.pine.agents.run({ agent: "a", prompt: mockMsg([{ tools: [to("main")] }]), ...owner });
+	assert.ok(fromA.text.includes("[main] ECHO"), "named, the main agent takes work from it");
+	assert.match(notesOf(h.requestsFor("PERSONA-MAIN")[0]).join("\n"), /Agents you can hand tasks to: a [^\n]*; b [^\n]*; c /);
+	await h.pine.agents.run({ agent: "c", prompt: "hi", ...owner });
+	assert.ok(!h.toolsOffered(h.requestsFor("PERSONA-C").at(-1)).includes("delegate"), "an empty list: no delegate tool");
+
+	h.pine.bus.publish("hook/in", { text: "from outside" }, { source: "http" });
+	await until(() => h.pine.tasks.list({ agent: "b" }).some((t) => t.kind === "event" && t.status === "done"));
+	assert.ok(!h.toolsOffered(h.requestsFor("PERSONA-B").at(-1)).includes("delegate"), "a run from outside hands nothing on unless untrusted.delegates says so");
 	await h.close();
 });
 
@@ -192,11 +231,12 @@ test("sub-agents run in parallel with fresh contexts, even when only one model s
 			assert.ok(h.system(c).includes("WS-MAIN"), "a sub-agent is the same agent");
 			// (A sub-agent is declared what its conversation is declared, and refused when it calls what is not its to do: test/catalogue.test.ts.)
 		}
-		// Three answers of 300 ms each: at least 900 ms one after the other; side by side clearly less than that
-		// (measured against the sequential run, since a busy machine takes longer for both).
-		took[maxConcurrentRuns] = ms;
-		if (maxConcurrentRuns === 1) assert.ok(ms >= 900, `one slot: sequential (${ms} ms)`);
-		else assert.ok(ms < took[1] - 450, `three slots: parallel (${ms} ms, against ${took[1]} ms one after the other)`);
+		// Counted at the model server, not timed: the turn's own work around the sub-agents (the
+		// folder recorded for undo before its first tool call and after it) is no part of this.
+		if (maxConcurrentRuns === 1) {
+			assert.equal(h.mock.state.maxInflight, 1, "one slot: one request at a time");
+			assert.ok(ms >= 450, `one slot: sequential (${ms} ms)`);
+		} else assert.equal(h.mock.state.maxInflight, 3, `three slots: the three sub-agents at once (${ms} ms)`);
 		assert.equal(h.pine.agents.limiter.stats.active, 0);
 		await h.close();
 	}
@@ -232,11 +272,35 @@ test("a message for a busy session can be queued or steered into the running tas
 	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 0.3; echo slept" } }] }, { text: "first done" }]), ...owner });
 	await until(() => h.pine.agents.status().running.length === 1);
 	await sleep(80);
-	const steered = h.pine.agents.submit({ agent: "main", prompt: "STEERED-IN", whenBusy: "steer", ...owner });
+	const steered = h.pine.agents.submit({ agent: "main", prompt: "STEERED-IN", kind: "prompt", whenBusy: "steer", ...owner });
 	assert.equal(steered.status, "done");
 	await h.pine.agents.wait(first.id);
 	assert.ok(h.mock.state.requests.some((q: any) => users(q).includes("STEERED-IN")), "the running task saw the steered message");
+	assert.ok(h.mock.state.requests.some((q: any) => /Your owner wrote this while you work\. Answer it first[\s\S]*STEERED-IN/.test(JSON.stringify(q.body.messages))), "it is told to answer the owner's message");
+	assert.equal(typeof h.pine.tasks.get(steered.id)!.meta.read, "number", "it is noted as read");
 	assert.equal(h.pine.tasks.list({ status: "pending" }).length, 0);
+	await h.close();
+});
+
+test("a steered message can be sent now: the step under way stops, the work reads it and goes on", async () => {
+	const h = await harness({ agents: { main: {} } });
+	const started = Date.now();
+	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 4; echo slept" } }] }, { text: "first done" }]), ...owner });
+	await until(() => h.pine.bus.query({ topic: "agent/main/started" }).length === 1 && h.mock.state.requests.length >= 1);
+	await sleep(150);
+	const steered = h.pine.agents.submit({ agent: "main", prompt: "STATUS?", whenBusy: "steer", ...owner });
+	assert.equal(steered.meta.steered, first.id);
+	assert.equal(h.pine.tasks.get(steered.id)!.meta.read, undefined, "the command still runs: not read yet");
+	assert.equal(h.pine.agents.sendNow(steered.id), true);
+	const r = await h.pine.agents.wait(first.id);
+	assert.equal(r.status, "done", String(r.error));
+	assert.ok(Date.now() - started < 3500, "the command was stopped, not waited for");
+	// pi may hand the message over itself as the step is cut off; either way it comes before pine's words.
+	const said = JSON.stringify(h.mock.state.requests.at(-1).body.messages.slice(-3));
+	assert.ok(said.includes("STATUS?") && said.includes("Your owner stopped your work") && said.indexOf("STATUS?") > said.indexOf("Command aborted"), `the work went on with the message: ${said}`);
+	assert.equal(typeof h.pine.tasks.get(steered.id)!.meta.read, "number", "it is noted as read");
+	assert.equal(h.pine.agents.sendNow(steered.id), false, "a message that was read is not sent again");
+	assert.equal(h.pine.tasks.list({ status: "pending" }).length, 0, "it did not become work of its own");
 	await h.close();
 });
 
@@ -289,7 +353,7 @@ test("agents are told how pine works and can read its manual, but not pi's or pi
 	assert.equal(r.status, "done");
 	const system = h.system(h.mock.state.requests[0]);
 	assert.ok(system.startsWith("You are an agent in pine"), system.slice(0, 80));
-	assert.ok(system.includes("pine's setup is changed through tools, never by writing its files") && /look it up in (pine's|the) manual/.test(system) && /you search with the manual tool|\(the manual tool\)/.test(system));
+	assert.ok(system.includes("pine's setup is changed through tools, never by writing pine's files") && /look it up in (pine's|the) manual/.test(system) && /you search with the manual tool|\(the manual tool\)/.test(system));
 	assert.ok(system.includes("You are the main agent, and pine's administrator:") && system.includes("you change with your tools, and you never tell them to edit pine's files") && !system.includes("{{ROLE}}"));
 	assert.ok(!system.includes("<name>pine</name>") && h.toolsOffered(h.mock.state.requests[0]).includes("manual"), "the manual is searched with a tool, not carried in the prompt as a skill");
 	assert.ok(!system.includes("pi-coding-agent") && !system.includes("running inside pi,"), "nothing points at pi's manuals, which agents cannot read");
@@ -304,11 +368,11 @@ test("agents are told how pine works and can read its manual, but not pi's or pi
 	await h.close();
 });
 
-test("an agent is told its MCP servers and the exact prefix of their tools", async () => {
+test("an agent is told the MCP servers and the exact prefix of their tools", async () => {
 	const h = await harness({ agents: { main: { agent: { mcp: { "my-notes": { command: process.execPath, args: [path.resolve(import.meta.dirname, "../baseline/tests/mcp-stdio-server.mjs")] } } } } } });
 	await h.pine.agents.run({ agent: "main", prompt: "hi", trust: "owner" });
 	const system = h.system(h.mock.state.requests[0]);
-	assert.ok(system.includes('my-notes (one tool, "my_notes", with an action for each of its tools)'), system.slice(-600));
+	assert.ok(system.includes('my-notes (one tool, "my_notes", with an action for each of the server\'s tools)'), system.slice(-600));
 	assert.ok(h.toolsOffered(h.mock.state.requests[0]).includes("mcp__my_notes__echo"));
 	await h.close();
 });
@@ -321,7 +385,7 @@ test("an agent is told which servers are reached over the network, and that thei
 	const h = await harness({ agents: { main: { agent: { mcp: { near: { url: near.url }, studio: { url: "https://studio.invalid:8443/mcp" } } } } } });
 	await h.pine.agents.run({ agent: "main", prompt: "hi", trust: "owner" });
 	const system = h.system(h.mock.state.requests[0]);
-	assert.ok(system.includes("Reached over the network: studio. Such a server can run on another computer, and a file path in its answer is then a path there, not on yours. When a file from it is needed on your computer, fetch the link from its answer with the download tool; do not copy the path."), system.slice(-900));
+	assert.ok(system.includes("Reached over the network: studio. Such a server can run on another computer, and a file path in the server's answer is then a path there, not on yours. When a file from it is needed on your computer, fetch the link from the server's answer with the download tool; do not copy the path."), system.slice(-900));
 	assert.ok(system.includes("A picture that came with a tool's answer is already on your owner's screen: do not show it again."));
 	assert.ok(system.includes("pine shows or plays it: never play a sound yourself with a command."));
 	assert.ok(!/Reached over the network: [^.]*near/.test(system), "a server on this computer is not one of them");
@@ -450,7 +514,7 @@ test("conversations stay until they are removed or unused for too long; pinned, 
 	assert.deepEqual(users(h.mock.state.requests.at(-1)), ["the code word is OKAPI", "and now"]);
 	assert.deepEqual(names(), ["ears", "keep", "main", "old", "tabbed", "tax_2026"]);
 	assert.equal(h.pine.tasks.list({ agent: "main", session: "tax_2026" }).length, 2);
-	await assert.rejects(h.pine.agents.renameSession("main", "main", "x"), /keeps its name/);
+	await assert.rejects(h.pine.agents.renameSession("main", "main", "x"), /cannot be renamed/);
 	await assert.rejects(h.pine.agents.renameSession("main", "old", "keep"), /already has a conversation called keep/);
 
 	// Nothing said for eight days. One is pinned, one is open in a tab, one listens to a source.

@@ -71,9 +71,10 @@ pine init
 sets everything up in one step:
 
 - From a fresh checkout, `bin/pine` first installs pine's dependencies (`npm install`), once.
-- It copies the example home to `~/.pine`: one agent, `main`, with web search, the browser and,
+- It copies the example home to `~/.pine`: one agent, `main`, the main agent, with web search, the browser and,
   on a Mac, app control ([computer.md](computer.md)), a `models.json`, an empty `.env`. Nothing
-  is overwritten if you run it again.
+  is overwritten if you run it again, and a home whose main agent has another name (`main`, in a
+  home from before) keeps it.
 - On Linux it makes the sandbox work. If bubblewrap is missing it installs the package (apt,
   dnf, yum, pacman, zypper or apk), and on Ubuntu 24.04 and later it writes and loads the
   AppArmor rule bubblewrap needs there. It shows the commands first and asks once; they run
@@ -107,18 +108,8 @@ and from another terminal `pine` (attaches to it) or
 
 ### Choosing a model
 
-The example home uses `dev/claude-haiku`: an OpenAI-compatible endpoint whose answers come from
-`claude -p`, so it needs Claude Code installed and signed in. The UI starts it on demand; for
-`pine start`, run it yourself:
-
-```bash
-pine dev-model
-```
-
-Every model call starts a `claude` process: expect about five seconds per call and usage on
-your Claude plan. It is for trying things out, not for a daemon that runs all day.
-
-For a hosted provider, sign in once and pick a model:
+A new home has no model: until you connect one, every agent says so instead of answering. Sign
+in to a provider once:
 
 ```bash
 pine login opencode-go
@@ -133,9 +124,12 @@ pine login openai-codex
 ```
 
 The first asks for an API key (typed without echo); the other two open a browser sign-in for a
-Claude or ChatGPT subscription. Credentials go to `~/.pine/auth.json` (mode 600). Then set
-`defaults.model` in `pine.json`, for example `"opencode-go/deepseek-v4.1-flash"`, or switch in
-the UI with `/model`. `pine login <unknown>` lists every provider pi knows.
+Claude or ChatGPT subscription. Credentials go to `~/.pine/auth.json` (mode 600). Where there is
+no model yet, or the one in force cannot answer, pine takes the provider's usual one by itself: at once
+when the daemon is running (`pine login` tells it and says which), else at its next start; so
+does `pine model add`. To pick: set `defaults.model` in `pine.json`, for example
+`"opencode-go/deepseek-v4.1-flash"`, or switch in the UI with `/model`. `pine login <unknown>`
+lists every provider pi knows.
 
 ### With a model server of your own
 
@@ -169,7 +163,7 @@ For llama.cpp, start the server with tool-call support:
 llama-server -m /path/to/model.gguf --jinja -c 65536 -np 2 --port 8080
 ```
 
-`-np` (parallel slots) should equal `limits.maxConcurrentRuns`. The context is shared between
+`-np` (parallel slots) should equal the number of runs pine sends that server at a time: `limits.maxConcurrentRuns`, which is 8 unless you set it, or the model's own number in `limits.models` (Settings > Models), which is the one to set when other agents use a hosted model. With `-np 2`, set it to 2. The context is shared between
 slots, so each run gets `c / np` tokens; that is the number the server reports and pine writes
 down. Add `--alias <name>` to give the model a plain name: without it the name is the path of
 the model file.
@@ -395,16 +389,18 @@ are JSON with `Content-Type: application/json`.
 | `GET /ui/tabs`, `POST /ui/tabs` `{ tabs, active, code?, notify? }` | The tabs the terminal UI has open (`tabs` is a list of `{ agent, session }`, 50 at most), whether its code pane was open (`code`) and whether it calls for attention with a bell (`notify`, set with `/notify`), kept so that it opens the same way next time. `code` and `notify` stay as they were when left out. A conversation that is open in a tab is not removed for being unused |
 | `GET /agents/<id>/folder?session=`, `GET /agents/<id>/folders`, `POST /agents/<id>/folder` `{ session, folder }` | The folder a conversation works in; every conversation of the agent that has one; open a folder for a conversation (`folder: null` closes it). Refused for pine's home, pine's program and other agents' workspaces, and while the conversation is working |
 | `GET /agents/<id>/goal?session=`, `POST /agents/<id>/goal` `{ session, objective }` or `{ session, action }` | Goal mode. `GET` returns `{ goal }` with the objective, `status` (`active`, `paused`, `met`, `blocked`, `limit`), the round, pine's note on what happened last and the judge's reason; no goal: `{}`. `objective` sets the conversation's goal and starts on it; `action` is `pause`, `resume` or `clear`. Every change is also an event on `agent/<id>/goal`. See "Goal mode" in [agents.md](agents.md) |
+| `GET /agents/<id>/swarm?session=`, `POST /agents/<id>/swarm` `{ session, objective }` or `{ session, action }` | A swarm ([boards.md](boards.md), "A swarm"). `GET` returns `{ swarm }` with the job in `objective`, `status` (`active`, `waiting` for your answer, `done`, `paused`, `limit`), the round, `checking` while a sub-agent checks the answer, and pine's note on what happened last. `POST` with `objective` starts one (the job goes out as your message, with pine's note on how a swarm is led); with `action` `pause`, `resume` or `clear` it holds it, goes on, or takes it off. A UI is told on `agent/<id>/swarm` each time it changes. |
 | `GET /agents/<id>/browser?session=` | Where the bundled browser of a conversation is, for a UI that shows it itself: `{ open, tabs: [{ title, url }], current, window, visited? }`. `open` is false while the conversation has no browser running or no page open; nothing is started to answer. `visited` is the last addresses the agent opened in this conversation (newest first, at most 12, only pages that came), kept by pine also while no browser runs. Only an owner's own conversation has one |
 | `GET /agents/<id>/browser/frame?session=` | The page of that browser as a picture (JPEG). 404 while there is none |
 | `POST /agents/<id>/browser/input` `{ session, ops }` | What the owner did in that picture, in order: `{ do: "click", x, y, button?, count? }`, `"move"`, `"drag"` (`x`, `y`, `x2`, `y2`), `"wheel"` (`dx`, `dy`), `"text"` (`text`), `"key"` (`key`: `Enter`, `Shift+Tab`, `Meta+KeyA`), `"back"`, `"forward"`, `"reload"`, `"tab"` (`index`: choose a tab), `"newtab"`, `"closetab"` (`index`), `"size"` (`w`, `h`: the room the picture has). Places are points of the picture. The browser's server takes each piece for what it has to be and leaves out the rest. Answers with where the browser is then, and `error` when something was not done |
 | `POST /agents/<id>/browser/open` `{ session, url }` | The owner opens an address in that browser. It goes through the browser's guard; one on this computer or the local network is allowed for the conversation by this call, pine's own control port never. Where the conversation's browser is not running (pine restarted, or the conversation was idle), its session is started for this, without a turn of the agent's; a conversation that does not exist is not made by it |
-| `POST /browser/embedded` | A UI says that it shows the browser itself. For the next 90 seconds an agent's `browser_show` opens no window on the screen; the Pine app says it every half minute |
+| `POST /browser/embedded` `{ host? }` | A UI says that it shows the browser itself. For the next 90 seconds an agent's `browser_show` opens no window on the screen; the Pine app says it every half minute. The Pine app on the same computer also says where its own browser is (`host`, an address on the loopback with a word), and the browsers of the owner's conversations become that one, a page in the app's window, until it stops saying so; `GET /agents/<id>/browser` then has `room`, which names that conversation's tabs there |
 | `GET /agents/<id>/programs?session=`, `POST /agents/<id>/programs/stop` `{ session, id }` | What a conversation's commands left running (command, ports, how long), and stopping one of them. A command the agent started in the background is among them while it runs, with `background: true` and `output` (the file its output goes to). Only a program of that conversation can be stopped. |
 | `GET /agents/<id>/view/changes?session=`, `/view/diff?session=&path=`, `/view/tree?session=&path=`, `/view/file?session=&path=`, `/view/find?session=&q=` | What the code pane shows of a conversation's folder (or of the agent's workspace): what git says changed, one file's diff, what is in a folder, a file's text (the first 256 KB; with `&max=<bytes>` up to 2 MB, for an editor), the files whose name fits a few letters. Read-only, and nothing outside that folder |
 | `GET /agents/<id>/view/turn?session=`, `/view/turndiff?session=&path=` | What your last message in a conversation changed in its folder, which is what `/undo` would take back: `{ task, prompt, root, files, more, note? }` (at most 300 files; `note` says why there is nothing to show), and one file's diff over that message. While the message is still being worked on: what it has changed so far. See [coding.md](coding.md) |
 | `POST /agents/<id>/model` `{ model }` | Switch an agent's model and save it in its `agent.json` |
 | `GET /agents/<id>/todos?session=` | The list of steps the agent keeps in that conversation |
+| `GET /boards`, `GET /boards/<id>`, `GET /agents/<id>/boards?session=`, `POST /agents/<id>/boards/post`, `POST /boards/<id>/post`, `POST /boards/items/<n>`, `POST /boards/<id>/remove` | Boards: the tasks and notes several runs share, what you post on one and what you do with a task. See "From the control API" in [boards.md](boards.md) |
 | `POST /agents/<id>/compact` `{ session? }` | Shorten a conversation: its earlier part becomes a summary. Queued like a message; answers with the task's id |
 | `POST /agents/<id>/thinking` `{ level }` | Set an agent's reasoning level and save it in its `agent.json` |
 | `POST /agents/<id>/mode` `{ mode, session?, anyway? }` | Switch an agent's mode (`auto`, `safe`, `manual`, `bypass` or `plan`). `auto`, `safe` and `manual` are saved and hold after a restart; `bypass` and `plan` hold until the daemon restarts. `anyway: true` with a `session` keeps bypass in force in that conversation although it has read outside content |
@@ -427,6 +423,7 @@ are JSON with `Content-Type: application/json`.
 | `POST /subscribe` `{ source, note?, ... }`, `POST /unsubscribe` `{ source }` | The subscription of all agents (written to `pine.json`) |
 | `POST /agents/<id>/close` `{ session }` | A conversation's tab was closed in a UI: ends what it was subscribed to on its own. The conversation itself is kept |
 | `POST /tasks/<id>/cancel` | Cancel |
+| `POST /tasks/<id>/now` | For a message of yours that was steered into running work (`<id>` is the message's task) and not read yet: stop the step that work is on, and let it go on with the message. Answers `{ sent }`, false when the message was read already or the work has ended |
 | `POST /approvals/<id>` `{ allow, always?, values? }` | Answer an approval. A request that lists `inputs` (a token, a password) is only allowed together with `values: { <name>: "..." }`; the terminal UI has a field for them. A question an agent asks with its `question` tool is such a request (`tool: "question"`, with the answers it offers in `choices`): answer it with `values: { "answer": "..." }`, or with `allow: false` for no answer |
 | `POST /state` `{ key, value }` | Write state; `null` deletes |
 | `POST /hook/<name>` | Webhook: a hook from `http.hooks` ([events.md](events.md)) or a running `webhook` source ([source-types.md](source-types.md)). No token; each has its own secret, unless a hook is declared `"open": true` |
@@ -454,7 +451,8 @@ has the token is you. An error is answered with `{ "error": "..." }` and what to
 | `GET /sources/types` | The source types there are: `{ name, summary, options, own }` each, `options` being the schema of what a source of that type takes (a secret option has `secret: true`), `own` whether it was registered in this installation |
 | `POST /sources/propose` `{ name, type, options, agent?, ask? }` | What setting that source up would mean, without writing anything: `{ does, opens, needs, owner?, tell? }`. `needs` lists the secrets only you have (`{ name, label }`), to be sent as `values` |
 | `POST /sources` `{ name, type, description, options, agent?, own?, values?, ask? }`, `POST /sources/remove` `{ name, agent? }` | Set an event source up as `add_source` does after your yes: for all agents, or with `agent` for that one. `values` are the secrets from `needs`; they go into pine's `.env` and the configuration names them. `own: true` treats what it reports as your own words. Nobody is subscribed yet (`POST /agents/<id>/subscribe`). Remove one, with its subscriptions and secrets |
-| `GET /models/servers` | The model servers of your own, as `pine model list` |
+| `GET /models/servers` | The model servers of your own, as `pine model list`, each with `limit` where it has a number of runs of its own (and so each of its models), and `runs`, what holds for the others |
+| `POST /models/servers/limit` `{ name, model, limit }` | How many runs one model takes at a time (`limits.models`), by its server's or provider's name and the id the server gives it: a whole number from 1 to 64, or `null` for pine's own limit. In force from the next run on |
 | `POST /models/servers` `{ name, url, key?, context?, reasoning? }`, `POST /models/servers/remove` `{ name }` | Add a model server by its address, as `pine model add` does: pine asks it for its models. A server that wants a key answers status 409 with `locked: true` until the right `key` is sent; the key goes into `.env`. Remove one: status 409 with `users` while an agent or a default uses one of its models |
 | `GET /models/providers` | The model providers pi knows: `{ id, name, signedIn, models, oauth }` each. `signedIn`: there is a credential or a key for it; `oauth`: it can be signed in to through a browser |
 | `POST /models/login` `{ provider, type? }` | Start a sign-in to a provider, as `pine login` does (`type`: `api_key` or `oauth`). Answers `{ id }`. The sign-in then waits for you, step by step |
@@ -499,12 +497,12 @@ has the token is you. An error is answered with `{ "error": "..." }` and what to
 | A model of your own server is missing from `/model` | The server wants a key and `models.json` names one that is not in `.env`. `pine check` lists it under "Model notes"; add the line to `.env` and restart, or remove the server and add it again with `pine model add`. |
 | `pine model add` says "no model server answers" | Nothing listens at that address, or it is not reachable from this machine (a firewall, a VPN that is off). `curl <address>/v1/models` shows what the server says. |
 | An answer starts late: the model reads the whole conversation again after you were in another tab or conversation, or after a restart | The model server has kept nothing of the conversation. With a llama.cpp server pine keeps each conversation in a slot of its own; give the server enough slots (`-np`), and a folder for them (`--slot-save-path`), so that a conversation that has to leave its slot is read back from a file (`limits.slotPages`). A scheduler that stops and starts the model makes it forget everything unless it saves the slots. See [agents.md](agents.md), "What the model server keeps". |
-| The first message of a new conversation takes long, and the tools take too many tokens of the prompt | The model reads every tool's declaration first. pine declares them grouped and short (families), which is about half of what one by one would be; `limits.warmSlots` has an idle slot of a llama.cpp server read that beginning ahead of time. See [agents.md](agents.md), "How tools are declared". |
+| The first answer in a new conversation takes long, and the tools take too many tokens of the prompt | The model reads every tool's declaration first. pine declares them grouped and short (families), which is about half of what one by one would be; `limits.warmSlots` has an idle slot of a llama.cpp server read that beginning ahead of time. See [agents.md](agents.md), "How tools are declared". |
 | A task fails with 401 or "API key" | The provider's credential is missing or expired. `pine login <provider>` again. |
-| The browser tools fail with "Executable doesn't exist" | Run `pine init` again (or `pine browser-install`): the browser is missing or pine was updated to a newer one. `pine check` says so on its `browser` line, and the Pine app asks at its start and fetches it from Settings > App. |
+| The browser tools fail with "Executable doesn't exist" | Run `pine init` again (or `pine browser-install`): the browser is missing or pine was updated to a newer one. `pine check` says so on its `browser` line, and the Pine app asks at its start and fetches it from Settings > General. |
 | A source reported something and the agent was not woken, now and then: a click on a page it made, a second message shortly after the first | The subscription's throttle. After an event that woke the agent, the source is ignored for ten seconds unless the subscription says otherwise; what arrives meanwhile is in the event log and starts no turn. Have the agent subscribe again with `throttle: "0s"` (or `pine subscribe <agent> <source> --throttle 0s`) where every event counts ([sources.md](sources.md)). |
 | A page in the agent's browser cannot open a WebSocket or load something from this computer: `Establishing a tunnel via proxy server failed`, or a request that fails | The page reached for a local address nobody allowed. A yes for a local address is for one host and one port: a page on `localhost:8100` does not reach `localhost:8101` by it. The browser carries a WebSocket on a port that is allowed. Have the agent serve everything from one port, or open the other address once with `browser_navigate`, which asks you ([mcp.md](mcp.md), [interfaces.md](interfaces.md)). |
-| The first message fails with "this computer has no such command" | `dev/claude-haiku`, what the example home starts with, is Claude through the `claude` command of Claude Code, and that is not installed. Sign in to a provider (`pine login <provider>`, or Settings > Models in the Pine app) and pick one of what it offers with `/model`. |
+| The first message fails with "No model yet" | A new home has no model. Sign in to a provider (`pine login <provider>`, or Settings > Models in the Pine app) or add a model server of your own (`pine model add`); the first one becomes the default, and you send the message again. |
 | The browser cannot open `localhost` or a page says "not reachable from the browser" | Local addresses need your yes. The agent opens the address with `browser_navigate` and you are asked; see "Local addresses" in [mcp.md](mcp.md). A server the agent started itself also needs network access for its shell. |
 | The agent says macOS does not let pine operate apps, or take pictures of the screen | macOS has to be told once: System Settings > Privacy & Security > Accessibility (and Screen & System Audio Recording for pictures), switch on the terminal app pine runs in. See "What macOS has to be told, once" in [computer.md](computer.md). |
 | The agent has no tools to click or type in apps | App control is for an agent that reaches your whole account, in your own conversations, on macOS, Windows, or Linux with X11 (not Wayland). `pine check` says which under `apps`. See [computer.md](computer.md). |

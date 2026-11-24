@@ -48,3 +48,6 @@ build/
 
 # Helpers pine builds beside their sources on first use (src/prebuilt.ts)
 src/prebuilt/
+
+# The films of pine (reel/): made and kept on the computer that makes them, not in the repository
+/reel/

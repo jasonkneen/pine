@@ -127,7 +127,7 @@ export async function login(cfg: PineConfig, provider: string, type?: "api_key" 
 	const models = [...(await rt.getAvailable())].filter((m: any) => m.provider === provider).map((m: any) => `${provider}/${m.id}`);
 	// A pasted key is stored as it is; only the first request shows whether the provider accepts it.
 	const head = (type ?? (OAUTH_FIRST.includes(provider) ? "oauth" : "api_key")) === "oauth" ? `Signed in to ${provider}.` : `Stored the key for ${provider} (it is checked when the first message is sent).`;
-	p.say(`${head} ${models.length} models are available, for example:\n${models.slice(0, 8).map((m) => `  ${m}`).join("\n")}\n\nUse one with "defaults": { "model": "<provider/id>" } in pine.json, or /model in the terminal UI.`);
+	p.say(`${head} ${models.length} models are available, for example:\n${models.slice(0, 8).map((m) => `  ${m}`).join("\n")}\n\nTo choose one: "defaults": { "model": "<provider/id>" } in pine.json, or /model in the terminal UI.`);
 	return models;
 }
 

@@ -49,7 +49,7 @@ const freePort = () => new Promise((resolve) => {
 const mock = await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g });
 const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-smoke-")));
 write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
-write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, defaults: { model: "mock/m", mode: "safe" } }));
+write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, defaults: { model: "mock/m", mode: "safe", introduce: false } }));
 write(path.join(home, "agents", "main", "agent.json"), JSON.stringify({ description: "The main agent" }));
 write(path.join(home, "agents", "main", "workspace", "AGENTS.md"), "You are the main agent.\n");
 
@@ -129,6 +129,32 @@ try {
 	);
 	if (report.code !== 1 || !/ran-42/.test(report.output)) throw new Error(`the run reported ${JSON.stringify(report)}`);
 	console.log("ok: a terminal runs in the app's own node-pty, and a block run in the owner's shell says how it ended");
+	// Browser access: node-datachannel is the app's other native module, outside the archive. Loaded
+	// by the app's own program under its signature, as Node (the main process loads it the same
+	// way), and two of its peers on this Mac open a channel and pass a message.
+	const peered = execFileSync(binary, ["-e", `
+		const ndc = require(${JSON.stringify(path.join(resources, "app.asar", "node_modules", "node-datachannel"))});
+		const where = require.resolve(${JSON.stringify(path.join(resources, "app.asar", "node_modules", "node-datachannel"))});
+		const a = new ndc.PeerConnection("a", { iceServers: [] });
+		const b = new ndc.PeerConnection("b", { iceServers: [] });
+		a.onLocalDescription((sdp, type) => b.setRemoteDescription(sdp, type));
+		a.onLocalCandidate((c, mid) => b.addRemoteCandidate(c, mid));
+		b.onLocalDescription((sdp, type) => a.setRemoteDescription(sdp, type));
+		b.onLocalCandidate((c, mid) => a.addRemoteCandidate(c, mid));
+		const end = (said) => { a.close(); b.close(); ndc.cleanup(); console.log(said); };
+		const timer = setTimeout(() => end("no channel opened"), 15000);
+		b.onDataChannel((dc) => dc.onMessage((m) => { clearTimeout(timer); dc.close(); end(String(m) + " " + where); }));
+		const dc = a.createDataChannel("ssh");
+		dc.onOpen(() => dc.sendMessage("peered"));
+	`], { encoding: "utf8", env: { ...env, ELECTRON_RUN_AS_NODE: "1" }, timeout: 30_000 }).trim();
+	if (!peered.startsWith("peered ")) throw new Error(`node-datachannel in the app said: ${peered.slice(0, 400)}`);
+	// One binary, the one for the app's kind of Mac (an app for the other kind is tried here under Rosetta).
+	const bindings = path.join(resources, "app.asar.unpacked", "node_modules", "@node-datachannel");
+	const kinds = fs.existsSync(bindings) ? fs.readdirSync(bindings) : [];
+	if (kinds.length !== 1 || !fs.existsSync(path.join(bindings, kinds[0], "node_datachannel.node"))) throw new Error(`node-datachannel's binaries outside the archive: ${kinds.join(", ") || "none"}`);
+	execFileSync("/usr/bin/codesign", ["--verify", "--strict", path.join(bindings, kinds[0], "node_datachannel.node")]);
+	if (!peered.includes("app.asar")) throw new Error(`node-datachannel was loaded from outside the app: ${peered}`);
+	console.log("ok: node-datachannel loads in the app, outside the archive and signed, and two peers pass a message");
 	// PINE_SMOKE_HOLD=<seconds>: stays open that long, for somebody to look at the window.
 	if (Number(process.env.PINE_SMOKE_HOLD) > 0) await new Promise((r) => setTimeout(r, Number(process.env.PINE_SMOKE_HOLD) * 1000));
 	if (from !== "the app") throw new Error(`the app used the pine of "${from}", not the one it carries`);
@@ -159,12 +185,12 @@ try {
 		if ((mac && found.length !== 3) || stray.length) throw new Error(`pine did not find the helpers the app carries: ${found.join(", ")}`);
 		for (const f of found) execFileSync("/usr/bin/codesign", ["--verify", "--strict", f]);
 		console.log(`ok: the daemon runs on the app's Node; ${said} through ${windows ? "pine.cmd" : "a link"}${mac ? "; the three helpers are the app's" : ""}`);
-		// Settings > App says what `pine` in a terminal is. (Only looked at: nothing is set up from here.)
+		// Settings > General says what `pine` in a terminal is. (Only looked at: nothing is set up from here.)
 		await page.locator("[data-slot=sidebar-footer]").getByRole("button", { name: "Settings" }).click();
-		await page.click("[role=navigation] [data-sidebar=menu-button] >> text=App");
-		const row = (await page.textContent("[data-slot=field]:has-text('pine in a terminal')", { timeout: 15_000 })) ?? "";
-		if (!/pine in a terminal/.test(row) || !/(Not set up|is the pine of this app|another pine|Move Pine|Start Pine from the AppImage)/.test(row)) throw new Error(`Settings > App says about the command: ${row.slice(0, 300)}`);
-		console.log(`ok: Settings > App: ${row.replace(/\s+/g, " ").trim()}`);
+		await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
+		const row = (await page.textContent("[data-slot=field]:has-text('pine command in a terminal')", { timeout: 15_000 })) ?? "";
+		if (!/pine command in a terminal/.test(row) || !/(Not set up|is the pine of this app|another pine|Move Pine|Start Pine from the AppImage)/.test(row)) throw new Error(`Settings > General says about the command: ${row.slice(0, 300)}`);
+		console.log(`ok: Settings > General: ${row.replace(/\s+/g, " ").trim()}`);
 		if (process.argv[3]) await page.screenshot({ path: process.argv[3].replace(/(\.\w+)?$/, "-app$1") });
 	}
 	await browser.close();

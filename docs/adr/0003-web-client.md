@@ -1,6 +1,8 @@
 # 0003: The web client
 
-Status: accepted. Supersedes what ADR 0001 says about a page served to a browser.
+Status: accepted. Supersedes what ADR 0001 says about a page served to a browser. Amended by
+[ADR 0004](0004-browser-access.md): a second way a host key is trusted, and what the Worker
+carries besides SSH (see "Amended by ADR 0004" at the end).
 
 ## Context
 
@@ -80,5 +82,27 @@ fails when a deployed configuration sets it.
   machine again.
 - What no suite of `npm test` reaches (the opaque origin, a message from another window, the token
   kept from the page) is proven by `npm run smoke` in `web/`, by hand before a release.
-- Each pull request that touches the web client gets a preview version of the Worker; the live
-  version is deployed by hand only.
+- Each pull request that touches the web client gets a deployment of its own, a Worker
+  `pine-pr-<number>` deleted when it is closed, and `next` and `main` get theirs, `pine-next` and
+  `pine-main`, on every push (amended by ADR 0004: these were first versions of one Worker under
+  preview aliases, and the live version was deployed by hand).
+
+## Amended by ADR 0004
+
+Browser access adds a second kind of machine, a computer paired with the Pine app, reached peer to
+peer. Two sentences above no longer hold as written:
+
+- **"A host key is trusted only as the owner confirmed it."** There is now a second way: a
+  pairing link (`#pair=<machine id>.<code>`, in the fragment, which no server sees) names the
+  fingerprint of that computer's host key, which the owner scanned at that computer. It is accepted once, for
+  the machine that link names alone, and never over a key kept for it already. Machines added as
+  `user@host` keep the owner's confirmation, and a changed key is refused for both.
+- **"The relay carries SSH and nothing else."** The same Worker carries SSH for the relay, which
+  a configuration switches off (`RELAY`; on in every configuration of the repository, the official service included), and, for the meeting
+  service, small opaque messages that set up a direct connection (at most 64 of 16 KiB each, for
+  30 seconds). It keeps no storage and logs nothing: a Durable Object per paired computer holds that
+  meeting's open sockets and nothing else. The conversation never passes through it.
+
+The daemon is still reached through a direct-tcpip channel to a loopback and nowhere else; for
+a paired computer that channel is opened by the Pine app's access server, which answers the remote
+command itself. The bridge, the page in its iframe and the policies are unchanged.

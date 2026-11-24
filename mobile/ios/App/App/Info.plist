@@ -20,12 +20,27 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.pmndre.pine.pair</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>pine</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pine._tcp</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Pine connects over SSH to the machines you add, some of which are on your local network.</string>
+	<string>Pine looks for your computer on this network so that you can pair with it without scanning a code, and connects to the machines you add there.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

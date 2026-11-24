@@ -167,7 +167,7 @@ test("voice: the helper is built once, with its reasons for listening inside it,
 	};
 	const out = path.join(dir, "built");
 	await assert.rejects(() => buildVoice(out, source, run(true, false)), (e: Error) => e.message === NO_COMPILER);
-	await assert.rejects(() => buildVoice(out, source, run(false)), /could not build its helper for voice input \(voice\.swift:3:1: error: cannot find 'Speech' in scope\)/);
+	await assert.rejects(() => buildVoice(out, source, run(false)), /could not build the voice input helper \(voice\.swift:3:1: error: cannot find 'Speech' in scope\)/);
 	assert.deepEqual(fs.existsSync(out) ? fs.readdirSync(out) : [], [], "a build that failed leaves nothing");
 	const first = await buildVoice(out, source, run(true));
 	assert.match(path.basename(first), /^pine-voice-[0-9a-f]{12}$/);
@@ -445,10 +445,10 @@ test("voice: dictating never holds the input: a typed key ends it, and so does e
 	await ui.sees(/one two \d+ +🎤/);
 	ui.term.type("!");
 	await until(() => !/● (listening|finishing)/.test(ui.text()), 3000, "the typed key to end the listening");
-	const typed = ui.app.screen().find((l) => l.includes("!")) ?? "";
+	const typed = ui.app.screen().find((l) => l.includes("one two") && l.includes("!")) ?? "";
 	assert.match(typed, /one two \d+!/, "what was heard stays, and the key is typed after it");
 	await sleep(250);
-	assert.ok((ui.app.screen().find((l) => l.includes("!")) ?? "") === typed, "and nothing that is heard later is put over it");
+	assert.ok((ui.app.screen().find((l) => l.includes("one two") && l.includes("!")) ?? "") === typed, "and nothing that is heard later is put over it");
 	ui.term.type([KEY.enter]);
 	await ui.sees(/ECHO\[one two \d+!\]/);
 	await ui.app.stop();

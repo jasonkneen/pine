@@ -1,3 +1,4 @@
 {
+  "color": "#e0805a",
   "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"]
 }

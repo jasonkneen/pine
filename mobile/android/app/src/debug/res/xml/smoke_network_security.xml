@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A debug build's trust: the system's, and in a debuggable app alone (debug-overrides) the smoke run's
+     own authority (raw/smoke_authority, written by app/build.gradle's smokeAuthority task), for its https
+     meeting service on this computer. Cleartext stays refused, as in a release build, which has none of it. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="@raw/smoke_authority" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

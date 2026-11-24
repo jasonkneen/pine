@@ -122,7 +122,7 @@ if (import.meta.main) {
 		},
 		{
 			name: "fetch",
-			description: "Read a web page or text document by URL and return its text. Only public http(s) addresses. Use start to continue a long page.",
+			description: "Read a web page or text document by URL and return the text. Only public http(s) addresses. Use start to continue a long page.",
 			inputSchema: { type: "object", properties: { url: { type: "string" }, max_chars: { type: "number", description: "Default 20000" }, start: { type: "number", description: "Character offset to continue from" } }, required: ["url"] },
 			annotations: { readOnlyHint: true, openWorldHint: true },
 			handler: async (a) => {

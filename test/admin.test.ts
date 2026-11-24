@@ -42,8 +42,8 @@ test("admin: the main agent lists agents and changes one by tool call; what is w
 	assert.match(out[0], /^3 agents\.\n- main \(the main agent: you\)/);
 	// What an agent is for is the first paragraph of its AGENTS.md (the heading aside); in an older home without one, `description` in agent.json.
 	assert.match(out[0], /- aide: Second pair of hands\n/);
-	assert.match(out[0], /- helper: Reads papers\.\n    model mock\/m \(the default\) · reasoning off · mode safe · reach its own folders, in the sandbox · built-in tools read, bash, edit, write, grep, find, ls\n    conversations: none · event sources: none · MCP servers: none · schedules: none · skills: none · 2 files in its workspace/);
-	assert.match(out[1], /workspace: .*agents[\\/]helper[\\/]workspace\n    may hand work to: none\n\nIts instructions \(AGENTS\.md in its workspace, which it also keeps itself; update_agent "instructions" replaces them\):\n# Helper\n\nReads papers\.\n\nYou are HELPER\./);
+	assert.match(out[0], /- helper: Reads papers\.\n    model mock\/m \(the default\) · reasoning off · mode safe · reach the agent's own folders, in the sandbox · built-in tools read, bash, edit, write, grep, find, ls\n    conversations: none · event sources: none · MCP servers: none · schedules: none · skills: none · 2 files in the agent's workspace/);
+	assert.match(out[1], /workspace: .*agents[\\/]helper[\\/]workspace\n    may hand work to: all agents except the main one \(main\) \("\*"\)\n\nInstructions \(AGENTS\.md in the agent's workspace, which the agent also keeps itself; update_agent "instructions" replaces them\):\n# Helper\n\nReads papers\.\n\nYou are HELPER\./);
 	assert.match(out[2], /there is no agent "nobody"\. Agents: aide, helper, main/);
 	assert.equal(asked.length, 0, "looking asks nobody");
 
@@ -75,8 +75,8 @@ test("admin: the main agent lists agents and changes one by tool call; what is w
 	assert.equal(asked.length, 1);
 	assert.equal(asked[0].tool, "update_agent");
 	assert.equal(asked[0].agent, "main");
-	assert.equal(asked[0].summary, `change the agent "helper"\nreasoning: off -> low\nbuilt-in tools: read, bash, edit, write, grep, find, ls -> read, grep\nmay hand work to: nobody -> aide\nnetwork from its shell: no -> yes\nmay read: ${fs.realpathSync(outside)}`);
-	assert.match(asked[0].why, /Note: with the network its commands can send what it reads anywhere/);
+	assert.equal(asked[0].summary, `change the agent "helper"\nreasoning: off -> low\nbuilt-in tools: read, bash, edit, write, grep, find, ls -> read, grep\nmay hand work to: all agents except the main one (main) ("*") -> aide\nnetwork for shell commands: no -> yes\nmay read: ${fs.realpathSync(outside)}`);
+	assert.match(asked[0].why, /Note: with the network the agent's commands can send what it reads anywhere/);
 	assert.match(out[0], /^Your owner confirmed it\. Changed for helper:/);
 	assert.deepEqual(json(file("helper")), { thinking: "low", tools: ["read", "grep"], delegates: ["aide"], sandbox: { network: true, read: [fs.realpathSync(outside)] } });
 	const helper = h.pine.cfg.agents.helper;
@@ -90,7 +90,7 @@ test("admin: the main agent lists agents and changes one by tool call; what is w
 
 	// A folder is taken away again, and a no changes nothing.
 	out = await main(call("update_agent", { id: "helper", forget: [outside], mode: "auto" }));
-	assert.match(asked[1].why, /Note: in auto mode its shell and file tools work without a sandbox: they reach your whole user account and the network/);
+	assert.match(asked[1].why, /Note: in auto mode the agent's shell and file tools work without a sandbox: they reach your whole user account and the network/);
 	assert.deepEqual([json(file("helper")).sandbox, json(file("helper")).mode], [{ network: true }, "auto"]);
 
 	// Its instructions: the new text takes the place of the file. What lay there is never written through.
@@ -133,8 +133,8 @@ test("admin: the main agent lists agents and changes one by tool call; what is w
 	fs.writeFileSync(soul, "Warm and chatty.\n");
 	const asks = asked.length;
 	out = await main(call("agents", { id: "helper" }), call("update_agent", { id: "helper", soul: "Cool and technical. No commentary nobody asked for." }), call("update_agent", { id: "helper", soul: "  " }), call("read", { path: soul }));
-	assert.match(out[0], /Its character and tone \(SOUL\.md in its workspace; update_agent "soul" replaces it\):\nWarm and chatty\./);
-	assert.match(asked[asks].summary, /character and tone \(its SOUL\.md\) replaced by:\nCool and technical\./);
+	assert.match(out[0], /Character and tone \(SOUL\.md in the agent's workspace; update_agent "soul" replaces it\):\nWarm and chatty\./);
+	assert.match(asked[asks].summary, /character and tone \(the agent's SOUL\.md\) replaced by:\nCool and technical\./);
 	assert.equal(fs.readFileSync(soul, "utf8"), "Cool and technical. No commentary nobody asked for.\n");
 	assert.equal(fs.readFileSync(md, "utf8"), "You are HELPER, and you answer in English.\n", "its instructions are another file and stay");
 	assert.match(out[2], /soul cannot be empty/);
@@ -145,9 +145,9 @@ test("admin: the main agent lists agents and changes one by tool call; what is w
 	assert.equal(fs.readFileSync(tooling, "utf8"), "Search with ripgrep, never with grep.\n");
 	const more = await main(call("agents", { id: "helper" }));
 	await main(call("update_agent", { id: "helper", tooling: "" }));
-	assert.match(asked[asks2].summary, /its own defaults and preferences for tools \(its TOOLS\.md\) replaced by:\nSearch with ripgrep, never with grep\./);
-	assert.match(more[0], /Its own defaults and preferences for tools \(TOOLS\.md in its workspace, on top of the TOOLS\.md for all agents; update_agent "tooling" replaces it\):\nSearch with ripgrep, never with grep\./);
-	assert.match(asked[asks2 + 1].summary, /\(its TOOLS\.md\) taken back: the file is emptied/);
+	assert.match(asked[asks2].summary, /the agent's own defaults and preferences for tools \(the agent's TOOLS\.md\) replaced by:\nSearch with ripgrep, never with grep\./);
+	assert.match(more[0], /The agent's own defaults and preferences for tools \(TOOLS\.md in the agent's workspace, on top of the TOOLS\.md for all agents; update_agent "tooling" replaces it\):\nSearch with ripgrep, never with grep\./);
+	assert.match(asked[asks2 + 1].summary, /\(the agent's TOOLS\.md\) taken back: the file is emptied/);
 	assert.equal(fs.readFileSync(tooling, "utf8"), "");
 	assert.equal(fs.readFileSync(soul, "utf8"), "Cool and technical. No commentary nobody asked for.\n", "its character is another file and stays");
 	// Opened as a file, it is another agent's: the refusal names the tools that are for it.
@@ -186,12 +186,12 @@ test("admin: the main agent removes an agent with everything it has, after the o
 	assert.ok(h.pine.cfg.agents.aide && fs.existsSync(path.join(h.home, "agents", "aide")));
 
 	out = await main(call("agents"), call("remove_agent", { id: "helper" }));
-	assert.match(out[0], /- helper: Reads papers\n[^\n]*\n    conversations: main, side · event sources: papers · MCP servers: none · schedules: weekly, soon · skills: filing · 2 files in its workspace/);
+	assert.match(out[0], /- helper: Reads papers\n[^\n]*\n    conversations: main, side · event sources: papers · MCP servers: none · schedules: weekly, soon · skills: filing · 2 files in the agent's workspace/);
 	const q = asked.at(-1);
 	assert.equal(q.tool, "remove_agent");
-	assert.equal(q.summary, `remove the agent "helper": Reads papers\nWith it go: conversations: main, side; event sources: papers; MCP servers: none; schedules: weekly, soon; skills: filing; routes that wake it: wake-helper\nIts folder is DELETED, with 2 files in its workspace and everything said to it. This cannot be undone.`);
+	assert.equal(q.summary, `remove the agent "helper": Reads papers\nWith it go: conversations: main, side; event sources: papers; MCP servers: none; schedules: weekly, soon; skills: filing; routes that wake it: wake-helper\nThe agent's folder is DELETED, with 2 files in the agent's workspace and everything said to the agent. This cannot be undone.`);
 	assert.match(out[1], /The route that woke it went with it: wake-helper\./);
-	assert.match(out[1], /^Your owner confirmed it\. The agent helper is removed: .* Its folder is deleted\. The other agents no longer see it/);
+	assert.match(out[1], /^Your owner confirmed it\. The agent helper is removed: .* The agent's folder is deleted\. The other agents no longer see it/);
 	assert.equal(asked.length, n + 2);
 
 	// Gone from pine, from the disk, and from everything that named it.
@@ -226,12 +226,12 @@ test("admin: the main agent removes an agent with everything it has, after the o
 
 	// Kept instead of deleted: the folder is moved to where nothing reads it.
 	out = await main(call("remove_agent", { id: "old", keep_files: true }));
-	assert.match(asked.at(-1).summary, /Its folder is KEPT: moved to removed\/ in pine's home/);
+	assert.match(asked.at(-1).summary, /The agent's folder is KEPT: moved to removed\/ in pine's home/);
 	const kept = fs.readdirSync(path.join(h.home, "removed"));
 	assert.equal(kept.length, 1);
 	assert.match(kept[0], /^old-/);
 	assert.equal(fs.readFileSync(path.join(h.home, "removed", kept[0], "workspace", "work", "result.txt"), "utf8"), "RESULT");
-	assert.ok(out[0].includes(`Its folder is kept at ${path.join(h.home, "removed", kept[0])}`));
+	assert.ok(out[0].includes(`The agent's folder is kept at ${path.join(h.home, "removed", kept[0])}`));
 	assert.deepEqual(Object.keys(loadConfig(h.home).agents).sort(), ["aide", "main"]);
 	await h.close();
 	await stub.close();
@@ -297,7 +297,7 @@ test("admin: an agent renamed by the owner takes everything that named it along,
 	assert.deepEqual(h.pine.schedules!.list().filter((s: any) => s.scope === "scholar").map((s: any) => s.name).sort(), ["soon", "weekly"]);
 
 	// Nothing is left that carries the old id: no stored entry, no file or folder, no line of configuration.
-	for (const prefix of ["taint:", "keep:", "folder:", "todos:", "turns:", "undone:", "prefix:", "note:", "goal:", "timer:", "source:"]) assert.deepEqual(h.pine.agents.kv.keys(prefix).filter((k: string) => k.includes("helper") && h.pine.agents.kv.get(k) != null), [], prefix);
+	for (const prefix of ["taint:", "keep:", "folder:", "todos:", "turns:", "undone:", "prefix:", "note:", "goal:", "swarm:", "timer:", "source:"]) assert.deepEqual(h.pine.agents.kv.keys(prefix).filter((k: string) => k.includes("helper") && h.pine.agents.kv.get(k) != null), [], prefix);
 	const left = (dir: string): string[] => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? [e.name, ...left(path.join(dir, e.name))] : [e.name])) : []);
 	assert.deepEqual(left(h.home).filter((n) => /helper/.test(decodeURIComponent(n))), [], "no file or folder in pine's home is named after it");
 	for (const f of [path.join(h.home, "pine.json"), path.join(h.home, ".env"), ...Object.keys(h.pine.cfg.agents).map(file)]) assert.doesNotMatch(fs.readFileSync(f, "utf8"), /helper/i, f);
@@ -363,7 +363,7 @@ test("admin: the main agent gives an agent a color, when it makes one and later,
 	assert.equal(asked[1].summary, `change the agent "helper"\ncolor: #3366cc`);
 	assert.equal(json(file("helper")).color, "#3366cc");
 	out = await main(call("agents"));
-	assert.match(out[0], /- helper: Reads papers\n    model mock\/m \(the default\) · reasoning off · mode safe · reach its own folders, in the sandbox · built-in tools read, bash, edit, write, grep, find, ls · color #3366cc\n/);
+	assert.match(out[0], /- helper: Reads papers\n    model mock\/m \(the default\) · reasoning off · mode safe · reach the agent's own folders, in the sandbox · built-in tools read, bash, edit, write, grep, find, ls · color #3366cc\n/);
 	out = await main(call("update_agent", { id: "helper", color: "none" }));
 	assert.equal(asked[2].summary, `change the agent "helper"\ncolor: none`);
 	assert.equal(json(file("helper")).color, undefined);
@@ -398,7 +398,7 @@ test("admin: the main agent does for another agent what that agent can do for it
 	const stub = await httpMcp();
 	const { h, asked, main, as, idle } = await pine({ helper: { agent: { description: "Reads papers" }, files: { "inbox/.keep": "" } } });
 	const helper = as("helper");
-	const mine = (results: string[]) => results.map((r) => r.replace(/^Done for the agent helper(, its conversation "side")?\. In what follows, "you", "your" and "this conversation" mean helper( and its conversation "side"| and its main conversation), not you\.\n\n/, "DONE: "));
+	const mine = (results: string[]) => results.map((r) => r.replace(/^Done for the agent helper(, conversation "side")?\. In what follows, "you", "your" and "this conversation" mean helper( and the conversation "side"| and that agent's main conversation), not you\.\n\n/, "DONE: "));
 
 	// A schedule.
 	let out = mine(await main(call("add_schedule", { agent: "helper", name: "weekly", task: "Sum up the week.", every: "7d" }), call("schedules", { agent: "helper" }), call("schedules")));
@@ -469,8 +469,8 @@ test("admin: pine's settings are listed and changed by tool call, each value che
 	const file = path.join(h.home, "pine.json");
 	let out = await main(call("settings"));
 	for (const key of Object.keys(SETTINGS)) assert.ok(out[0].includes(`${key} = `), key);
-	assert.match(out[0], /defaults\.mode = safe\n    Mode\. How freely agents work, for every agent that does not set its own\.\n    auto: no sandbox/);
-	assert.match(out[0], /limits\.maxConcurrentRuns = 2\n[^\n]*A change holds from the next start of pine\./);
+	assert.match(out[0], /defaults\.mode = safe\n    Mode\. How freely agents work, for all agents that do not set their own\.\n    auto: no sandbox/);
+	assert.match(out[0], /limits\.maxConcurrentRuns = 8\n[^\n]*A change holds from the next start of pine\./);
 
 	// What is wrong is said, and nobody is asked.
 	const before = fs.readFileSync(file, "utf8");
@@ -495,7 +495,7 @@ test("admin: pine's settings are listed and changed by tool call, each value che
 	out = await main(call("set_setting", { key: "defaults.mode", value: "auto" }));
 	assert.equal(asked[0].tool, "set_setting");
 	assert.match(asked[0].summary, /^set defaults\.mode to auto \(now: safe\)\nMode\. How freely agents work/);
-	assert.match(asked[0].why, /this changes pine's configuration, for all agents\. Note: every agent that names no mode then works without a sandbox/);
+	assert.match(asked[0].why, /this changes pine's configuration, for all agents\. Note: all agents that name no mode then work without a sandbox/);
 	assert.match(out[0], /Your owner confirmed it\. defaults\.mode is now auto\.$/);
 	assert.equal(json(file).defaults.mode, "auto");
 	assert.deepEqual([h.pine.cfg.defaults.mode, h.pine.cfg.agents.helper.level], ["auto", "auto"], "and it reaches the agents that name none");
@@ -506,7 +506,7 @@ test("admin: pine's settings are listed and changed by tool call, each value che
 	out = await main(call("set_setting", { key: "limits.maxConcurrentRuns", value: "3" }));
 	assert.match(out[0], /limits\.maxConcurrentRuns is now 3\. It is saved, and holds from the next start of pine: tell your owner that pine has to be restarted for it\./);
 	assert.equal(json(file).limits.maxConcurrentRuns, 3);
-	assert.equal(h.pine.cfg.limits.maxConcurrentRuns, 2);
+	assert.equal(h.pine.cfg.limits.maxConcurrentRuns, 8);
 	// "default" takes the entry out.
 	await main(call("set_setting", { key: "defaults.mode", value: "default" }));
 	assert.equal(json(file).defaults.mode, undefined);

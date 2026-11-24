@@ -617,11 +617,11 @@ export async function rendered(job: RenderJob, dir: string, signal: AbortSignal)
 		try {
 			final = new URL(String(answer.final));
 		} catch {
-			throw new Error("its browser gave an answer that cannot be read");
+			throw new Error("the browser gave an answer that cannot be read");
 		}
 		if (!sameSite(start, final)) throw new Error(`it sends on to ${final.host}, which is not the address that was confirmed. If that is the right one, set the source up with it`);
 		if (job.select !== undefined) return { value: typeof answer.value === "string" ? readerLines(answer.value.slice(0, RENDER_TEXT)) : null, final: final.href };
-		if (typeof answer.text !== "string") throw new Error("its browser gave an answer that cannot be read");
+		if (typeof answer.text !== "string") throw new Error("the browser gave an answer that cannot be read");
 		return { text: readerLines(answer.text.slice(0, RENDER_TEXT)), final: final.href };
 	} finally {
 		// What the browser left behind means it may still be there.
@@ -694,15 +694,15 @@ function renderOnce(job: RenderJob, scratch: string, signal: AbortSignal): Promi
 			} catch {
 				// not an answer
 			}
-			if (!answer || typeof answer !== "object" || Array.isArray(answer)) return reject(new Error(out.length ? "its browser gave an answer that cannot be read" : "its browser ended without an answer"));
+			if (!answer || typeof answer !== "object" || Array.isArray(answer)) return reject(new Error(out.length ? "the browser gave an answer that cannot be read" : "the browser ended without an answer"));
 			// The helper's own sentence, never a page's: one line of it.
-			if (answer.ok !== true) return reject(new Error(typeof answer.error === "string" && answer.error.trim() ? clip(answer.error.replace(/\s+/g, " ").trim(), 300) : "its browser gave an answer that cannot be read"));
+			if (answer.ok !== true) return reject(new Error(typeof answer.error === "string" && answer.error.trim() ? clip(answer.error.replace(/\s+/g, " ").trim(), 300) : "the browser gave an answer that cannot be read"));
 			resolve(answer);
 		};
 		child.stdout.on("data", (d: Buffer) => {
 			if (failure) return;
 			out = Buffer.concat([out, d]);
-			if (out.length > RENDER_ANSWER) end(new Error("its browser answered with more than a page's text can be"));
+			if (out.length > RENDER_ANSWER) end(new Error("the browser answered with more than a page's text can be"));
 		});
 		child.stdin.on("error", () => {});
 		child.on("error", (e) => {

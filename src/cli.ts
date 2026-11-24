@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { ConfigError, defaultHome, effectiveMcp, loadConfig, mainAgentId, PINE_ROOT, type PineConfig, purposeOf, unsandboxed } from "./config.ts";
+import { ConfigError, defaultHome, delegatesText, effectiveMcp, loadConfig, mainAgentId, PINE_ROOT, type PineConfig, purposeOf, unsandboxed } from "./config.ts";
 import { audit, levelOf } from "./security.ts";
 import { pineManual, showRead, showSearch } from "./manual.ts";
 import { modelKeys } from "./models.ts";
@@ -16,7 +16,7 @@ Start here
   pine . | pine <folder>          the same, with a tab on that folder: a conversation of the main agent that
                                   works there (the one from last time, if there is one)
   pine <folder> --worktree [name] a new conversation in a worktree of that folder's git repository: a
-                                  checkout of its own on a branch pine/<name>, apart from other conversations
+                                  separate checkout on a branch pine/<name>, apart from other conversations
   pine tui                        chat with your agents; starts a daemon inside if none is running
   pine --ssh <host> [folder]      the same on the pine of another machine, over SSH: <host> as you would write
                                   it after ssh, signing in with a key. A folder is one on that machine
@@ -24,18 +24,18 @@ Start here
   pine logout <provider>
   pine model add <name> <address> [--context tokens] [--reasoning | --no-reasoning]
                                   add a model server of your own (llama.cpp, vLLM, LM Studio, ...): pine asks
-                                  it for its models, and for its key if it wants one
+                                  the server which models it has, and for a key if it wants one
   pine model list | pine model remove <name>
 
 Daemon
   pine init [dir] [--yes]         set pine up: a home directory (default ~/.pine) from the example, the browser
-                                  its web tools use, and on Linux the sandbox (asks before it runs anything
+                                  the web tools use, and on Linux the sandbox (asks before it runs anything
                                   as administrator; --yes skips the question). Safe to run again
   pine check                      validate the configuration and list what it sets up
   pine start                      run the daemon in the foreground
-  pine service [--keep]           for a UI that is a program of its own: find the running daemon or start one,
+  pine service [--keep]           for a UI that is a separate program: find the running daemon or start one,
                                   and say on one line of JSON where it answers and with which token. A daemon
-                                  it started runs until this command is ended or its input closes (--keep:
+                                  it started runs until this command is ended or the command's input closes (--keep:
                                   only until it is ended)
   pine dev-model [--port 7464] [--model haiku]
                                   OpenAI-compatible model server backed by "claude -p" (development only)
@@ -48,7 +48,7 @@ Daemon
 Talking to a running daemon
   pine status                     running tasks, live sessions, queue
   pine agents                     configured agents, as the daemon has them (JSON)
-  pine send <agent> <text...>     give an agent a task and print its answer
+  pine send <agent> <text...>     give an agent a task and print the answer
        [--session <key>] [--no-wait]
   pine emit <topic> [json]        publish an event
   pine events [--topic <pattern>] [--limit n] [-f]
@@ -59,14 +59,14 @@ Talking to a running daemon
   pine state [key-pattern]        shared state
   pine approvals                  open approval requests
   pine approve <id> [--always] | pine deny <id>     --always: do not ask again in that conversation
-  pine reset <agent> [session]    forget a conversation (also clears its taint)
+  pine reset <agent> [session]    forget a conversation (also clears the taint)
   pine mode <agent> [auto|plan|manual|bypass]
                                   show or change how much an agent may do without asking
 
 Event sources
   pine sources                    configured sources, whether they run, who is subscribed, last event
   pine subscribe <agent> <source> [--session name | --fresh] [--note text] [--throttle 5m] [--when json] [--separate]
-                                  wake that agent whenever the source reports something: in its main
+                                  wake that agent whenever the source reports something: in the agent's main
                                   conversation, only the conversation named with --session, or with
                                   --fresh in a new conversation for every event
   pine subscribe --global <source> [--note text] ...
@@ -79,7 +79,7 @@ Schedules, skills, the manual
   pine manual <words>             search pine's manual, as the agents do; --read <id> shows a part in full
 
 Agents (the main agent does the same when you ask it: create_agent, update_agent, rename_agent, remove_agent)
-  pine agent list                 the agents: what each is for, its model, its reach, what it has
+  pine agent list                 the agents: what each is for, the model, the reach, what it has
   pine agent add <id> [--description "what it is for"] [--instructions "who it is and how it works"]
        [--instructions-file <file>] [--model provider/model] [--tools read,bash,...]
   pine agent update <id> [--instructions ... | --instructions-file <file>] [--color #rrggbb|none]
@@ -89,10 +89,10 @@ Agents (the main agent does the same when you ask it: create_agent, update_agent
        [--network | --no-network] [--read /path,/path] [--write /path] [--forget /path]
                                   change an agent's settings; give only what changes, the rest stays
   pine agent rename <id> <new-id>  give an agent another id; everything that names it follows:
-                                  its folder, conversations, routes, secrets, the others' lists
+                                  the agent's folder, conversations, routes, secrets, the others' lists
   pine agent remove <id> [--keep-files] [--yes]
                                   remove an agent with everything it has: conversations, sources,
-                                  schedules, servers, skills, routes that wake it, its folder and
+                                  schedules, servers, skills, routes that wake it, the agent's folder and
                                   private home. --keep-files moves the folder to removed/ instead
 
 MCP servers
@@ -185,7 +185,7 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 		case "list": {
 			for (const a of [cfg.agents[main], ...Object.values(cfg.agents).filter((x) => x.id !== main)]) {
 				const has = holdingsOf(cfg, a.id);
-				out(`${a.id}${a.id === main ? " (main)" : ""}: ${purposeOf(a) || "no purpose given"}\n    model ${a.model ?? `${cfg.defaults.model ?? "none"} (the default)`} · reasoning ${a.thinking} · mode ${a.mode} · reach ${unsandboxed(levelOf(a)) ? "your account + network (no sandbox)" : `its own folders (sandbox)${a.sandbox.network ? " + network" : ""}`}\n    conversations: ${some(has.conversations)} · sources: ${some(has.sources)} · MCP servers: ${some(has.servers)} · schedules: ${some(has.schedules)} · skills: ${some(has.skills)}${has.routes.length ? ` · routes: ${has.routes.join(", ")}` : ""} · ${has.files} file${has.files === 1 ? "" : "s"} in ${a.workspace}`);
+				out(`${a.id}${a.id === main ? " (main)" : ""}: ${purposeOf(a) || "no purpose given"}\n    model ${a.model ?? `${cfg.defaults.model ?? "none"} (the default)`} · reasoning ${a.thinking} · mode ${a.mode} · reach ${unsandboxed(levelOf(a)) ? "your account + network (no sandbox)" : `the agent's own folders (sandbox)${a.sandbox.network ? " + network" : ""}`}\n    conversations: ${some(has.conversations)} · sources: ${some(has.sources)} · MCP servers: ${some(has.servers)} · schedules: ${some(has.schedules)} · skills: ${some(has.skills)}${has.routes.length ? ` · routes: ${has.routes.join(", ")}` : ""} · ${has.files} file${has.files === 1 ? "" : "s"} in ${a.workspace}`);
 			}
 			return;
 		}
@@ -201,7 +201,7 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 			checkNewAgent(cfg, spec);
 			const api = await daemon();
 			const workspace = api ? ((await api.post("/agents", spec)) as any).workspace : createAgent(cfg, spec).workspace;
-			return out(`Created the agent ${id} (tools: ${(tools ?? AGENT_TOOLS).join(", ")}). Its workspace is ${workspace}.${api ? ` Talk to it with: pine send ${id} "..."` : " It is there when pine is started."}`);
+			return out(`Created the agent ${id} (tools: ${(tools ?? AGENT_TOOLS).join(", ")}). The agent's workspace is ${workspace}.${api ? ` Talk to it with: pine send ${id} "..."` : " It is there when pine is started."}`);
 		}
 		case "update": {
 			const id = rest[0];
@@ -212,7 +212,7 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 			const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 			const list = (v: unknown) => (typeof v === "string" ? v.split(",").map((x) => x.trim()).filter(Boolean) : undefined);
 			const fromFile = typeof flags["instructions-file"] === "string" ? fs.readFileSync(expandHome(flags["instructions-file"]), "utf8") : undefined;
-			if (flags.description !== undefined) throw new Error("what an agent is for is the first paragraph of its instructions (AGENTS.md in its workspace): change it with --instructions or --instructions-file");
+			if (flags.description !== undefined) throw new Error("what an agent is for is the first paragraph of the agent's instructions (AGENTS.md in the agent's workspace): change it with --instructions or --instructions-file");
 			const change = {
 				color: str(flags.color),
 				instructions: fromFile ?? str(flags.instructions),
@@ -231,7 +231,7 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 			const api = await daemon();
 			if (api) {
 				const r = (await api.post(`/agents/${encodeURIComponent(id)}/update`, change)) as { lines: string[]; warnings: string[] };
-				return out(`Updated the agent ${id}; it holds from its next message on:\n${r.lines.map((l) => `  ${l}`).join("\n")}${r.warnings.length ? `\nNote: ${r.warnings.join("; ")}` : ""}`);
+				return out(`Updated the agent ${id}; the change applies from the next message on:\n${r.lines.map((l) => `  ${l}`).join("\n")}${r.warnings.length ? `\nNote: ${r.warnings.join("; ")}` : ""}`);
 			}
 			// Without a daemon the files are changed; a model change is left to the running pine, which can check the model exists.
 			if (change.model !== undefined && change.model !== "default" && change.model !== "") throw new Error(`changing the model needs a running daemon, which checks that "${change.model}" exists. Start it with "pine start" and run this again, or set "model" in ${path.join(agent.dir, "agent.json")} by hand.`);
@@ -247,7 +247,7 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 			if (id === main) throw new Error(`${id} is the main agent: it administers pine and cannot be removed`);
 			const has = holdingsOf(cfg, id);
 			const keep = flags["keep-files"] === true;
-			out(`${id}: ${purposeOf(agent) || "no purpose given"}\nWith it go: conversations: ${some(has.conversations)}; event sources: ${some(has.sources)}; MCP servers: ${some(has.servers)}; schedules: ${some(has.schedules)}; skills: ${some(has.skills)}; routes that wake it: ${some(has.routes)}\n${keep ? `Its folder is kept: moved to ${path.join(cfg.home, "removed")} (${has.files} file${has.files === 1 ? "" : "s"} in its workspace).` : `Its folder ${agent.dir} is deleted, with ${has.files} file${has.files === 1 ? "" : "s"} in its workspace and everything said to it. This cannot be undone.`}${has.outside ? `\nIts workspace ${agent.workspace} lies outside pine's home and is left as it is.` : ""}`);
+			out(`${id}: ${purposeOf(agent) || "no purpose given"}\nWith it go: conversations: ${some(has.conversations)}; event sources: ${some(has.sources)}; MCP servers: ${some(has.servers)}; schedules: ${some(has.schedules)}; skills: ${some(has.skills)}; routes that wake it: ${some(has.routes)}\n${keep ? `Its folder is kept: moved to ${path.join(cfg.home, "removed")} (${has.files} file${has.files === 1 ? "" : "s"} in the agent's workspace).` : `Its folder ${agent.dir} is deleted, with ${has.files} file${has.files === 1 ? "" : "s"} in the agent's workspace and everything said to the agent. This cannot be undone.`}${has.outside ? `\nIts workspace ${agent.workspace} lies outside pine's home and is left as it is.` : ""}`);
 			if (flags.yes !== true) {
 				if (!process.stdin.isTTY) throw new Error("not removed: this asks before it deletes. Run it in a terminal, or add --yes");
 				const readline = await import("node:readline");
@@ -261,15 +261,16 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 			if (api) gone = (await api.post(`/agents/${encodeURIComponent(id)}/erase`, { agent: id, keepFiles: keep })) as any;
 			else {
 				const { Kv, openDb, TaskStore } = await import("./store.ts");
+				const { Boards } = await import("./boards.ts");
 				const db = openDb(cfg.dataDir);
 				try {
-					gone = eraseAgent(cfg, { kv: new Kv(db), tasks: new TaskStore(db) }, id, keep);
+					gone = eraseAgent(cfg, { kv: new Kv(db), tasks: new TaskStore(db), boards: new Boards(db) }, id, keep);
 				} finally {
 					db.close();
 				}
 			}
 			if (gone.problem) throw new Error(`the agent ${id} is taken out, but what is left of the configuration does not load: ${gone.problem}\nIts folder was kept at ${gone.kept}. Run "pine check".`);
-			return out(`Removed the agent ${id}.${gone.kept ? ` Its folder is kept at ${gone.kept}.` : ""}`);
+			return out(`Removed the agent ${id}.${gone.kept ? ` The agent's folder is kept at ${gone.kept}.` : ""}`);
 		}
 		case "rename": {
 			const [id, to] = rest;
@@ -280,15 +281,16 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 			if (api) done = (await api.post(`/agents/${encodeURIComponent(id)}/id`, { agent: id, to })) as any;
 			else {
 				const { Kv, openDb, TaskStore } = await import("./store.ts");
+				const { Boards } = await import("./boards.ts");
 				const db = openDb(cfg.dataDir);
 				try {
-					done = renameAgent(cfg, { kv: new Kv(db), tasks: new TaskStore(db) }, id, to);
+					done = renameAgent(cfg, { kv: new Kv(db), tasks: new TaskStore(db), boards: new Boards(db) }, id, to);
 				} finally {
 					db.close();
 				}
 			}
 			if (done.problem) throw new Error(`the agent ${id} is called ${to} now, but the configuration does not load: ${done.problem}\nRun "pine check".`);
-			return out(`Renamed the agent ${id} to ${to}.${done.routes.length ? ` Routes that name it: ${done.routes.join(", ")}.` : ""}${done.addresses.length ? ` Its webhook address${done.addresses.length === 1 ? " is" : "es are"} now ${done.addresses.join(", ")}: give ${done.addresses.length === 1 ? "it" : "them"} to whoever calls ${done.addresses.length === 1 ? "it" : "them"}.` : ""}`);
+			return out(`Renamed the agent ${id} to ${to}.${done.routes.length ? ` Routes that name it: ${done.routes.join(", ")}.` : ""}${done.addresses.length ? ` The webhook address${done.addresses.length === 1 ? " is" : "es are"} now ${done.addresses.join(", ")}: give ${done.addresses.length === 1 ? "it" : "them"} to whoever calls ${done.addresses.length === 1 ? "it" : "them"}.` : ""}`);
 		}
 		default:
 			throw new Error("usage: pine agent list | add <id> --instructions ... | update <id> --model ... | rename <id> <new-id> | remove <id> [--keep-files] [--yes]");
@@ -408,7 +410,7 @@ async function main(): Promise<void> {
 		if (typeof flags.ssh !== "string") throw new Error("--ssh takes the machine, as you would write it after ssh: pine --ssh <host>");
 		const words = cmd === "tui" ? rest : cmd === undefined ? [] : [cmd, ...rest];
 		if (words.length > 1 || (words[0] !== undefined && COMMANDS.has(words[0]))) throw new Error(`--ssh opens the terminal UI on that machine's pine. A command is run there: ssh ${flags.ssh} pine ${words.join(" ")}`);
-		if (typeof flags.home === "string") throw new Error("--home names a pine home on this computer; the other machine's pine uses its own");
+		if (typeof flags.home === "string") throw new Error("--home names a pine home on this computer; the other machine's pine uses the home there");
 		if (flags.worktree !== undefined && flags.worktree !== false && !words[0]) throw new Error("--worktree goes with a folder: pine --ssh <host> <folder> --worktree [name]");
 		const { runRemoteTui } = await import("./tui/run.ts");
 		return runRemoteTui(flags.ssh, { folder: words[0], worktree: typeof flags.worktree === "string" ? flags.worktree : flags.worktree === true ? true : undefined });
@@ -438,14 +440,40 @@ async function main(): Promise<void> {
 		// A home from before instructions moved into the workspace keeps them where they are: with
 		// a second AGENTS.md in the workspace the agent would have both.
 		const kept: string[] = [];
-		const created = copyDir(path.join(PINE_ROOT, "examples", "home"), target, (dst) => {
+		const skip = (dst: string) => {
 			const old = path.join(path.dirname(path.dirname(dst)), "AGENTS.md");
 			const twice = path.basename(dst) === "AGENTS.md" && path.basename(path.dirname(dst)) === "workspace" && fs.existsSync(old);
 			if (twice) kept.push(old);
 			return twice;
-		});
+		};
+		// The example's main agent goes to the main agent of the home: a home whose main agent has another
+		// name (a new one was called prime for a while) keeps that name for it, and is not given a second one.
+		const example = path.join(PINE_ROOT, "examples", "home");
+		const created: string[] = [];
+		const top = (name: string) => path.join(target, name === ".env.example" ? ".env" : name);
+		for (const entry of fs.readdirSync(example, { withFileTypes: true }).filter((e) => e.name !== "agents")) {
+			if (entry.isDirectory()) {
+				fs.mkdirSync(top(entry.name), { recursive: true });
+				created.push(...copyDir(path.join(example, entry.name), top(entry.name), skip));
+			} else if (!fs.existsSync(top(entry.name))) {
+				fs.copyFileSync(path.join(example, entry.name), top(entry.name));
+				fs.chmodSync(top(entry.name), 0o600);
+				created.push(top(entry.name));
+			}
+		}
+		const main = (() => {
+			try {
+				const named = JSON.parse(fs.readFileSync(path.join(target, "pine.json"), "utf8")).main;
+				return typeof named === "string" && /^[\w-]+$/.test(named) ? named : "main";
+			} catch {
+				return "main";
+			}
+		})();
+		const own = path.join(target, "agents", main);
+		fs.mkdirSync(own, { recursive: true });
+		created.push(...copyDir(path.join(example, "agents", "main"), own, skip));
 		out(created.length ? `Created in ${target}:\n${created.map((f) => `  ${path.relative(target, f)}`).join("\n")}` : `${target} already has every example file; nothing changed.`);
-		for (const old of kept) out(`\n${path.relative(target, old)} stays where it is: there the agent reads it but cannot change it. To let the agent keep its own instructions, move it to ${path.relative(target, path.join(path.dirname(old), "workspace", "AGENTS.md"))}.`);
+		for (const old of kept) out(`\n${path.relative(target, old)} stays where it is: there the agent reads it but cannot change it. To let the agent keep up the instructions itself, move the file to ${path.relative(target, path.join(path.dirname(old), "workspace", "AGENTS.md"))}.`);
 		// Everything the built-in tools need comes with it, so that what is set up also works. The
 		// browser is the one large piece; a second run finds it there and takes a moment.
 		// (PINE_SKIP_DOWNLOADS is for pine's own tests, which must not fetch 600 MB.)
@@ -517,8 +545,8 @@ async function main(): Promise<void> {
 			const cfg = loadConfig(home);
 			const { ensureDaemon } = await import("./service.ts");
 			service = await ensureDaemon(cfg);
-			const version = String(JSON.parse(fs.readFileSync(path.join(PINE_ROOT, "package.json"), "utf8")).version);
-			say({ base: service.base, token: service.token, mode: service.mode, started: service.started, home: cfg.home, version });
+			// The version of the daemon handed on, which is this pine's only when it started it here.
+			say({ base: service.base, token: service.token, mode: service.mode, started: service.started, home: cfg.home, version: service.version });
 		} catch (e) {
 			say({ error: e instanceof Error ? e.message : String(e) });
 			process.exit(1);
@@ -560,8 +588,21 @@ async function main(): Promise<void> {
 	if (cmd === "login" || cmd === "logout") {
 		const { login, logout } = await import("./login.ts");
 		if (!rest[0]) throw new Error(`usage: pine ${cmd} <provider>   (for example opencode-go, opencode, anthropic, openai-codex)`);
-		if (cmd === "login") await login(cfg, rest[0], flags["api-key"] === true ? "api_key" : flags.oauth === true ? "oauth" : undefined);
-		else await logout(cfg, rest[0]);
+		if (cmd === "login") {
+			await login(cfg, rest[0], flags["api-key"] === true ? "api_key" : flags.oauth === true ? "oauth" : undefined);
+			// A running daemon reads the sign-in at once, and runs on its models if the model before could not answer.
+			const told = await (async () => {
+				try {
+					const api = client(cfg);
+					if (!(await fetch(`${api.base}/health`, { signal: AbortSignal.timeout(800) })).ok) return undefined;
+					return (await api.post("/models/refresh", { provider: rest[0] })) as { chosen?: string };
+				} catch {
+					return undefined;
+				}
+			})();
+			if (told?.chosen) out(`Your agents run on ${told.chosen} now: the model before could not answer.`);
+			else if (!told) out("If your agents' model cannot answer, pine chooses one of these the next time it starts.");
+		} else await logout(cfg, rest[0]);
 		return;
 	}
 
@@ -612,7 +653,7 @@ async function main(): Promise<void> {
 			const live = await refreshed();
 			out(`Added "${name}" at ${baseUrl}`);
 			for (const m of listModelServers(cfg.home).find((s) => s.name === name)?.models ?? []) out(`    ${name}/${m.id}  ${sized(m)}`);
-			if (key) out(`Its key is in ${path.join(cfg.home, ".env")} as ${modelKeyName(name)}.`);
+			if (key) out(`The server's key is in ${path.join(cfg.home, ".env")} as ${modelKeyName(name)}.`);
 			return out(`${live ? "The running pine has it now." : "pine has it when it next starts."} Choose a model with /model ${models[0]} in the terminal UI.`);
 		}
 		if (sub === "remove") {
@@ -655,7 +696,7 @@ async function main(): Promise<void> {
 		for (const a of Object.values(cfg.agents)) {
 			out(`\nagent ${a.id}${a.id === mainAgentId(cfg) ? " (main)" : ""}: ${purposeOf(a) || "no purpose given"}`);
 			out(`  workspace  ${a.workspace}`);
-			out(`  model      ${a.model ?? cfg.defaults.model}`);
+			out(`  model      ${a.model ?? cfg.defaults.model ?? "none yet"}`);
 			out(`  tools      ${(a.tools ?? ["read", "bash", "edit", "write"]).join(", ")}`);
 			out(`  mcp        ${Object.keys(effectiveMcp(cfg, a)).join(", ") || "none"}`);
 			// App control is given by where pine runs and how far the agent reaches, not by the list above alone.
@@ -663,11 +704,11 @@ async function main(): Promise<void> {
 				out(`  apps       ${!(await import("./computer.ts")).hasDesktop() ? (process.platform === "linux" ? "not here: app control works on Linux with an X11 desktop (DISPLAY set, not Wayland)" : "not on this system: app control works on macOS, Windows and Linux with X11") : !unsandboxed(levelOf(a)) ? "no: app control is for an agent in auto or bypass mode, which works with your whole account" : `it can operate the apps on this ${process.platform === "darwin" ? "Mac" : "computer"} in your own conversations; you are asked once per app`}`);
 			}
 			out(`  skills     ${listSkills(cfg, a, "main").map((s) => s.name).join(", ") || "none"}`);
-			out(`  delegates  ${a.delegates.join(", ") || "none"}; sub-agents ${a.subagents.enabled ? `up to ${a.subagents.maxParallel}` : "off"}`);
+			out(`  delegates  ${delegatesText(cfg, a)}; sub-agents ${a.subagents.enabled ? `up to ${a.subagents.maxParallel}` : "off"}`);
 			out(`  mode       ${a.mode}`);
 			// What that means for this agent, so that nobody has to read code to know.
 			const open = unsandboxed(levelOf(a));
-			const reach = open ? "your whole account and the network" : `its own folder${a.sandbox.network ? " and the network" : ""}`;
+			const reach = open ? "your whole account and the network" : `the agent's own folder${a.sandbox.network ? " and the network" : ""}`;
 			const after = cfg.security.taint === "off" ? "nothing changes" : "it keeps that; you are asked before it sends something out";
 			out(`  reaches    ${reach}`);
 			out(`  after outside content: ${a.mode === "bypass" && cfg.security.bypassWhenTainted ? "nothing changes (bypass)" : after}`);
@@ -771,7 +812,7 @@ async function main(): Promise<void> {
 				if (!rest[0]) throw new Error(`usage: pine ${cmd} --global <source>`);
 				if (cmd === "unsubscribe") return out(((await api.post("/unsubscribe", { source: rest[0] })) as any).unsubscribed ? `all agents: no longer subscribed to ${rest[0]}` : `there was no subscription of all agents to ${rest[0]}`);
 				const all: any = await api.post("/subscribe", { source: rest[0], ...details });
-				return out(`all agents are subscribed to ${rest[0]} (${all.running ? "running" : "not running"}); it wakes ${all.agents.join(", ") || "nobody yet"}, each in its main conversation`);
+				return out(`all agents are subscribed to ${rest[0]} (${all.running ? "running" : "not running"}); it wakes ${all.agents.join(", ") || "nobody yet"}, each in their main conversation`);
 			}
 			if (!rest[0] || !rest[1]) throw new Error(`usage: pine ${cmd} <agent> <source>${cmd === "subscribe" ? " [--session name] [--note text] [--throttle 5m] [--when json]" : " [--session name]"}\n       pine ${cmd} --global <source>`);
 			if (cmd === "unsubscribe") {
@@ -780,7 +821,7 @@ async function main(): Promise<void> {
 			}
 			// --fresh: a conversation of its own for every event, instead of the agent's main one.
 			const info: any = await api.post(`/agents/${rest[0]}/subscribe`, { source: rest[1], session: flags.fresh === true ? "new" : flags.session, ...details });
-			return out(`${rest[0]} is subscribed to ${rest[1]} (${info.running ? "running" : "not running"}); each event wakes it in ${info.session === "new" ? "a fresh conversation of its own" : `its conversation "${info.session}"`}`);
+			return out(`${rest[0]} is subscribed to ${rest[1]} (${info.running ? "running" : "not running"}); each event wakes it in ${info.session === "new" ? "a fresh conversation" : `the conversation "${info.session}"`}`);
 		}
 		case "approvals": {
 			const list: any[] = await api.get("/approvals");

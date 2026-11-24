@@ -50,7 +50,7 @@ export function portOf(raw: unknown): string {
 	}
 	if (!file.startsWith("/dev/")) throw new Error(`${given} is not a device: a serial port lies under /dev`);
 	if (!fs.statSync(file).isCharacterDevice()) throw new Error(`${given} is not a serial port`);
-	if (!serialName(file)) throw new Error(`${given} is not a serial port by its name. One is called /dev/cu.<something> on a Mac, /dev/ttyUSB0, /dev/ttyACM0 or /dev/ttyS0 on Linux. A terminal is never read`);
+	if (!serialName(file)) throw new Error(`${given} is not a serial port by name. One is called /dev/cu.<something> on a Mac, /dev/ttyUSB0, /dev/ttyACM0 or /dev/ttyS0 on Linux. A terminal is never read`);
 	// On a Mac the tty. name waits for a modem that is never there; the cu. name of the same port does not.
 	const twin = file.replace(/^\/dev\/tty\./, "/dev/cu.");
 	return twin !== file && fs.existsSync(twin) ? twin : file;
@@ -62,8 +62,8 @@ export const type: SourceType = {
 		{
 			port: Type.String({ description: "the device: /dev/cu.usbserial-1420 on a Mac, /dev/ttyUSB0 or /dev/ttyACM0 on Linux" }),
 			baud: Type.Optional(Type.Number({ description: "the speed the device sends at, e.g. 9600 or 115200. Default 9600" })),
-			match: Type.Optional(Type.String({ description: 'report only lines this regular expression finds; its first group becomes "value", e.g. "temp=([0-9.]+)"' })),
-			changed: Type.Optional(Type.Boolean({ description: "true to report a line (or its value) only when it differs from the one before. For a device that prints the same reading every second" })),
+			match: Type.Optional(Type.String({ description: 'report only lines this regular expression finds; the first group becomes "value", e.g. "temp=([0-9.]+)"' })),
+			changed: Type.Optional(Type.Boolean({ description: "true to report a line (or the value) only when it differs from the one before. For a device that prints the same reading every second" })),
 			perMinute: Type.Optional(Type.Number({ description: "at most this many reports a minute; the rest are dropped and counted. Default 30" })),
 		},
 		{ additionalProperties: false },

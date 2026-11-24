@@ -137,7 +137,7 @@ function lists(o: Record<string, any>) {
 
 export const type: SourceType = {
 	summary: "a Slack workspace: reports messages (all, or only mentions, keywords, certain people), and reactions, edits, joins, pins, commands. Can post, react and send files to listed channels",
-	sends: 'a Slack message to a channel or person on its "sendTo" list: {"channel": "C0123ABCD", "text": "..."}. "thread" (a message\'s ts) answers in that thread; a user id as "channel" writes to that person directly; with "file" a file goes along; {"channel": "...", "ts": "...", "react": "eyes"} puts an emoji on a message',
+	sends: 'a Slack message to a channel or person on the source\'s "sendTo" list: {"channel": "C0123ABCD", "text": "..."}. "thread" (a message\'s ts) answers in that thread; a user id as "channel" writes to that person directly; with "file" a file goes along; {"channel": "...", "ts": "...", "react": "eyes"} puts an emoji on a message',
 	reads: 'what was written earlier, to understand a message: {"channel": "C0123ABCD"} gives the last messages of a channel or direct conversation ("channel" as an event had it; a user id for the conversation with that person), with "thread" (the "thread" or "ts" of an event) that thread; "limit" up to 50, "before" a ts to go further back',
 	files: true,
 	options: Type.Object(
@@ -155,7 +155,7 @@ export const type: SourceType = {
 			sendTo: Type.Optional(Type.Array(Type.String(), { description: 'where you may write, by id only: channels (["C0123ABCD"]) and people (["U0123ABCD"], a direct message). Only when your owner wants you to write there; without it nothing can be sent. Needs "token"' })),
 			perMinute: Type.Optional(Type.Number({ description: "at most this many reports a minute. Default 60; what comes on top is dropped and counted" })),
 			history: Type.Optional(Type.Boolean({ description: 'false: nothing that was written earlier is read. Default true: with a "token" you can read earlier messages where the source listens (read_source), and an answer in a thread comes with what it answers' })),
-			context: Type.Optional(Type.Number({ description: "how many earlier messages of a thread come with an answer in that thread, its first message among them. Default 3, 0 for none, 10 at most" })),
+			context: Type.Optional(Type.Number({ description: "how many earlier messages of a thread come with an answer in that thread, the thread's first message among them. Default 3, 0 for none, 10 at most" })),
 			maxMb: Type.Optional(Type.Number({ description: 'files that come with a message are fetched up to this size, in MB. Default 10. Needs "token"' })),
 			keepDays: Type.Optional(Type.Number({ description: "fetched files are deleted after this many days. Default 7" })),
 			apiBase: Type.Optional(Type.String({ description: "address of a Slack-compatible server of your own, instead of https://slack.com/api" })),
@@ -184,7 +184,7 @@ export const type: SourceType = {
 		not("ignore", l.ignore.filter((x) => x !== "me" && !isActor(x)), 'Slack user ids or "me", not names');
 		const nowhere = l.sendTo.filter((x) => !isChannel(x) && !isUser(x));
 		// The one list that says where an agent may write: a name can be given to another channel tomorrow, an id cannot.
-		if (nowhere.length) throw new Error(`"sendTo" takes ids, not names: ${nowhere.join(", ")} is not one. It says where the agent may write, and a name can come to mean another place. A channel's id starts with C (or G, D) and is at the end of its link. ${person}`);
+		if (nowhere.length) throw new Error(`"sendTo" takes ids, not names: ${nowhere.join(", ")} is not one. It says where the agent may write, and a name can come to mean another place. A channel's id starts with C (or G, D) and is at the end of the channel's link. ${person}`);
 		const unknown = l.events.filter((k) => !KINDS[k]);
 		if (unknown.length) throw new Error(`"events" takes ${Object.keys(KINDS).join(", ")}: ${unknown.join(", ")} is not one of them`);
 		if (!l.events.length) throw new Error(`"events" is empty, so nothing would be reported. It takes ${Object.keys(KINDS).join(", ")}; leave it out for messages`);
@@ -353,7 +353,7 @@ export default async function slack(source: SourceApi): Promise<void> {
 	const maxBytes = Math.min(Number(o.maxMb ?? 10), 50) * 1024 * 1024;
 	const keepMs = Number(o.keepDays ?? 7) * 86_400_000;
 	if (!token && [...mentions, ...from, ...ignore].includes("me")) throw new Error('"me" is the account the token belongs to, and this source has no token. Set it up again and name "token" in "ask", or write the user id instead of "me"');
-	if (!token && byName.length) throw new Error(`a channel given by its name (${byName.join(", ")}) has to be looked up, and this source has no token for that. Set it up again and name "token" in "ask", or give the channel's id`);
+	if (!token && byName.length) throw new Error(`a channel given by name (${byName.join(", ")}) has to be looked up, and this source has no token for that. Set it up again and name "token" in "ask", or give the channel's id`);
 
 	const stop = new AbortController();
 	const rest = (ms: number) =>
@@ -528,7 +528,7 @@ export default async function slack(source: SourceApi): Promise<void> {
 			if (e instanceof Plain) throw e;
 			if (!(e instanceof WebAPIPlatformError) || PASSING.includes(e.data.error)) throw new Plain(reason(e, asking));
 			if (asking === "auth.test") throw new Fatal(`Slack does not take the token (${word(e.data.error)}). A bot token (xoxb-...) or user token (xoxp-...) is under "OAuth & Permissions" of the Slack app`);
-			throw new Fatal(`Slack does not let the app list its channels (${word(e.data.error)}). To find a channel by its name the app needs the scope channels:read, and groups:read for a private one. Or give the channel's id`);
+			throw new Fatal(`Slack does not let the app list the workspace's channels (${word(e.data.error)}). To find a channel by name the app needs the scope channels:read, and groups:read for a private one. Or give the channel's id`);
 		}
 	};
 	const on = (people: string[], who: string) => people.includes(who) || (who === me && people.includes("me"));
@@ -1166,7 +1166,7 @@ export default async function slack(source: SourceApi): Promise<void> {
 		const scope = String((e.data as any).needed ?? "");
 		const hint =
 			code === "not_in_channel"
-				? ". The app is not in that channel: somebody there writes /invite and its name"
+				? ". The app is not in that channel: somebody there writes /invite and the app's name"
 				: code === "missing_scope"
 					? `. The app lacks ${/^[\w.:,-]{1,100}$/.test(scope) ? `the scope ${scope}` : "a scope"}: your owner adds it under "OAuth & Permissions" of the Slack app and installs the app again`
 					: code === "channel_not_found"
@@ -1247,7 +1247,7 @@ export default async function slack(source: SourceApi): Promise<void> {
 			lines.push(`[${when}] ${one.userName ?? one.user} (ts ${one.ts}${answers}): ${one.text}${files}`);
 		}
 		const more = res.has_more ? (thread ? " The thread has more answers than these." : ` There is more before these: the same call with "before": "${String(written[0].ts)}".`) : "";
-		return `${thread ? `The thread ${thread} in ${place}` : `The last ${written.length} ${plural(written.length, "message")} in ${place}`}, oldest first.${more}${thread ? "" : ' To read a thread: the same call with "thread" set to its ts.'}\n\n${lines.join("\n")}`;
+		return `${thread ? `The thread ${thread} in ${place}` : `The last ${written.length} ${plural(written.length, "message")} in ${place}`}, oldest first.${more}${thread ? "" : ' To read a thread: the same call with "thread" set to the message\'s ts.'}\n\n${lines.join("\n")}`;
 	});
 
 	source.onSend(async (message) => {

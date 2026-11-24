@@ -90,13 +90,13 @@ export function toolsFor(platform: string = process.platform) {
 		tool(
 			"app_snapshot",
 			"Read a window of an app as text: an outline of everything in it, with what it says. Every control that can be used has a reference like [ref=e12], for app_press and app_set_text. Take a new one after something has changed.",
-			{ app: APP, window: { type: "string", description: "Which window, when the app has several: its number or a part of its title. Default: the front one" } },
+			{ app: APP, window: { type: "string", description: "Which window, when the app has several: the window's number or a part of the title. Default: the front one" } },
 			["app"],
 		),
-		tool("app_press", "Press a control by its reference from app_snapshot: a button, a checkbox, a link, a tab, a row of a list.", { app: APP, ref: { type: "string", description: "The reference from app_snapshot. Example: e12" } }, ["app", "ref"]),
+		tool("app_press", "Press a control by the control's reference from app_snapshot: a button, a checkbox, a link, a tab, a row of a list.", { app: APP, ref: { type: "string", description: "The reference from app_snapshot. Example: e12" } }, ["app", "ref"]),
 		tool(
 			"app_set_text",
-			"Put text into a text field by its reference from app_snapshot. It replaces what the field held. A search or address field acts only on the return key: press it with app_key afterwards.",
+			"Put text into a text field by the field's reference from app_snapshot. It replaces what the field held. A search or address field acts only on the return key: press it with app_key afterwards.",
 			{ app: APP, ref: { type: "string", description: "The reference from app_snapshot. Example: e12" }, text: { type: "string", description: "The text the field should hold" } },
 			["app", "ref", "text"],
 		),
@@ -109,7 +109,7 @@ export function toolsFor(platform: string = process.platform) {
 		tool(
 			"app_screenshot",
 			"Take a picture of an app's window, or of the whole screen when no app is given. For a model that can see pictures; to read text, app_snapshot is better. The answer says how large the picture is: app_click, app_drag and app_scroll take positions in it.",
-			{ app: APP, window: { type: "string", description: "Which window, when the app has several: its number or a part of its title. Default: the front one" }, screen: { type: "number", description: "Without app: which screen, when there are several. Default 1, the main one" } },
+			{ app: APP, window: { type: "string", description: "Which window, when the app has several: the window's number or a part of the title. Default: the front one" }, screen: { type: "number", description: "Without app: which screen, when there are several. Default 1, the main one" } },
 		),
 		tool(
 			"app_click",
@@ -131,7 +131,7 @@ export function toolsFor(platform: string = process.platform) {
 		),
 		tool(
 			"app_type",
-			"Type text on the keyboard into an app, where its cursor is. Put the cursor into the field first (app_press or app_click). A line break in the text presses the return key. The app may correct what is typed, as it does for a person; app_set_text writes exactly.",
+			"Type text on the keyboard into an app, where the app's cursor is. Put the cursor into the field first (app_press or app_click). A line break in the text presses the return key. The app may correct what is typed, as it does for a person; app_set_text writes exactly.",
 			{ app: APP, text: { type: "string", description: "The text to type" } },
 			["app", "text"],
 		),
@@ -359,7 +359,7 @@ class HelperError extends Error {
 	}
 }
 
-export const BUILDING = "pine is building its helper for app control. That happens once and takes about half a minute. Try again in a moment.";
+export const BUILDING = "pine is building the helper for app control. That happens once and takes about half a minute. Try again in a moment.";
 
 /** What the agent is told when the system has not been told to let pine in. Plain words, and where to click. */
 export function grantText(kind: "accessibility" | "screen", host: string | undefined, shown: boolean, system: System = "mac"): string {
@@ -519,7 +519,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 
 	const appName = (args: Record<string, any>) => {
 		const name = typeof args.app === "string" ? args.app.trim() : "";
-		if (!name) throw new Error("Say which app: app is its name, as apps lists it.");
+		if (!name) throw new Error("Say which app: app is the app's name, as apps lists it.");
 		return name;
 	};
 	/** The running app a call names. `acting`: the call clicks, types or presses, which pine does not do in the app it runs in itself. */
@@ -550,7 +550,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 		if (!picture) throw new Error(`${what} are positions in a picture, and you have not taken one yet. Take one with app_screenshot first. Without pictures, use app_snapshot and app_press.`);
 		const px = Number(x);
 		const py = Number(y);
-		if (!Number.isFinite(px) || !Number.isFinite(py)) throw new Error(`${what} must be numbers: pixels in the last picture, from its top left corner.`);
+		if (!Number.isFinite(px) || !Number.isFinite(py)) throw new Error(`${what} must be numbers: pixels in the last picture, from the top left corner.`);
 		if (px < 0 || py < 0 || px >= picture.width || py >= picture.height) throw new Error(`That position is outside the last picture, which is ${picture.width} by ${picture.height} pixels: x goes from 0 to ${picture.width - 1}, y from 0 to ${picture.height - 1}.`);
 		if (picture.pid !== undefined && picture.pid !== a.pid) throw new Error(`The last picture shows ${picture.app}, not ${a.name}. Take a picture of ${a.name} first (app_screenshot), then give positions in that.`);
 		let shown: Picture = picture;
@@ -604,7 +604,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			}
 			// Its windows are listed where macOS lets pine see them; where not, the next call says what is missing.
 			const all = await windowsOf(a).catch(() => undefined);
-			return `${a.name} ${was} and is in front${a.name.toLowerCase() === name.toLowerCase() ? "" : ` (you asked for "${name}"; in other calls either name works)`}.${all ? ` ${all.length ? `Its ${all.length === 1 ? "window" : "windows"}: ${all.map(windowLine).join(", ")}` : "It has no window open"}.` : ""} Read a window with app_snapshot${o.images === false ? "" : ", or look at it with app_screenshot"}.`;
+			return `${a.name} ${was} and is in front${a.name.toLowerCase() === name.toLowerCase() ? "" : ` (you asked for "${name}"; in other calls either name works)`}.${all ? ` ${all.length ? `${all.length === 1 ? "Window" : "Windows"}: ${all.map(windowLine).join(", ")}` : "It has no window open"}.` : ""} Read a window with app_snapshot${o.images === false ? "" : ", or look at it with app_screenshot"}.`;
 		},
 
 		async app_snapshot(args) {
@@ -612,7 +612,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			const want = pickWindow(await windowsOf(a), args.window);
 			const r = await ask("tree", { pid: a.pid, ...(want ? { window: want.index } : {}) });
 			const all: Win[] = r.windows ?? [];
-			if (!r.window || !r.root) return `${a.name} has no window open.${others(all)} Its menu bar can still be used (app_menu), and app_open brings it to the front.`;
+			if (!r.window || !r.root) return `${a.name} has no window open.${others(all)} The app's menu bar can still be used (app_menu), and app_open brings it to the front.`;
 			const shown = r.window as Win;
 			return `${a.name}, window ${windowLine(shown)}.${others(all, shown)}\nControls with [ref=...] can be used: app_press presses one, app_set_text writes into a text field.\n\n${outline(r.root)}${r.cut ? "\n[The window holds more controls than are listed here.]" : ""}`;
 		},
@@ -620,7 +620,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 		async app_press(args) {
 			const a = await find(args, true);
 			const ref = String(args.ref ?? "").trim().replace(/^\[?ref=|\]$/g, "");
-			if (!ref) throw new Error("Say which control: ref is its reference from app_snapshot, for example e12.");
+			if (!ref) throw new Error("Say which control: ref is the control's reference from app_snapshot, for example e12.");
 			const it = await ask("whose", { ref });
 			if (it.pid !== a.pid) throw new Error(`The reference ${ref} is not a control of ${a.name}. Take an app_snapshot of ${a.name} and use a reference from it.`);
 			const r = await ask("press", { ref });
@@ -637,7 +637,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 		async app_set_text(args) {
 			const a = await find(args, true);
 			const ref = String(args.ref ?? "").trim().replace(/^\[?ref=|\]$/g, "");
-			if (!ref) throw new Error("Say which field: ref is its reference from app_snapshot, for example e12.");
+			if (!ref) throw new Error("Say which field: ref is the field's reference from app_snapshot, for example e12.");
 			if (typeof args.text !== "string") throw new Error("Say what to write: text is what the field should hold.");
 			const it = await ask("whose", { ref });
 			if (it.pid !== a.pid) throw new Error(`The reference ${ref} is not a control of ${a.name}. Take an app_snapshot of ${a.name} and use a reference from it.`);
@@ -715,7 +715,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 				fs.rmSync(r.file, { force: true });
 			}
 			picture = { width: r.width, height: r.height, x: r.x, y: r.y, w: r.w, h: r.h, dx: 0, dy: 0, ...of };
-			const text = `Picture of ${what}: ${r.width} by ${r.height} pixels. For app_click, app_drag and app_scroll, x and y are pixels in this picture, counted from its top left corner (x from 0 to ${r.width - 1}, y from 0 to ${r.height - 1}).`;
+			const text = `Picture of ${what}: ${r.width} by ${r.height} pixels. For app_click, app_drag and app_scroll, x and y are pixels in this picture, counted from the top left corner (x from 0 to ${r.width - 1}, y from 0 to ${r.height - 1}).`;
 			return [{ type: "text", text }, { type: "image", data: bytes.toString("base64"), mimeType: bytes[0] === 0x89 ? "image/png" : "image/jpeg" }];
 		},
 
@@ -797,7 +797,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 export const HELPER_SOURCE = path.join(import.meta.dirname, "computer.swift");
 
 export const NO_COMPILER =
-	"App control needs Apple's command line developer tools, once, to build its helper, and they are not installed on this Mac. Your owner installs them by typing this into a terminal: xcode-select --install (macOS then shows a window to confirm; it takes a few minutes). Tell your owner this, and try again when they say it is done.";
+	"App control needs Apple's command line developer tools, once, to build the app control helper, and they are not installed on this Mac. Your owner installs them by typing this into a terminal: xcode-select --install (macOS then shows a window to confirm; it takes a few minutes). Tell your owner this, and try again when they say it is done.";
 
 type Run = (file: string, args: string[], ms: number) => Promise<{ code: number; stdout: string; stderr: string }>;
 
@@ -825,7 +825,7 @@ export async function buildHelper(dir: string, source: string = HELPER_SOURCE, r
 	if (built.code !== 0 || !fs.existsSync(tmp)) {
 		fs.rmSync(tmp, { force: true });
 		const why = built.stderr.split("\n").filter((l) => /error/i.test(l)).slice(0, 3).join(" | ") || built.stderr.trim().split("\n").slice(-2).join(" | ");
-		throw new Error(`pine could not build its helper for app control (${why.slice(0, 500) || "the compiler gave no reason"}). Tell your owner: Apple's command line developer tools may be missing a part or need an update; "xcode-select --install" in a terminal installs them.`);
+		throw new Error(`pine could not build the helper for app control (${why.slice(0, 500) || "the compiler gave no reason"}). Tell your owner: Apple's command line developer tools may be missing a part or need an update; "xcode-select --install" in a terminal installs them.`);
 	}
 	// Whole or not at all: another conversation may be starting the same program at this moment.
 	fs.renameSync(tmp, file);

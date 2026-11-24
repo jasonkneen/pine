@@ -181,7 +181,7 @@ test("tui: tabs, slash commands and keys", { skip: process.platform === "win32" 
 	assert.ok(!/4 events/.test(t.text()));
 	t.term.type([KEY.alt(1)]);
 	await t.send("/status");
-	await t.sees("model slots 0/2 busy");
+	await t.sees("model slots 0/8 busy");
 	await t.send("/reset");
 	await t.sees("fresh conversation");
 	await t.send("after reset");
@@ -214,7 +214,7 @@ test("tui: enter on a highlighted suggestion picks it and runs the command", asy
 	t.term.type("/model mo");
 	await t.sees(/→ mock\/m/);
 	t.term.type([KEY.enter]);
-	await t.sees("gonzo now uses mock/m (saved as its model)");
+	await t.sees("gonzo now uses mock/m (saved)");
 	assert.ok(!t.text().includes("is not defined in models.json"));
 	assert.equal(JSON.parse(fs.readFileSync(path.join(t.h.home, "agents", "gonzo", "agent.json"), "utf8")).model, "mock/m", "the choice is written to the agent's configuration");
 	assert.equal(JSON.parse(fs.readFileSync(path.join(t.h.home, "agents", "gonzo", "agent.json"), "utf8")).description, "law", "and the rest of the file is kept");
@@ -386,7 +386,7 @@ test("tui: the mouse works on tabs, their close buttons, the bottom bar and the 
 
 	await click("safe", last());
 	await t.sees("│ Mode for main");
-	await click("asks before every action");
+	await click("asks before each action");
 	await t.sees("main is now in manual mode");
 	await t.sees(/main · main · no folder · mock\/m · reasoning off · manual/);
 
@@ -484,6 +484,54 @@ test("tui: bypass in a conversation that has read outside content is a choice, a
 	// A reset clears the choice together with the taint.
 	await t.send("/reset");
 	await t.sees("fresh conversation");
+	await t.close();
+});
+
+test("tui: a bottom bar without room gives up its figures and then the names, never the mode or the mark of outside content", async () => {
+	const feed = { command: process.execPath, args: [MCP_STUB], env: { MCP_LABEL: "feed" }, taints: true };
+	const t = await open({ agents: { main: { agent: { mcp: { feed } } } } }, [140, 30]);
+	await t.sees("type a message");
+	// A server that takes a moment over the prompt, so that there is a speed to show.
+	await t.send(mockMsg([{ delayMs: 60, tools: [{ name: "mcp__feed__echo", args: { text: "x" } }] }, { delayMs: 60, text: "It is read: forty-two." }]));
+	await t.sees(/^ It is read: forty-two\.$/m);
+	const rate = String.raw`[\d.]+k? t\/s`;
+	// Room for all of it: the names, the mode, the figures, the mark, the hint.
+	await t.sees(new RegExp(`^ main · main · no folder · mock/m · reasoning off · \\w+ · context \\d+% · ↑ ${rate}( ↓ ${rate})? · outside content +/help *$`, "m"));
+	const mode = / · reasoning off · (\w+) · /.exec(t.app.screen().at(-1)!)![1];
+
+	// The same conversation in narrower terminals.
+	const at = async (width: number) => {
+		const term = new FakeTerminal(width, 30);
+		const app = new PineTui({ client: t.app.client, terminal: term });
+		apps.push(app);
+		await app.start();
+		const bar = () => app.screen().at(-1)!.trimEnd();
+		await until(() => /outside content/.test(bar()), 2000, `the mark at ${width} columns: ${bar()}`);
+		return { term, app, bar };
+	};
+	const names = " main · main · no folder · mock/m · reasoning off";
+	const seen: string[] = [];
+	for (const width of [112, 100, 90, 76, 60, 44]) {
+		const narrow = await at(width);
+		// The figures arrive a moment after the mark. From 90 columns on there is room for the first of them.
+		await until(() => width < 90 || /context/.test(narrow.bar()), 2000, `the figures at ${width} columns: ${narrow.bar()}`);
+		const bar = narrow.bar();
+		seen.push(bar);
+		assert.ok([...bar].length <= width, `no wider than the terminal: ${bar}`);
+		assert.match(bar, new RegExp(` · ${mode} · (.* · )?outside content( +/help)?$`), `the mode and the mark, whole, at ${width} columns`);
+		assert.ok(!/t\/s/.test(bar) || /context \d+%/.test(bar), `the speed goes before the context figure: ${bar}`);
+		assert.ok(!/context|t\/s/.test(bar) || bar.startsWith(names), `the figures go before the names are cut: ${bar}`);
+		if (width === 76) assert.equal(bar, `${names} · ${mode} · outside content`, "no figure and no hint, and nothing cut");
+		if (width < 76) assert.ok(bar.startsWith(" main · ") && !bar.startsWith(names) && !/context|t\/s|help/.test(bar), `the names are what is cut: ${bar}`);
+		// A click still lands on what it shows: the mode opens its list.
+		if (width === 60) {
+			narrow.term.click(bar.indexOf(` · ${mode} · `) + 4, narrow.app.screen().length - 1);
+			await until(() => narrow.app.screen().some((l) => l.includes("Mode for main")), 2000, "the list of modes");
+			narrow.term.type([KEY.esc]);
+		}
+		await narrow.app.stop();
+	}
+	assert.ok(seen.some((b) => /context \d+% · outside content/.test(b)), `at some width the context figure is left without the speed:\n${seen.join("\n")}`);
 	await t.close();
 });
 
@@ -716,7 +764,7 @@ test("tui: two values asked for at once are two blocks: a name, what it is, a ba
 	assert.equal(rows()[first - 1], "", "and one before the first");
 	const bars = () => rows().filter((l) => /^>( |$)|^  (•|empty)/.test(l));
 	assert.deepEqual(bars().map((l) => l.trim()), [">", "empty"], "the bar that is not typed into says that it is empty");
-	assert.ok(t.text().includes("Type or paste each one into its bar; tab goes to the next."));
+	assert.ok(t.text().includes("Type or paste each one; tab goes to the next field."));
 
 	t.term.type("abc");
 	await until(() => bars()[0]?.trim() === "> •••");
@@ -791,7 +839,7 @@ test("tui: an event from a subscribed source arrives in the conversation the age
 	await t.send("/sources");
 	await t.sees(/clock custom idle · a tick every second/);
 	await t.send("/subscribe clock say tock");
-	await t.sees("main is subscribed to clock (running). Each event arrives in its main conversation, here, and wakes it.");
+	await t.sees("main is subscribed to clock (running). Each event arrives in the agent's main conversation, here,");
 	// The tick shows up here as an event, not as something typed, and the agent answers it here.
 	await t.sees("⚡ clock: source/clock/tick", 5000);
 	await t.sees(/ECHO\[\[You are subscribed to the event source "clock"/, 5000);
@@ -809,7 +857,7 @@ test("tui: an event from a subscribed source arrives in the conversation the age
 	assert.deepEqual(t.h.pine.cfg.agents.main.subscribe.map((x) => `${x.source}@${x.session}`), ["clock@side"]);
 	await t.sees("⚡ clock: source/clock/tick", 5000);
 	t.term.type([KEY.ctrlW]);
-	await t.sees("closed main·side: its subscription to clock ended with it");
+	await t.sees("closed main·side: the subscription to clock ended with it");
 	assert.deepEqual(t.h.pine.cfg.agents.main.subscribe, []);
 	assert.equal(t.h.pine.sources.list()[0].running, false);
 	await t.close();
@@ -952,7 +1000,7 @@ test("tui: the tab of a pinned conversation has the mark it has in the list", as
 test("tui: an answer's markdown is drawn, not shown raw: code in color without its backticks, diffs red and green, tables aligned, headings without #", async () => {
 	const { Answer } = await import("../src/tui/theme.ts");
 	const { highlightCode, languageOf } = await import("../src/tui/highlight.ts");
-	const plain = (lines: string[]) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+	const plain = (lines: readonly string[]) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
 	const draw = (text: string, width = 70) => new Answer(text).render(width);
 
 	// A diff: removed lines red, added lines green, and no line of backticks around it.
@@ -1000,7 +1048,7 @@ test("tui: an answer's markdown is drawn, not shown raw: code in color without i
 test("tui: a part of an answer that is folded away is one line; a click opens it, a second click folds it again", async () => {
 	const { Answer, markdownTheme } = await import("../src/tui/theme.ts");
 	const { Markdown } = await import("@earendil-works/pi-tui");
-	const plain = (lines: string[]) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+	const plain = (lines: readonly string[]) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
 	const draw = (text: string, width = 70) => plain(new Answer(text).render(width));
 	const click = (a: InstanceType<typeof Answer>, y: number, x = 3) => a.handleMouse({ x, y, button: "left", type: "click" });
 	const letter = "The landlord agrees.\n\n<details><summary>Full message</summary>\n\nDear Ms Okapi,\n\nthe keys are with the **caretaker**, see [the plan](https://example.com/plan).\n\n</details>\n\nThat is all.";
@@ -1205,7 +1253,7 @@ test("tui: what a model thinks is a few lines while it thinks and one line after
 
 	// A thought longer than the window, closed from far down in it: the line that is left is in view.
 	await t.send(mockMsg([{ reasoning: steps(90).replaceAll("step", "long"), text: "Third answer." }]));
-	await t.sees("Third answer.");
+	await t.sees(/^ Third answer\.$/m);
 	// The third thought's own line, once it is drawn: until then the last one may still be the second's.
 	const lastThought = () => rows().flatMap((l, y) => (/▸ thought for/.test(l) ? [y] : [])).at(-1) ?? -1;
 	await until(() => lastThought() > rowOf("Second answer."), 2000, "the third thought to be one line");
@@ -1221,8 +1269,8 @@ test("tui: what a model thinks is a few lines while it thinks and one line after
 	await until(() => !rows().some((l) => l.includes("▾ thought for")) && rows().some((l) => /^ │ long-\d+ /.test(l)), 2000, "the window to be inside the thought");
 	t.term.click(30, rows().findIndex((l) => /^ │ long-\d+ /.test(l)) + 3);
 	await until(() => !rows().some((l) => /^ │ long-\d+ /.test(l)), 2000, "the long thought to close");
-	const left = rows().findIndex((l) => /▸ thought for/.test(l));
-	assert.ok(left >= 0 && rowOf("Third answer.") > left, `the one line that is left is in view, with the answer under it\n${t.text()}`);
+	const left = rows().findLastIndex((l) => /▸ thought for/.test(l));
+	assert.ok(left >= 0 && rows().findIndex((l) => l.startsWith(" Third answer.")) > left, `the one line that is left is in view, with the answer under it\n${t.text()}`);
 	await t.close();
 });
 
@@ -1326,7 +1374,7 @@ test("tui: a message typed while the agent works goes into that work; alt+enter 
 	await t.sees("● bash sleep 0.4; echo again");
 	t.term.type("and this afterwards");
 	t.term.type(["\x1b\r"]);
-	await t.sees("waits its turn");
+	await t.sees("queued");
 	await t.sees("THIRD-DONE");
 	await t.sees("ECHO[and this afterwards]");
 	assert.equal(t.h.pine.tasks.list({}).find((x) => x.prompt === "and this afterwards")!.meta.steered, undefined);
@@ -1535,6 +1583,47 @@ test("tui: an agent's question is a dialog with its answers to pick from; a numb
 	// A run that the owner did not start has nobody to ask: the tool is not there.
 	await t.h.pine.agents.run({ agent: "main", prompt: ask(["a", "b"]), trust: "untrusted" });
 	assert.match(t.h.toolResults().at(-1)!, /Tool question not found/);
+	await t.close();
+});
+
+test("tui: /board shows the conversation's board in the pane beside it: the tasks with who has each, a task in full on a click, and it follows what happens", async () => {
+	const t = await open({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } }, [170, 40]);
+	await t.sees("type a message");
+	await t.send("/board");
+	await t.sees("No board yet.");
+	// A pool of two: the first is done at once, the second takes a while, with a note for both.
+	let finish = false;
+	t.h.mock.state.scripts.one = [{ text: "ONE-RESULT forty rows" }];
+	t.h.mock.state.scripts.two = [{ until: () => finish, text: "TWO-RESULT the sums are right" }];
+	await t.send(mockMsg([{ tools: [{ name: "subagent", args: { pool: true, tasks: ["count the rows @@REF:one@@", "check the sums @@REF:two@@"], note: "USE-TABS in every file" } }] }, { text: "HANDED-OUT and done" }]));
+	// While the second is at work the pane shows the board as it stands, without anybody asking for it again.
+	await t.sees("This conversation's board");
+	await t.sees("✓ #1 count the rows");
+	await t.sees("● #2 check the sums");
+	await t.sees("in progress, a sub-agent of main has it");
+	await t.sees("1 of 2 done");
+	await t.sees("main: USE-TABS in every file");
+	finish = true;
+	await t.sees("HANDED-OUT and done");
+	await t.sees("2 of 2 done");
+	await t.sees("✓ #2 check the sums");
+	// A click on a task shows it in full: what it says, what came of it; and a way back.
+	const row = t.app.screen().findIndex((l) => l.includes("✓ #1 count the rows"));
+	t.term.click(t.app.screen()[row].indexOf("#1 count") + 3, row);
+	await t.sees("‹ back");
+	await t.sees("posted by main · done");
+	await t.sees("Result:");
+	await t.sees("ONE-RESULT forty rows");
+	assert.ok(!t.text().includes("✓ #2 check the sums"), "one task, not the list");
+	const back = t.app.screen().findIndex((l) => l.includes("‹ back"));
+	t.term.click(t.app.screen()[back].indexOf("‹ back") + 2, back);
+	await t.sees("✓ #2 check the sums");
+	// It is one of the pane's views: the same from /code, and its tab is in the pane's head.
+	await t.send("/code files");
+	await until(() => !t.text().includes("This conversation's board"), 4000, "the files view");
+	assert.ok(t.text().includes(" Board "), "the pane names the view");
+	await t.send("/code board");
+	await t.sees("This conversation's board");
 	await t.close();
 });
 

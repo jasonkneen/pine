@@ -77,7 +77,7 @@ function reason(e: unknown): string {
 	if (/leads to an address on your own network/.test(text)) return text;
 	const code = String((e as any)?.code ?? "");
 	if (CODES[code]) return CODES[code];
-	if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ALTNAME/.test(code)) return `its certificate could not be verified (${code})`;
+	if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ALTNAME/.test(code)) return `the server's certificate could not be verified (${code})`;
 	return /^[A-Z_0-9]{3,40}$/.test(code) ? `the connection failed (${code})` : "the connection failed";
 }
 
@@ -94,8 +94,8 @@ const portOf = (v: unknown, fallback: number, what: string): number => {
 };
 
 export const type: SourceType = {
-	summary: "a mailbox (IMAP): reports every new mail with its text and attachments, without marking anything as read. With \"sendTo\" it can also write to the addresses listed",
-	sends: 'an e-mail to an address on its "sendTo" list: {"to": "name@example.com", "subject": "...", "text": "..."}',
+	summary: "a mailbox (IMAP): reports each new mail with the text and attachments, without marking anything as read. With \"sendTo\" it can also write to the addresses listed",
+	sends: 'an e-mail to an address on the source\'s "sendTo" list: {"to": "name@example.com", "subject": "...", "text": "..."}',
 	options: Type.Object(
 		{
 			host: Type.Optional(Type.String({ description: 'the IMAP server of the mailbox, e.g. imap.gmail.com, imap.mail.me.com, imap.fastmail.com. Needed, except with "signIn"' })),

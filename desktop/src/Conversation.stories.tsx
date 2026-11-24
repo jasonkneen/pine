@@ -1,14 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { Approval } from "./api.ts";
-import { Row } from "./Conversation.tsx";
+import { ConversationSkeleton as ConversationSkeletonView, OwnerTurn, Row, Welcome } from "./Conversation.tsx";
 import { type Item, Tab } from "./model.ts";
 
 // A conversation as the app draws it: each item is a Row, the way the transcript lists them.
 // The items are made by hand, as the model would make them from what the daemon says.
 type Made = Item extends infer I ? (I extends Item ? Omit<I, "id" | "v"> : never) : never;
 
-function Items({ items }: { items: Made[] }) {
+function Items({ items, running }: { items: Made[]; /** Tasks at work in the conversation. */ running?: number[] }) {
 	const tab = new Tab("chat", "main", "main");
+	for (const id of running ?? []) tab.running.add(id);
 	for (const item of items) tab.add(item as never);
 	return (
 		<div className="flex w-full max-w-160 flex-col gap-3.5">
@@ -73,8 +74,11 @@ const working: Made[] = [
 			{ p: "child", task: 14, agent: "scout", kind: "delegate", label: "check the links", status: "run", depth: 1 },
 		],
 	},
+	// Messages given to the work while it runs: one it read, one it has not read yet.
+	{ t: "user", text: "keep the config folder", steer: { task: 8, into: 7, read: now } },
+	{ t: "user", text: "how far along are you?", steer: { task: 9, into: 7 } },
 ];
-export const Working: Story = { args: { items: working } };
+export const Working: Story = { args: { items: working, running: [7] } };
 
 /** A long thought that goes on: its box at its full height, at the end of the text, faded above. */
 const reasons = [
@@ -101,7 +105,7 @@ const thinking: Made[] = [
 ];
 export const Thinking: Story = { args: { items: thinking } };
 
-/** What pine says between turns: notes in each tone, an event, the goal, a divider. */
+/** What pine says between turns: notes in each tone, an event, the goal, a swarm, a divider. */
 const notes: Made[] = [
 	{ t: "divider", text: "yesterday" },
 	{ t: "note", tone: "muted", text: "The model changed to mock/m." },
@@ -110,6 +114,8 @@ const notes: Made[] = [
 	{ t: "note", tone: "accent", text: "↶ Taken back: your last message", lines: [{ text: "2 files restored" }, { text: "notes.md was changed since", tone: "warn" }] },
 	{ t: "event", label: "folder · changed", body: "~/notes/today.md was written" },
 	{ t: "goal", goal: { agent: "main", session: "main", objective: "Every link in the notes works", status: "met", note: "met after 2 rounds", round: 2, until: 5, reason: "All twelve links answer." } },
+	{ t: "swarm", swarm: { agent: "main", session: "main", objective: "Write a test file for each module in src/", status: "active", note: "3 tasks are not done: round 2 of 8 starts", round: 2, until: 8 }, full: true },
+	{ t: "swarm", swarm: { agent: "main", session: "main", objective: "Write a test file for each module in src/", status: "done", note: "done after 2 rounds: 16 tasks, and the answer was checked", round: 2, until: 8 } },
 ];
 export const Notes: Story = { args: { items: notes } };
 
@@ -126,3 +132,12 @@ export const PictureLarger: Story = {
 	tags: ["!autodocs"],
 	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: "okapi.svg" })),
 };
+
+/** A conversation that has not loaded yet: its shape, from stock Skeleton blocks. */
+export const ConversationSkeleton: Story = { args: { items: [] }, render: () => <ConversationSkeletonView /> };
+
+/** The owner's turn while it loads. */
+export const OwnerTurnSkeleton: Story = { args: { items: [] }, render: () => <OwnerTurn skeleton /> };
+
+/** Where a conversation begins, while the agent is not known yet. */
+export const WelcomeSkeleton: Story = { args: { items: [] }, render: () => <Welcome skeleton /> };

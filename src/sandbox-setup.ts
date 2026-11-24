@@ -102,7 +102,7 @@ export function sandboxPlan(m: Machine): Plan {
 	} else if (m.bwrap) {
 		// It is installed and nothing pine can change stands in its way.
 		missing.push(`bubblewrap cannot make a sandbox here${m.said ? ` ("${m.said}")` : ""}`);
-		cannot = m.container ? boxed(m.root) : "Ordinary users may not create user namespaces on this system. Its administrator can allow them (often: sysctl kernel.unprivileged_userns_clone=1).";
+		cannot = m.container ? boxed(m.root) : "Ordinary users may not create user namespaces on this system. The system's administrator can allow them (often: sysctl kernel.unprivileged_userns_clone=1).";
 	}
 	if (!cannot && steps.length && !m.root && !m.has("sudo")) cannot = `This needs an administrator, and there is no sudo here. As root, run:\n${steps.map((s) => `  ${shown(s)}`).join("\n")}`;
 	return { ok: false, why: missing.join("; "), steps: cannot ? [] : steps, cannot };

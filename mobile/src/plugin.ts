@@ -51,10 +51,19 @@ export interface PagePrefs {
 export interface StoredPrefs {
 	/** None before the first save: the bridge then uses its defaults. */
 	prefs?: Partial<PagePrefs>;
-	/** Each a host for ssh, as `addHost` accepted it, at most 20. */
+	/**
+	 * Each a host for ssh, as `addHost` accepted it, or a computer paired by its link,
+	 * `paired:<machine id>` (the page's form, desktop/src/machines.ts), as `pair` kept it; at most 20.
+	 */
 	hosts: string[];
 	/** The host in use, one of `hosts`, or none. */
 	use?: string;
+	/**
+	 * The name each paired computer gave when it said yes (`paired:<machine id>` to its name), which
+	 * the page shows in place of the id. None, or none for a machine: the page says "your computer".
+	 * The service a paired computer is reached through is the plugin's own and is not given here.
+	 */
+	names?: Record<string, string>;
 }
 
 /**
@@ -62,8 +71,14 @@ export interface StoredPrefs {
  * (it reads like the desktop's: what happened, and what to do next).
  */
 export interface PinePlugin {
-	/** How the connection to the machine in use is (the desktop's `ServiceState`: only `starting`, `ready`, and `error` with kind `ssh` or `failed` here), whether the event stream is up, and the app's version. */
-	state(): Promise<{ state: ServiceState; connected: boolean; version: string }>;
+	/**
+	 * How the connection to the machine in use is (the desktop's `ServiceState`: only `starting`, `ready`,
+	 * and `error` with kind `ssh` or `failed` here; `starting` with `pairing` while a pairing is open),
+	 * whether the event stream is up, the app's version, and whether this build pairs with a computer
+	 * by its link (`canPair`: true once the platform's native side does; left out, the page offers no
+	 * pairing and is as it was before).
+	 */
+	state(): Promise<{ state: ServiceState; connected: boolean; version: string; canPair?: boolean; canPairNearby?: boolean }>;
 	/** The page has started: send `service` with the state as it is now, and follow the daemon's events (once). */
 	ready(): Promise<void>;
 	/**
@@ -111,8 +126,48 @@ export interface PinePlugin {
 	 * connects again.
 	 */
 	trustHostKey(options: { host: string; fingerprint: string }): Promise<void>;
-	/** Forget the stored host key of a machine (after it changed for a reason the owner knows). */
+	/** Forget the stored host key of a machine (after it changed for a reason the owner knows). The bridge never asks it for a paired computer, whose key is its machine id. */
 	forgetHostKey(options: { host: string }): Promise<void>;
+
+	// Pairing with a computer that runs the Pine app, by the link of its QR code (only where `state()` says `canPair`).
+	/**
+	 * Pair with the computer a pairing link names, after the owner confirmed it in the page: either
+	 * form, `<https service origin>/#pair=<machine id>.<code>` or
+	 * `pine://pair?service=<percent-encoded https origin>&id=<machine id>&code=<code>`. The plugin reads
+	 * it again with the core's own parser and rejects, starting nothing, one that is not exactly of that
+	 * shape (the service `https` only), and while another pairing is open. Resolves once the pairing has
+	 * started; how it goes reaches the page as `service` states, in the web client's words:
+	 * `{status: "starting", pairing: {name}}` (`name`: this phone's, "Pine on <model>"), then
+	 * `{status: "starting", pairing: {code, name}}` once the computer shows the four digits; then either
+	 * the computer said yes, and the plugin keeps `paired:<machine id>` among the machines with the
+	 * computer's name (`names`) and the link's service, makes it the one in use and connects
+	 * (`starting` with `host`, then `ready`); or it did not, and the state is `{status: "error", kind:
+	 * "ssh", message}` with no `host` (refused, expired or used, not the computer the link names, no way
+	 * to it), nothing kept. Nothing of the link is stored but on a yes, and the code never.
+	 */
+	pair(options: { link: string }): Promise<void>;
+	/** End the pairing that is open, nothing kept: the state is then what it was before the pairing began. Resolves at once when none is open. */
+	cancelPairing(): Promise<void>;
+
+	// Pairing with a computer found on the local network (only where `state()` says `canPairNearby`).
+	/**
+	 * Start (`on: true`) or stop looking for computers that announce themselves on this network with
+	 * Bonjour (`_pine._tcp`, NearbyFound in desktop/src/machines.ts): Android's NsdManager, iOS's
+	 * NWBrowser. Called only while the page shows the pairing view, so that iOS asks for the local
+	 * network only then, never at launch. What is found reaches the page as `nearby` events.
+	 */
+	nearby(options: { on: boolean }): Promise<void>;
+	/**
+	 * Pair with a computer found on the network, without a code: as `pair`, but the SSH user is
+	 * `nearby.<nonce>` (desktop/electron/access/pairing.ts `NEARBY_USER`), the nonce the announcement
+	 * carried, which only a device on that network hears. `id` is the machine id the announcement carried,
+	 * `service` the https origin of its meeting service. The host key is checked against `id` as for a
+	 * link: an announcement is not trusted, the four digits are what the owner compares. The computer
+	 * then states its service with the digits; a pairing whose announcement named another one is
+	 * refused, and the stated one is kept. The states are `pair`'s, with the computer's name once the
+	 * computer gave it (`pairing.computer`). Rejects an id, a service or a nonce of another shape, and a second pairing.
+	 */
+	pairNearby(options: { id: string; service: string; nonce: string }): Promise<void>;
 
 	/** The page's state of the connection changed (as `pine:service` on the desktop). */
 	addListener(event: "service", fn: (data: { state: ServiceState }) => void): Promise<PluginListenerHandle>;
@@ -124,4 +179,17 @@ export interface PinePlugin {
 	addListener(event: "focus", fn: (data: { focused: boolean }) => void): Promise<PluginListenerHandle>;
 	/** A command for the page, as the desktop's menu sends it (`pine:menu`): the back button sends "back", which the bridge handles itself. */
 	addListener(event: "menu", fn: (data: { command: string }) => void): Promise<PluginListenerHandle>;
+	/**
+	 * The app was opened with a pairing link (Android's App Link, iOS's `pine:` address), as the
+	 * system handed it over, at the start or while the app runs. It starts nothing: the page asks the
+	 * owner, and only their yes calls `pair`. Sent with Capacitor's `retainUntilConsumed`, so that a
+	 * link the app was started with waits for the page's listener. Only where `canPair`.
+	 */
+	addListener(event: "link", fn: (data: { link: string }) => void): Promise<PluginListenerHandle>;
+	/**
+	 * The computers found on the network, all of them each time the list changes (none at first), while
+	 * `nearby({on: true})`. `denied`: the system refused the local network to the app (iOS), so that
+	 * nothing can be found until the owner allows it in Settings > Pine.
+	 */
+	addListener(event: "nearby", fn: (data: { computers: { id: string; service: string; nonce: string }[]; denied?: boolean }) => void): Promise<PluginListenerHandle>;
 }

@@ -24,10 +24,48 @@ export function builtApp(): Promise<string> {
 	return built;
 }
 
-/** The app of this run, started with this environment. */
+/**
+ * The app of this run, started with this environment, without a screen: its window is drawn and
+ * never shown (PINE_DESKTOP_HEADLESS, electron/main.ts), so a run takes neither the owner's screen
+ * nor their pointer and keys, and theirs never reach a test. A test that has to measure the real
+ * window hands in `PINE_DESKTOP_HEADLESS: ""`; `PINE_DESKTOP_SHOW=1` shows the window of every test, to watch one.
+ */
 export async function launchApp(env: Record<string, string | undefined>): Promise<ElectronApplication> {
+	const all = { ...env, PINE_DESKTOP_HEADLESS: process.env.PINE_DESKTOP_SHOW ? "" : (env.PINE_DESKTOP_HEADLESS ?? "1") };
 	// Electron takes only set variables; a spread of process.env may hold unset ones.
 	const set: Record<string, string> = {};
-	for (const [name, value] of Object.entries(env)) if (value !== undefined) set[name] = value;
-	return electron.launch({ args: [await builtApp()], env: set });
+	for (const [name, value] of Object.entries(all)) if (value !== undefined) set[name] = value;
+	const app = await electron.launch({ args: [await builtApp()], env: set });
+	await quiet(app);
+	return app;
+}
+
+/**
+ * What the app would do in the owner's own session is noted instead, in `globalThis.quiet` of the
+ * main process: a notification (with its sound), text on the clipboard, an address opened in the
+ * browser, a file shown in the Finder, the app set to open at login, and a dialog of the system's,
+ * which is answered as if it was cancelled. A test that is about one of them replaces it again.
+ */
+async function quiet(app: ElectronApplication): Promise<void> {
+	await app.evaluate(({ app, clipboard, dialog, Notification, shell }: any) => {
+		const noted = ((globalThis as any).quiet = { notified: [] as unknown[], opened: [] as string[], revealed: [] as string[], login: [] as unknown[], dialogs: [] as unknown[], clipboard: "" });
+		Notification.prototype.show = function (this: any) {
+			noted.notified.push({ title: this.title, body: this.body });
+		};
+		clipboard.writeText = (text: string) => void (noted.clipboard = String(text));
+		clipboard.readText = () => noted.clipboard;
+		shell.openExternal = async (url: string) => void noted.opened.push(url);
+		shell.openPath = async (file: string) => (noted.opened.push(file), "");
+		shell.showItemInFolder = (file: string) => void noted.revealed.push(file);
+		shell.beep = () => {};
+		app.setLoginItemSettings = (settings: unknown) => void noted.login.push(settings);
+		const cancelled = (...args: any[]) => {
+			const options = args.at(-1) ?? {};
+			noted.dialogs.push(options);
+			return Promise.resolve({ canceled: true, filePaths: [], filePath: "", response: options.cancelId ?? (options.buttons?.length ?? 1) - 1, checkboxChecked: false });
+		};
+		dialog.showOpenDialog = cancelled;
+		dialog.showSaveDialog = cancelled;
+		dialog.showMessageBox = cancelled;
+	});
 }

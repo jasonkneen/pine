@@ -24,7 +24,8 @@ export interface Service {
 	host?: string;
 	/** A short name for that machine. */
 	label?: string;
-	stop(): Promise<void>;
+	/** Stops a daemon this app started (and ends the connection to another machine). `kept`: one that was to go on past the app is stopped too, as an update needs. */
+	stop(kept?: boolean): Promise<void>;
 }
 
 export class ServiceError extends Error {
@@ -174,6 +175,20 @@ export function pineRoot(launch: Launch): string | undefined {
 	}
 }
 
+/**
+ * The version of the pine the app runs, as its package says: in a packed app the pine it carries,
+ * whose version is the app's. Undefined when it cannot be told.
+ */
+export function pineVersion(launch: Launch): string | undefined {
+	const root = pineRoot(launch);
+	try {
+		const version = root ? JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version : undefined;
+		return typeof version === "string" ? version : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 /** Run a pine command to its end and hand on what it prints, line by line. For `pine init` on a first start. */
 export function runPine(launch: Launch, args: string[], onLine: (line: string) => void, extraEnv: NodeJS.ProcessEnv = {}): Promise<number> {
 	return new Promise((resolve) => {
@@ -229,7 +244,7 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
 			try {
 				said = JSON.parse(out.slice(0, end));
 			} catch {
-				return fail(new ServiceError("failed", `pine answered with something that is not its service line: ${out.slice(0, 200)}`));
+				return fail(new ServiceError("failed", `pine answered with something other than the expected service line: ${out.slice(0, 200)}`));
 			}
 			if (said.error) return fail(new ServiceError(/pine init|no pine home/i.test(said.error) ? "no-home" : "failed", String(said.error)));
 			settled = true;
@@ -247,8 +262,8 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
 				started: said.started === true,
 				home: String(said.home ?? opts.home ?? ""),
 				version: typeof said.version === "string" ? said.version : undefined,
-				stop: async () => {
-					if (gone || opts.keep) return;
+				stop: async (kept?: boolean) => {
+					if (gone || (opts.keep && !kept)) return;
 					// Its input is the leash: closed, the daemon stops its agents and closes its database, and
 					// ends within ten seconds. That works on every system: on Windows a signal is no request
 					// but the end of the process, and the database would be left open. One that does not end

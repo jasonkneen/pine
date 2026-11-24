@@ -153,7 +153,7 @@ const dayBefore = (day: string) => {
 /** A calendar's name and its entries. Throws for a document that is no calendar. */
 export function parseCalendar(body: string): { name: string; items: Item[] } {
 	const text = body.replace(/^﻿/, "");
-	if (!/^\s*BEGIN:VCALENDAR/im.test(text)) throw new Error(/^\s*<(!doctype html|html)\b/i.test(text) ? "that address is a web page, not a calendar. The calendar itself has an address of its own, which usually ends in .ics: calendar services show it as the iCal or subscription address" : "what it answers is not a calendar (iCalendar, .ics)");
+	if (!/^\s*BEGIN:VCALENDAR/im.test(text)) throw new Error(/^\s*<(!doctype html|html)\b/i.test(text) ? "that address is a web page, not a calendar. The calendar itself has a separate address, which usually ends in .ics: calendar services show it as the iCal or subscription address" : "what it answers is not a calendar (iCalendar, .ics)");
 	// A long line is continued on the next one, which then begins with a space.
 	const lines = text.replace(/\r\n?/g, "\n").replace(/\n[ \t]/g, "").split("\n");
 	const open: string[] = [];

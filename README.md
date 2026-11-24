@@ -25,7 +25,7 @@ PINE of course also handles regular chat, coding, tasks and orchestration. Agent
 - **No configs:** Tell the main agent what you want. It configures PINE, creates agents, MCPs, event sources, skills and schedules through administrative tool calls, never touches user config, never messes it up or breaks it.
 - **Self-discovery:** A built-in BM25 manual tool lets agents look up any API or internal detail on demand, without carrying docs in context.
 - **A CLI that feels like a desktop app:** Tabs, buttons, scroll regions, inline images and video, and drag-and-drop with thumbnails. Works in Kitty-protocol terminals like Ghostty, with fallbacks for older ones.
-- **Built in:** Computer use (macOS), web browsing, coding tools, diffs and git, undo, plan mode and goals (`/goal` keeps an agent working until it is done).
+- **Built in:** Computer use (macOS), web browsing, coding tools, diffs and git, undo, plan mode, goals (`/goal` keeps an agent working until it is done) and swarms (`/swarm` has an agent lead a job that its sub-agents work through on a board, with the result checked).
 - **Orchestration:** Agents can delegate, create sub-agents in parallel. A pinned tab simply persists an agent and its task. Name it, give it instructions, chat with it or subscribe it to events.
 
 > [!IMPORTANT]
@@ -116,9 +116,10 @@ be installed, and it gives your shell the `pine` command. From a checkout:
 npm run desktop
 ```
 
-On an Android phone or an iPhone, the Pine app shows the pine of a machine you reach over SSH
-(your Mac, a server): the same page, with its own SSH key and no pine on the phone. Each release
-has it as an APK and as an IPA to sideload with your own Apple ID
+On an Android phone or an iPhone, the Pine app shows the pine of another machine, over SSH (your
+Mac, a server) or paired with the Pine app by QR code: the same page, with its own SSH key and no
+pine on the phone. Each release
+has it as an APK; the IPA to sideload with your own Apple ID is built by hand for now
 ([mobile.md](docs/references/mobile.md)).
 
 To get a newer version later, with whatever it needs:
@@ -192,15 +193,17 @@ Start at [docs/SKILL.md](docs/SKILL.md); it indexes everything.
 | --------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Understand how the pieces fit                                                           | [overview.md](docs/references/overview.md)                   |
 | Use the terminal UI                                                                     | [tui.md](docs/references/tui.md)                             |
-| Use the desktop app (macOS, Linux, Windows): conversations, an editor, and a settings panel in one window | [desktop.md](docs/references/desktop.md)                     |
-| Use pine from an Android phone or an iPhone, over SSH                                   | [mobile.md](docs/references/mobile.md)                       |
-| Use your pine from a web browser on any computer, over SSH, with nothing installed       | [web.md](docs/references/web.md)                             |
+| Use the desktop app (macOS, Linux, Windows): conversations, an editor, and a settings panel in one window; browser access for a phone paired by QR code or found on the same network, with a relay server (TURN) of your own where mobile data cannot connect directly | [desktop.md](docs/references/desktop.md)                     |
+| Write a view: a script of your own that draws all of pine in the Pine app's panel, what it is told and what it cannot do | [views.md](docs/references/views.md) |
+| Use pine from an Android phone or an iPhone, over SSH or paired with the Pine app by QR code or on the same network | [mobile.md](docs/references/mobile.md)                       |
+| Use your pine from a web browser on any computer, over SSH or paired with the Pine app by QR code, with nothing installed | [web.md](docs/references/web.md)                             |
 | Work on a project: `pine .`, the code pane with git changes, files and tool output, `/undo` | [coding.md](docs/references/coding.md)                       |
 | Let an agent make a web page you click in, as its user interface, and be woken by what you press | [interfaces.md](docs/references/interfaces.md)               |
 | Install, run, use the CLI, run it as a service                                          | [operations.md](docs/references/operations.md)               |
 | Write `pine.json` and `agent.json`                                                      | [configuration.md](docs/references/configuration.md)         |
 | Let agents set things up by tool call instead of editing files                          | [setup.md](docs/references/setup.md)                         |
 | Set up agents, delegation and sub-agents; how tools are declared and what stays cached   | [agents.md](docs/references/agents.md)                       |
+| Let sub-agents and agents work through shared tasks on a board, run a pool of sub-agents, and lead a job as a swarm (`/swarm`) | [boards.md](docs/references/boards.md)                       |
 | Route events, schedules, model calls                                                    | [events.md](docs/references/events.md)                       |
 | Event sources: setting one up, subscribing, sending, secrets, trust                     | [sources.md](docs/references/sources.md)                     |
 | Every source type: Telegram, folders, MQTT, web addresses, feeds, mail, Slack, cameras  | [source-types.md](docs/references/source-types.md)           |

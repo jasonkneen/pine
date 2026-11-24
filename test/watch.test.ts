@@ -146,9 +146,9 @@ test("http and command by asking: the type says what it will do, the owner confi
 	assert.deepEqual(asked.map((a) => a.tool), ["add_source", "add_source"], "what cannot work is answered before the owner is asked anything");
 	assert.match(asked[0].summary, new RegExp(`It will: ask ${web.base.replace(/\./g, "\\.")}/price \\(an address on your own network or this computer\\) every 30s and report when the field data\\.price of what it answers changes, and when it stops or starts answering\\.`));
 	assert.deepEqual(asked[0].inputs.map((i: any) => i.name), ["token"]);
-	assert.match(asked[1].summary, /It will: run this command every 1m, unattended, with the rights of main's shell \(its sandbox\): df -h \/; report when what \/\(\[0-9\]\+\)%\/ finds in what it prints or its exit code changes\./);
+	assert.match(asked[1].summary, /It will: run this command every 1m, unattended, with the rights of main's shell \(the agent's sandbox\): df -h \/; report when what \/\(\[0-9\]\+\)%\/ finds in what it prints or the exit code changes\./);
 	const done = h.toolResults().slice(-2);
-	assert.match(done[0], /Added the event source "price" \(http\)\. Its first look is the starting point and reports nothing; from then on only a change does\./);
+	assert.match(done[0], /Added the event source "price" \(http\)\. The first look is the starting point and reports nothing; from then on only a change does\./);
 	const entry = JSON.parse(fs.readFileSync(path.join(h.home, "agents", "main", "agent.json"), "utf8")).sources;
 	assert.equal(entry.price.token, "${PINE_SOURCE_PRICE_MAIN_TOKEN}");
 	assert.ok(!JSON.stringify(h.mock.state.requests).includes("typed-by-the-owner-123"), "the token never passes a model");

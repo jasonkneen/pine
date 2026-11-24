@@ -225,7 +225,7 @@ test("slack, read: an answer in a thread comes with what it answers, and an agen
 	assert.match(thread, new RegExp(`^The thread ${T.replace(".", "\\.")} in the direct conversation ${DM}, oldest first\\.\n\n\\[\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d\\] Paul Owner \\(ts ${T.replace(".", "\\.")}\\): I hooked the gripper camera up to the PDM through an MCP server\n`));
 	assert.equal(thread.split("\n").filter((x) => x.startsWith("[")).length, 5);
 	const dm = await read({ channel: DM, limit: 1 });
-	assert.match(dm, /^The last 1 message in the direct conversation D00000000DM, oldest first\. There is more before these: the same call with "before": "1700000100\.000100"\. To read a thread: the same call with "thread" set to its ts\.\n\n\[.*\] Paul Owner \(ts 1700000100\.000100, a thread with 3 answers\): I hooked/);
+	assert.match(dm, /^The last 1 message in the direct conversation D00000000DM, oldest first\. There is more before these: the same call with "before": "1700000100\.000100"\. To read a thread: the same call with "thread" set to the message's ts\.\n\n\[.*\] Paul Owner \(ts 1700000100\.000100, a thread with 3 answers\): I hooked/);
 	assert.match(await read({ channel: DM, before: T }), /\] Anna \(ts 1700000050\.000100\): morning$/);
 	const ops = await read({ channel: OPS });
 	assert.match(ops, /^The last 2 messages in the channel ops C0000000OPS, oldest first\.[\s\S]*\] Anna \(ts 1700000300\.000100\): deploy at five\n\[.*\] GitHub \(ts 1700000320\.000100\): Build failed$/);
@@ -407,7 +407,7 @@ test("slack: what apps post counts with \"bots\", never the app's own; \"me\" is
 	assert.deepEqual(lists.slice(0, 3).map((c) => [c.body.types, c.body.cursor]), [["public_channel,private_channel", undefined], ["public_channel", undefined], ["public_channel", "page-two"]]);
 	// What cannot work is why a source does not start, said so that it can be put right.
 	assert.match(sourceInfo(h, "lost").error!, /^there is no channel named "nope" that the app can see\. Check the spelling, invite the app to a private channel \(\/invite\), or give the channel's id$/);
-	assert.match(sourceInfo(h, "nameless").error!, /a channel given by its name \(ops\) has to be looked up, and this source has no token for that/);
+	assert.match(sourceInfo(h, "nameless").error!, /a channel given by name \(ops\) has to be looked up, and this source has no token for that/);
 	assert.match(sourceInfo(h, "meless").error!, /"me" is the account the token belongs to, and this source has no token/);
 	assert.match(sourceInfo(h, "keyless").error!, /^Slack does not take the token \(invalid_auth\)\. A bot token/);
 	for (const name of ["lost", "nameless", "meless", "keyless"]) assert.equal(sourceInfo(h, name).running, false);
@@ -625,7 +625,7 @@ test("slack: a cap on reports, Slack's \"slow down\" is waited out, and an agent
 	await assert.rejects(send({ channel: OPS, text: " " }), /there is nothing to send: give "text"/);
 	await assert.rejects(send({ text: "where to?" }), /say where to: \{"channel": "\.\.\.", "text": "\.\.\."\}/);
 	// What Slack refuses is said in its word, with what to do about it.
-	await assert.rejects(send({ channel: DEV, text: "x" }), /^Error: Slack refused chat\.postMessage: not_in_channel\. The app is not in that channel: somebody there writes \/invite and its name$/);
+	await assert.rejects(send({ channel: DEV, text: "x" }), /^Error: Slack refused chat\.postMessage: not_in_channel\. The app is not in that channel: somebody there writes \/invite and the app's name$/);
 	await assert.rejects(send({ channel: OPS, text: "x" }, "mute"), /this source has no bot or user token, so it cannot send/);
 	// Slack names where a file is uploaded to. The token goes along with that request, so an address that is not Slack's gets none.
 	slack.state.upload = elsewhere.site.base;
@@ -1180,7 +1180,7 @@ test("slack, matrix and discord by asking: ids are checked, tokens are typed int
 	const expected = [
 		// Where an agent may write is said by id: a name can be given to another channel tomorrow.
 		/"sendTo" takes ids, not names: general is not one\. It says where the agent may write, and a name can come to mean another place\. A channel's id starts with C/,
-		/a server of your own in its place must be reached over https, or run on this machine/,
+		/a server of your own in that place must be reached over https, or run on this machine/,
 		/there is no NOPE in pine's \.env file/,
 		/a homeserver that is not on your own network must be reached over https:\/\//,
 		/"rooms" takes room ids, which start with "!": #family:matrix\.org is not one/,

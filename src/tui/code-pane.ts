@@ -3,17 +3,18 @@ import path from "node:path";
 import { type Component, ScrollView, truncateToWidth, visibleWidth, VStack, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { TranscriptEntry } from "../types.ts";
 import { errText, programName, since } from "../util.ts";
-import type { Client } from "./client.ts";
+import type { BoardItem, BoardView, Client } from "./client.ts";
 import { highlightCode } from "./highlight.ts";
 import { halfBlocks, isImageFile, prepare } from "./picture.ts";
 import { c } from "./theme.ts";
 
 // The pane beside a conversation: what changed in its folder according to git, the files there,
-// and what the agent's tool calls printed. It only shows; nothing in it changes a file or reaches
+// what the agent's tool calls printed, what its commands left running, and its boards: the tasks
+// a job is split into, who has each and what came of it. It only shows; nothing in it changes a file or reaches
 // a model. Everything is read through the control API, so it works the same on an attached daemon.
 
-export type PaneView = "changes" | "files" | "output" | "running";
-export const PANE_VIEWS: PaneView[] = ["changes", "files", "output", "running"];
+export type PaneView = "changes" | "files" | "output" | "running" | "board";
+export const PANE_VIEWS: PaneView[] = ["changes", "files", "output", "running", "board"];
 
 /** The conversation a pane shows. */
 export interface PaneTarget {
@@ -58,6 +59,10 @@ interface State {
 	programs?: Awaited<ReturnType<Client["programs"]>>;
 	/** A program that was just asked to stop: shown as stopping until it is gone from the list. */
 	stopping?: Set<number>;
+	/** The boards the conversation can use, its own first, each with what is on it. */
+	boards?: BoardView[];
+	/** The task that is shown in full. */
+	task?: number;
 }
 
 const tilde = (p: string) => (p === os.homedir() ? "~" : p.startsWith(`${os.homedir()}/`) ? `~${p.slice(os.homedir().length)}` : p);
@@ -97,7 +102,7 @@ class Rows implements Component {
 		return { handled: true, render: true };
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		if (this.cache?.width === width && this.cache.rows === this.rows) return this.cache.lines;
 		const lines: string[] = [];
 		this.owner = [];
@@ -184,6 +189,7 @@ export class CodePane {
 			s.diff = undefined;
 			s.file = undefined;
 			s.call = undefined;
+			s.task = undefined;
 		}
 		this.scroll.scrollToStart();
 		void this.load(true);
@@ -255,6 +261,12 @@ export class CodePane {
 				s.dirs = dirs;
 				s.root = root;
 				if (s.file) s.file.rows = file;
+			} else if (s.view === "board") {
+				// The conversation's own board first, then those with a name that it can use: a handful at most.
+				const briefs = (await this.client.boards(t.agent, t.session)).slice(0, 6);
+				const views = (await Promise.all(briefs.map((b) => this.client.board(b.id).catch(() => undefined)))).filter((v): v is BoardView => Boolean(v));
+				if (turn !== this.turn) return;
+				s.boards = views;
 			} else if (s.view === "running") {
 				const programs = await this.client.programs(t.agent, t.session);
 				if (turn !== this.turn) return;
@@ -322,6 +334,7 @@ export class CodePane {
 		else if (s.view === "changes") this.changesRows(s, rows);
 		else if (s.view === "files") this.filesRows(s, rows);
 		else if (s.view === "running") this.runningRows(s, rows);
+		else if (s.view === "board") this.boardRows(s, rows);
 		else this.outputRows(s, rows);
 		this.rows.rows = rows;
 		this.redraw();
@@ -338,7 +351,7 @@ export class CodePane {
 			if (!s.diff.lines) rows.push({ text: c.gray("reading …") });
 			else if (!s.diff.lines.length) rows.push({ text: c.gray("nothing to show for this file (a binary file, or no difference any more)") });
 			else for (const text of s.diff.lines) rows.push({ text, wrap: true });
-			if (s.diff.truncated) rows.push({ text: c.gray("… the diff goes on; this is its first 200 000 characters") });
+			if (s.diff.truncated) rows.push({ text: c.gray("… the diff goes on; these are the first 200 000 characters") });
 			return;
 		}
 		rows.push({ text: `${c.bold("by your last message")} ${c.gray("·")} ${c.accent("▸ since the last commit")}`, run: () => this.go((x) => ((x.scope = undefined), (x.diff = undefined))) });
@@ -372,7 +385,7 @@ export class CodePane {
 			if (!s.diff.lines) rows.push({ text: c.gray("reading …") });
 			else if (!s.diff.lines.length) rows.push({ text: c.gray(entry ? "nothing to show for this file (a folder, or a binary file)" : "no difference to the last commit any more") });
 			else for (const text of s.diff.lines) rows.push({ text, wrap: true });
-			if (s.diff.truncated) rows.push({ text: c.gray("… the diff goes on; this is its first 200 000 characters") });
+			if (s.diff.truncated) rows.push({ text: c.gray("… the diff goes on; these are the first 200 000 characters") });
 			return;
 		}
 		if (!ch.files.length) return void rows.push({ text: c.gray("Nothing has changed since the last commit.") });
@@ -405,6 +418,47 @@ export class CodePane {
 		};
 		walk("", 0);
 		if (!rows.length) rows.push({ text: c.gray("This folder is empty.") });
+	}
+
+	/**
+	 * The conversation's boards: for each how its tasks stand, then every task with who has it, and under the tasks
+	 * the notes left there. A click on a task shows it in full, with what came of it and the notes about it. What
+	 * stands on a board was written by agents, some of it after they read outside content: it is shown as plain
+	 * text and marked where it is such content, and nothing here acts on it.
+	 */
+	private boardRows(s: State, rows: Row[]): void {
+		if (!s.boards) return void rows.push({ text: c.gray(s.loading ?? "") });
+		if (!s.boards.length) return void rows.push({ text: c.gray("No board yet. When the agent splits a job into tasks for its sub-agents (a pool, or a swarm with /swarm), they are listed here with who has each and what came of it."), wrap: true });
+		const shown = s.task !== undefined ? s.boards.flatMap((v) => v.tasks.map((t) => ({ v, t }))).find((x) => x.t.id === s.task) : undefined;
+		if (shown) return this.taskRows(shown.v, shown.t, rows);
+		for (const v of s.boards) {
+			const n = v.board.counts;
+			const all = n.open + n.taken + n.done + n.failed + n.blocked;
+			rows.push({ text: `${c.bold(boardTitle(v))} ${c.gray(all ? `${n.done} of ${all} done` : "no tasks")}` });
+			const parts = [n.taken ? c.yellow(`${n.taken} in progress`) : "", n.blocked ? c.yellow(`${n.blocked} waiting for an answer`) : "", n.open ? `${n.open} to do` : "", n.failed ? c.red(`${n.failed} failed`) : "", n.notes ? c.gray(`${n.notes} note${n.notes === 1 ? "" : "s"}`) : ""].filter(Boolean);
+			if (parts.length) rows.push({ text: `  ${parts.join(c.gray(" · "))}` });
+			for (const t of v.tasks.slice(-200)) rows.push({ text: `${taskMark(t)} ${c.gray(`#${t.id}`)} ${oneLine(t.text)}`, run: () => this.go((x) => (x.task = t.id)) }, { text: c.gray(`    ${taskState(t)}`) });
+			if (v.tasks.length > 200) rows.push({ text: c.gray(`  the newest 200 of ${v.tasks.length} tasks`) });
+			const notes = v.notes.filter((x) => x.about === undefined).slice(-12);
+			if (notes.length) rows.push({ text: c.gray("  notes for all") });
+			for (const x of notes) rows.push({ text: `${oneLine(x.text, 600)}`, gutter: c.gray(`  ${who(x)}: `), wrap: true });
+			rows.push({ text: "" });
+		}
+	}
+
+	/** One task in full: what it says, how it stands, what came of it, and the notes about it. */
+	private taskRows(v: BoardView, t: BoardItem, rows: Row[]): void {
+		rows.push(this.back(`task #${t.id}`, (x) => (x.task = undefined)));
+		rows.push({ text: c.gray(`${boardTitle(v)} · posted by ${who(t)} · ${taskState(t)}${t.outside ? " · holds outside content" : ""}`), wrap: true });
+		rows.push({ text: "" });
+		for (const line of plain(t.text).split("\n")) rows.push({ text: line, wrap: true });
+		if (t.result) {
+			rows.push({ text: "" }, { text: c.gray(t.state === "blocked" ? "It asks:" : t.state === "failed" ? "Why it failed:" : "Result:") });
+			for (const line of plain(t.result).split("\n")) rows.push({ text: line, wrap: true });
+		}
+		const about = v.notes.filter((x) => x.about === t.id);
+		if (about.length) rows.push({ text: "" }, { text: c.gray("Notes about it:") });
+		for (const x of about) rows.push({ text: oneLine(x.text, 1200), gutter: c.gray(`${who(x)}: `), wrap: true });
 	}
 
 	/** A server or another program that the conversation's commands started and that is still there, each with a way to stop it. */
@@ -518,6 +572,30 @@ export class CodePane {
 			c.gray("─".repeat(width)),
 		];
 	}
+}
+
+// ---- boards -------------------------------------------------------------------------------------
+
+const oneLine = (text: string, max = 300) => {
+	const flat = plain(text).replace(/\s+/g, " ").trim();
+	return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+};
+/** What a board is called: its name, or whose it is. */
+const boardTitle = (v: BoardView) => (v.board.name ? `Board "${plain(v.board.name)}"${v.board.scope === "global" ? " (all agents)" : ` (${v.board.agent})`}` : "This conversation's board");
+const who = (x: BoardItem) => (x.by === "owner" ? "you" : x.by);
+/** A task's mark: open, in progress, waiting for an answer, done, failed. */
+const taskMark = (t: BoardItem) => (t.state === "done" ? c.green("✓") : t.state === "failed" ? c.red("✗") : t.state === "blocked" ? c.yellow("?") : t.state === "taken" ? c.yellow("●") : c.gray("○"));
+/** How a task stands, in words: who has it, what it waits for, whether it is a check. */
+function taskState(t: BoardItem): string {
+	const check = t.data?.check === "job" ? "a check of the whole" : typeof t.data?.check === "number" ? `a check of #${t.data.check}` : "";
+	const state =
+		t.state === "taken" ? `in progress${t.sub ? `, a sub-agent of ${t.holder ?? "the agent"} has it` : t.holder ? `, ${t.holder} has it` : ""}`
+		: t.state === "blocked" ? "waiting for an answer"
+		: t.state === "open" ? (t.waits.length ? `waiting for ${t.waits.map((n) => `#${n}`).join(", ")}` : "to do")
+		: t.state === "done" ? "done"
+		: t.state === "failed" ? "failed"
+		: "";
+	return [check, state].filter(Boolean).join(" · ");
 }
 
 const STATUS: Record<string, string> = { M: "changed", A: "added", D: "deleted", R: "renamed", "?": "new, not tracked by git yet" };

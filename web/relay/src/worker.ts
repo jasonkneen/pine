@@ -1,6 +1,7 @@
 // The Worker: the relay at /ssh, with Cloudflare's own connect(), WebSocket pair and a name
-// lookup over DNS-over-HTTPS, and the web client's built files beside it (site.ts). Everything
-// the relay decides is in relay.ts.
+// lookup over DNS-over-HTTPS, the meeting service at /meet/ (one Durable Object per machine id),
+// and the web client's built files beside them (site.ts). Everything the relay decides is in
+// relay.ts, and everything the meeting decides in meet.ts.
 import { connect } from "cloudflare:sockets";
 import { relay } from "./relay.ts";
 import { site, type SiteEnv } from "./site.ts";
@@ -28,15 +29,19 @@ async function resolve(name: string): Promise<string[]> {
 	return (await Promise.all(lookups)).flat();
 }
 
+const upgrade = () => {
+	const pair = new WebSocketPair();
+	return { socket: pair[1], response: new Response(null, { status: 101, webSocket: pair[0] }) };
+};
+
 const handle = relay({
 	// allowHalfOpen: false is connect()'s own default, which its type wants written out.
 	connect: (address, options) => (options ? connect(address, { ...options, allowHalfOpen: false }) : connect(address)),
 	resolve,
-	upgrade: () => {
-		const pair = new WebSocketPair();
-		return { socket: pair[1], response: new Response(null, { status: 101, webSocket: pair[0] }) };
-	},
+	upgrade,
 	timeoutMs: 5000,
 });
 
-export default { fetch: site(handle) } satisfies ExportedHandler<SiteEnv>;
+export { Meeting } from "./meet-object.ts";
+
+export default { fetch: site({ relay: handle, upgrade }) } satisfies ExportedHandler<SiteEnv>;

@@ -38,6 +38,22 @@ export function parseReply(raw: string): { text: string; tool_calls: Array<{ nam
 			// fall through: treat the whole reply as text
 		}
 	}
+	// A model that writes its calls the way it does with tools of its own (an <invoke name="..."> block with a
+	// <parameter> for each argument) meant the same thing. A value that reads as JSON is taken as JSON, the rest as text.
+	const invokes = [...raw.matchAll(/<(?:\w+:)?invoke name="([^"]+)">([\s\S]*?)<\/(?:\w+:)?invoke>/g)];
+	if (invokes.length) {
+		const value = (v: string) => {
+			const t = v.trim();
+			if (!/^(\[|\{|-?\d+(\.\d+)?$|true$|false$|null$)/.test(t)) return t;
+			try {
+				return JSON.parse(t);
+			} catch {
+				return t;
+			}
+		};
+		const text = raw.slice(0, invokes[0].index).replace(/<\/?(?:\w+:)?(?:function_calls|tool_calls)>/g, "").trim();
+		return { text, tool_calls: invokes.map((m) => ({ name: m[1], arguments: Object.fromEntries([...m[2].matchAll(/<(?:\w+:)?parameter name="([^"]+)">([\s\S]*?)<\/(?:\w+:)?parameter>/g)].map((p) => [p[1], value(p[2])])) })) };
+	}
 	return { text: raw.trim(), tool_calls: [] };
 }
 

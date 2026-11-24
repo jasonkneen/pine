@@ -1,7 +1,7 @@
 # Themes
 
 Each `.json` file here is a VS Code color theme, and a theme pine can draw: pick one in the Pine
-app (Settings > App), or set `ui.theme` in `pine.json` to its file name without `.json`. Put any
+app (Settings > General), or set `ui.theme` in `pine.json` to its file name without `.json`. Put any
 other VS Code theme's `.json` here to use it. pine's manual says more ("Themes" in desktop.md).
 
 These came with pine, from Shiki's collection of themes (github.com/shikijs/textmate-grammars-themes),

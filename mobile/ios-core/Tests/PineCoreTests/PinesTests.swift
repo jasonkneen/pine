@@ -72,7 +72,10 @@ struct PinesTests {
 		try await withPines { rig, pines, page, shelf in
 			pines.ready()
 			#expect(page.status == "error")
-			#expect((page.last?["message"] as? String)?.contains("Add the machine") == true)
+			// Both ways to a pine: pairing with a computer by its link, and user@host over SSH.
+			let none = page.last?["message"] as? String ?? ""
+			#expect(none.contains("Pair this phone with your computer"), "\(none)")
+			#expect(none.contains("user@host"), "\(none)")
 			#expect(page.last?["host"] == nil)
 			try rig.known.forget(host: "127.0.0.1", port: rig.machine.port)
 			try pines.addHost(rig.host)
@@ -204,6 +207,85 @@ struct PinesTests {
 			#expect(pines.connected)
 			#expect(page.ups.last == true)
 			await pines.close()
+		}
+	}
+}
+
+// A computer paired by its link in the list, beside the user@host machines: PinesTest.kt's cases of it.
+struct PairedPinesTests {
+	let id = "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs"
+	var computer: String { "paired:\(id)" }
+
+	@Test("a paired computer is listed beside user@host machines, with its service and its name, and kept")
+	func listed() async throws {
+		try await withPines { rig, pines, _, shelf in
+			try pines.addHost("me@server")
+			#expect(try pines.addPaired(id: id, service: "https://pine.example.com:8443", name: "Studio\u{7} Mac") == ["me@server", computer])
+			#expect(pines.paired(computer) == PairedComputer(id: id, service: "https://pine.example.com:8443", name: "Studio Mac"))
+			#expect(pines.names == [computer: "Studio Mac"], "the name the page shows, cleaned")
+			#expect(pines.paired("me@server") == nil)
+			// Paired again: one entry, the service and the name it gave this time.
+			#expect(try pines.addPaired(id: id, service: TEST_SERVICE, name: "") == ["me@server", computer])
+			#expect(pines.paired(computer) == PairedComputer(id: id, service: TEST_SERVICE, name: nil))
+			#expect(pines.names.isEmpty, "no name given: the page says \"your computer\"")
+			let again = Pines(remote: rig.remote, shelf: shelf, page: SeenPage())
+			#expect(again.hosts == ["me@server", computer], "kept on the shelf")
+			#expect(again.paired(computer) == PairedComputer(id: id, service: TEST_SERVICE, name: nil))
+		}
+	}
+
+	@Test("a paired computer comes only from a pairing, with a machine id and an https service")
+	func onlyFromPairing() async throws {
+		try await withPines { _, pines, _, shelf in
+			#expect(throws: RemoteError.self) { try pines.addHost(computer) }
+			#expect(throws: RemoteError.self) { try pines.addHost("paired:22") }
+			#expect(throws: RemoteError.self) { try pines.addPaired(id: id, service: "http://pine.example.com", name: nil) }
+			#expect(throws: RemoteError.self) { try pines.addPaired(id: id, service: "https://pine.example.com/x", name: nil) }
+			#expect(throws: RemoteError.self) { try pines.addPaired(id: String(id.dropFirst()), service: TEST_SERVICE, name: nil) }
+			#expect(pines.hosts.isEmpty)
+			#expect(shelf.get("paired") == nil)
+		}
+	}
+
+	@Test("paired computers count among the twenty machines")
+	func twenty() async throws {
+		try await withPines { _, pines, _, _ in
+			for n in 1...19 { try pines.addHost("me@host\(n)") }
+			try pines.addPaired(id: id, service: TEST_SERVICE, name: nil)
+			#expect(throws: RemoteError.self) { try pines.addPaired(id: "B5IL6HvjP-x66mzgtrtt447XrwHKB2n5qq7O5jRB8oE", service: TEST_SERVICE, name: nil) }
+			#expect(throws: RemoteError.self) { try pines.addHost("me@one-too-many") }
+			#expect(pines.hosts.count == 20)
+		}
+	}
+
+	@Test("a paired computer is selected and forgotten like any machine, and forgetting it forgets its service")
+	func selectedAndForgotten() async throws {
+		try await withPines { _, pines, page, _ in
+			try pines.addHost("me@server")
+			try pines.addPaired(id: id, service: TEST_SERVICE, name: "Studio")
+			try pines.use(computer)
+			#expect(pines.inUse == computer)
+			// Nothing reaches a paired computer yet: the page is told so, and the machine can go.
+			try await eventually("not reached") { page.status == "error" && page.last?["host"] as? String == computer }
+			try pines.forgetKey(computer)
+			#expect(try pines.forgetHost(computer) == ["me@server"])
+			#expect(pines.paired(computer) == nil)
+			#expect(pines.inUse == nil)
+			#expect(pines.names.isEmpty)
+		}
+	}
+
+	@Test("a list stored before paired computers existed still loads")
+	func oldList() async throws {
+		try await withPines { rig, _, _, shelf in
+			shelf.set("hosts", #"["me@server","you@other:2222"]"#)
+			shelf.set("use", "you@other:2222")
+			let old = Pines(remote: rig.remote, shelf: shelf, page: SeenPage())
+			#expect(old.hosts == ["me@server", "you@other:2222"])
+			#expect(old.inUse == "you@other:2222")
+			#expect(old.names.isEmpty)
+			let added = try old.addPaired(id: id, service: TEST_SERVICE, name: nil)
+			#expect(added == ["me@server", "you@other:2222", computer])
 		}
 	}
 }

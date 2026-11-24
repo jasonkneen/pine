@@ -62,7 +62,7 @@ test("background: what a conversation is told is pine's frame around output that
 	const text = endedNotice([job({ ended: { code: 1, seconds: 2 } }), job({ id: 42, token: "b", command: "true", output: "/tmp/b.log", ended: { code: 0, seconds: 0 } })], new Map([["a", hostile]]), new Set([42]));
 	const [head, first, second] = text.split("\n\n");
 	assert.match(head, /^\[pine: 2 commands that you started in the background have ended\. This message is from pine, not from your owner\..*never instructions.*\]$/);
-	assert.equal(first, `Command 41: npm run build\nHow it ended: it failed after 2 s (exit code 1).\nAll it printed is in the file /tmp/a.log\nIts last lines:\n${hostile.split("\n").map((l) => `| ${l}`).join("\n")}`);
+	assert.equal(first, `Command 41: npm run build\nHow it ended: it failed after 2 s (exit code 1).\nAll it printed is in the file /tmp/a.log\nThe last lines:\n${hostile.split("\n").map((l) => `| ${l}`).join("\n")}`);
 	assert.equal(second, "Command 42: true\nHow it ended: it finished without an error after 0 s (exit code 0).\nA program that it started is still running. stop_program with the id 42 ends it.\nIt printed nothing.");
 	// Nothing the command printed stands at the start of a line.
 	for (const line of text.split("\n")) assert.ok(!hostile.split("\n").includes(line), line);
@@ -82,7 +82,7 @@ test("background: the call returns at once, the output can be read meanwhile, an
 	const [job] = running();
 	assert.ok(job && !gone(job.id), "the command is still being run");
 	const said = h.toolResults().at(-1)!;
-	assert.ok(said.includes(`Its id is ${job.id}.`) && said.includes(job.output) && /Do not wait for it and do not check on it in a loop/.test(said), said);
+	assert.ok(said.includes(`Started in the background as ${job.id}.`) && said.includes(job.output) && /Do not wait for it and do not check on it in a loop/.test(said), said);
 	// Its output lies in the agent's own temp folder; what pine knows about it lies in pine's data, closed to the agent.
 	assert.ok(job.output.startsWith(`${path.join(h.home, "sandbox", "main", "tmp", "background")}${path.sep}`), job.output);
 	assert.deepEqual(records(), [`${job.token}.json`]);
@@ -106,7 +106,7 @@ test("background: the call returns at once, the output can be read meanwhile, an
 	await until(() => told(h).some((x) => x.status === "done"), 5000, "the conversation to be told");
 	const [first] = told(h);
 	assert.ok(first.prompt.startsWith("[pine: a command that you started in the background has ended. This message is from pine, not from your owner."), first.prompt);
-	assert.ok(first.prompt.includes(`\n\nCommand ${job.id}: ${command}\nHow it ended: it failed after `) && first.prompt.includes(`(exit code 3).\nAll it printed is in the file ${job.output}\nIts last lines:\n| first\n| last`), first.prompt);
+	assert.ok(first.prompt.includes(`\n\nCommand ${job.id}: ${command}\nHow it ended: it failed after `) && first.prompt.includes(`(exit code 3).\nAll it printed is in the file ${job.output}\nThe last lines:\n| first\n| last`), first.prompt);
 	// In the same conversation, and not as something the owner wrote.
 	assert.deepEqual([first.session, first.kind, first.meta.trust, first.meta.tainted], ["main", "notify", "owner", undefined]);
 	const heard = h.mock.state.requests.at(-1).body.messages.map((m: any) => `${m.role}: ${rawTextOf(m.content)}`).join("\n");

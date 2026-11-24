@@ -24,9 +24,13 @@ public final class RemoteService: Daemon, @unchecked Sendable {
 	private let command: ChannelDuplex
 	private let readLimit: TimeAmount
 
-	init(named: SshHost, line: ServiceLine, session: Channel, command: ChannelDuplex, readLimit: TimeAmount) {
-		host = named.given
-		label = named.label
+	/** Reached over a data channel through the meeting service: a computer paired by its link. */
+	public let paired: Bool
+
+	init(host: String, label: String, paired: Bool, line: ServiceLine, session: Channel, command: ChannelDuplex, readLimit: TimeAmount) {
+		self.host = host
+		self.label = label
+		self.paired = paired
 		token = line.token
 		started = line.started
 		home = line.home
@@ -80,22 +84,44 @@ public final class RemoteService: Daemon, @unchecked Sendable {
 public final class Remote: Sendable {
 	public let key: DeviceKey
 	public let known: KnownHosts
-	private let answer: TimeAmount
-	private let connectLimit: TimeAmount
-	private let read: TimeAmount
-	private let group: EventLoopGroup
+	let answer: TimeAmount
+	let connectLimit: TimeAmount
+	let read: TimeAmount
+	/** How long a paired computer has to be reached, from the join of the meeting to the open channel. */
+	let meet: Duration
+	let group: EventLoopGroup
+	/**
+	 * Where a meeting service is reached, by its origin: the origin itself. Only a test hands in
+	 * another (the access host's helper answers on http on the loopback, which no link may name).
+	 */
+	let route: @Sendable (String) -> String
 
-	public init(key: DeviceKey, known: KnownHosts, answer: Duration = .seconds(60), connect: Duration = .seconds(15), read: Duration = .seconds(60), group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton) {
+	public convenience init(key: DeviceKey, known: KnownHosts, answer: Duration = .seconds(60), connect: Duration = .seconds(15), read: Duration = .seconds(60), meet: Duration = .seconds(20), group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton) {
+		self.init(key: key, known: known, answer: answer, connect: connect, read: read, meet: meet, group: group, route: { $0 })
+	}
+
+	init(key: DeviceKey, known: KnownHosts, answer: Duration = .seconds(60), connect: Duration = .seconds(15), read: Duration = .seconds(60), meet: Duration = .seconds(20), group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton, route: @escaping @Sendable (String) -> String) {
+		self.route = route
 		self.key = key
 		self.known = known
 		self.answer = TimeAmount(answer)
 		self.connectLimit = TimeAmount(connect)
 		self.read = TimeAmount(read)
+		self.meet = meet
 		self.group = group
 	}
 
-	/** The daemon of the machine `value` names (host, user@host or user@host:port), or a `RemoteError` that says what to do. */
-	public func connect(_ value: String) async throws -> RemoteService {
+	/**
+	 * The daemon of the machine `value` names (host, user@host or user@host:port, or `paired:<machine
+	 * id>` with what is kept for that computer as `paired`), or a `RemoteError` that says what to do.
+	 */
+	public func connect(_ value: String, paired: PairedComputer? = nil) async throws -> RemoteService {
+		if value.hasPrefix(PAIRED) {
+			guard case let .paired(id)? = try listed(value), let paired, paired.id == id else {
+				throw RemoteError("ssh", "This phone has nothing kept for that paired computer: pair it again from the Pine app.")
+			}
+			return try await connect(paired: paired)
+		}
 		guard let named = try sshHost(value) else { throw RemoteError("ssh", "Name the machine as you would after ssh: user@host, or user@host:port.") }
 		guard let user = named.user else { throw RemoteError("ssh", "Name the user too: user@\(named.given). A phone has no user name of its own to sign in with.") }
 		let given = named.given
@@ -124,6 +150,20 @@ public final class Remote: Sendable {
 		} catch {
 			throw unreachable(error)
 		}
+		return try await serve(session, host: given, label: named.label, paired: false, named: named) { error in
+			if let refused = hostKey.refused { return refused }
+			if signIn.refused { return RemoteError("ssh", "Could not connect to \(given) over SSH: it did not take this phone's key for \(user). Add the app's public key to ~/.ssh/authorized_keys of \(user) there, then try again.") }
+			return unreachable(error)
+		}
+	}
+
+	/**
+	 * `pine service` run in a session that stands: its line read, and the session held by its stdin.
+	 * `refusal` says why SSH did not let the phone in; `named` is the machine in the words of a
+	 * failure. The session is closed when anything fails.
+	 */
+	func serve(_ session: Channel, host: String, label: String, paired: Bool, named: SshHost, refusal: (Error) -> Error) async throws -> RemoteService {
+		let given = named.given
 		do {
 			// A machine that takes the connection and never gets through SSH's greeting is given up on as one that does not answer.
 			let limit = session.eventLoop.scheduleTask(in: connectLimit) { session.close(promise: nil) }
@@ -133,9 +173,7 @@ public final class Remote: Sendable {
 				limit.cancel()
 			} catch {
 				limit.cancel()
-				if let refused = hostKey.refused { throw refused }
-				if signIn.refused { throw RemoteError("ssh", "Could not connect to \(given) over SSH: it did not take this phone's key for \(user). Add the app's public key to ~/.ssh/authorized_keys of \(user) there, then try again.") }
-				throw unreachable(error)
+				throw refusal(error)
 			}
 			let command = try await ChannelDuplex.of(exec, limit: read)
 			try await exec.triggerUserOutboundEvent(SSHChannelRequestEvent.ExecRequest(command: REMOTE_COMMAND, wantReply: false)).get()
@@ -149,10 +187,12 @@ public final class Remote: Sendable {
 			case .ended:
 				// Its code and the last of stderr come with the channel's end.
 				_ = await settled(command.channel.closeFuture, within: .seconds(5))
+				// A data channel that went while pine was asked: the network, not the machine.
+				if paired && !session.isActive { throw RemoteError("ssh", "The connection to \(label) was lost while pine there was asked to start.", passing: true) }
 				let (stderr, code) = await command.ended()
 				throw failure(given: given, stderr: stderr, exit: code ?? -1).withUnknownExit(code == nil)
 			}
-			return RemoteService(named: named, line: try serviceLine(said, named: named), session: session, command: command, readLimit: read)
+			return RemoteService(host: host, label: label, paired: paired, line: try serviceLine(said, named: named), session: session, command: command, readLimit: read)
 		} catch {
 			try? await session.close().get()
 			throw error
@@ -160,7 +200,7 @@ public final class Remote: Sendable {
 	}
 
 	/** The session channel `pine service` runs in, once SSH let the phone in. */
-	private func execChannel(_ session: Channel) async throws -> Channel {
+	func execChannel(_ session: Channel) async throws -> Channel {
 		let promise = session.eventLoop.makePromise(of: Channel.self)
 		session.eventLoop.execute {
 			do {
@@ -217,7 +257,7 @@ private extension RemoteError {
 }
 
 /** Offers the phone's key, once; a machine that does not take it ends the sign-in. */
-private final class SignIn: NIOSSHClientUserAuthenticationDelegate, @unchecked Sendable {
+final class SignIn: NIOSSHClientUserAuthenticationDelegate, @unchecked Sendable {
 	private let user: String
 	private let key: NIOSSHPrivateKey
 	private let lock = NSLock()
@@ -230,6 +270,9 @@ private final class SignIn: NIOSSHClientUserAuthenticationDelegate, @unchecked S
 	}
 
 	var refused: Bool { lock.withLock { _refused } }
+
+	/** Whether the phone's key was offered (the host key was taken first). */
+	var offeredKey: Bool { lock.withLock { offered } }
 
 	func nextAuthenticationType(availableMethods: NIOSSHAvailableUserAuthenticationMethods, nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>) {
 		let first = lock.withLock {
@@ -273,7 +316,7 @@ private final class HostKeyCheck: NIOSSHClientServerAuthenticationDelegate, @unc
 }
 
 /** The end of the session's pipeline: an error there closes the connection, and is not logged. */
-private final class Quiet: ChannelInboundHandler {
+final class Quiet: ChannelInboundHandler {
 	typealias InboundIn = Any
 	func errorCaught(context: ChannelHandlerContext, error: Error) {
 		context.close(promise: nil)

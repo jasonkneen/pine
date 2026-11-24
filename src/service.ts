@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { PineConfig } from "./config.ts";
+import { PINE_ROOT, type PineConfig } from "./config.ts";
 
 // A UI is a client of the daemon (the terminal UI, an app of its own). Before it can be one,
 // there has to be a daemon: this finds the one that runs for this home, or starts one inside
@@ -14,15 +14,32 @@ export interface Service {
 	mode: "attached" | "embedded daemon" | "embedded daemon + claude -p";
 	/** Whether this process started the daemon, and so is the one that stops it. */
 	started: boolean;
+	/** The version of pine the daemon runs, as it says itself; none from a pine too old to say it. */
+	version?: string;
 	/** Stops what was started here. A daemon that was only attached to goes on. */
 	stop(): Promise<void>;
 }
+
+/** The version of the pine this process runs. */
+export const pineVersion = (): string => String(JSON.parse(fs.readFileSync(path.join(PINE_ROOT, "package.json"), "utf8")).version);
 
 const reachable = async (url: string, headers?: Record<string, string>) => {
 	try {
 		return (await fetch(url, { signal: AbortSignal.timeout(800), headers })).ok;
 	} catch {
 		return false;
+	}
+};
+
+/** What /status says with this token, or nothing when it does not take it. */
+const statusOf = async (base: string, token: string): Promise<Record<string, unknown> | undefined> => {
+	try {
+		const res = await fetch(`${base}/status`, { signal: AbortSignal.timeout(800), headers: { authorization: `Bearer ${token}` } });
+		if (!res.ok) return undefined;
+		const body = await res.json().catch(() => ({}));
+		return body && typeof body === "object" ? body : {};
+	} catch {
+		return undefined;
 	}
 };
 
@@ -41,10 +58,13 @@ export async function ensureDaemon(cfg: PineConfig): Promise<Service> {
 		// home with the same port has a pine of its own there, and that one is not to be driven.
 		const tokenFile = path.join(cfg.dataDir, "http-token");
 		const token = cfg.http.token ?? (fs.existsSync(tokenFile) ? fs.readFileSync(tokenFile, "utf8").trim() : "");
-		if (!token || !(await reachable(`${base}/status`, { authorization: `Bearer ${token}` }))) {
-			throw new Error(`something answers on ${base}, but it is not the pine of ${cfg.home}: it does not take this home's token. Another pine home uses the same port. Stop that one, or give this home a port of its own ("http": { "port": ... } in ${path.join(cfg.home, "pine.json")}).`);
+		const status = token ? await statusOf(base, token) : undefined;
+		if (!status) {
+			throw new Error(`something answers on ${base}, but it is not the pine of ${cfg.home}: it does not take this home's token. Another pine home uses the same port. Stop that one, or give this home a different port ("http": { "port": ... } in ${path.join(cfg.home, "pine.json")}).`);
 		}
-		return { base, token, mode: "attached", started: false, stop: async () => {} };
+		// The daemon's own word, never this process's version: it may be another pine's.
+		const version = typeof status.version === "string" ? status.version : undefined;
+		return { base, token, mode: "attached", started: false, version, stop: async () => {} };
 	}
 	const cleanup: Array<() => Promise<void> | void> = [];
 	let mode: Service["mode"] = "embedded daemon";
@@ -72,6 +92,7 @@ export async function ensureDaemon(cfg: PineConfig): Promise<Service> {
 			token: pine.token,
 			mode,
 			started: true,
+			version: pineVersion(),
 			stop: async () => {
 				for (const fn of cleanup.splice(0).reverse()) await Promise.resolve(fn()).catch(() => {});
 			},

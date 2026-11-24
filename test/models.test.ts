@@ -52,10 +52,10 @@ test("a name that is nowhere is said plainly, and pine still starts", async () =
 	keyed(h.home, "$NOT_THERE_KEY", "OTHER=value\n");
 	const { keys, problems } = modelKeys(h.home);
 	assert.deepEqual(keys, {});
-	assert.match(problems[0], /provider "mock" takes its key from NOT_THERE_KEY, which is not in .*\.env.*add a line NOT_THERE_KEY=\.\.\./);
+	assert.match(problems[0], /provider "mock" takes the key from NOT_THERE_KEY, which is not in .*\.env.*add a line NOT_THERE_KEY=\.\.\./);
 
 	await h.restart();
-	assert.ok(h.logs.some((l) => /WARN.*takes its key from NOT_THERE_KEY/.test(l)), "the log says so at the start");
+	assert.ok(h.logs.some((l) => /WARN.*takes the key from NOT_THERE_KEY/.test(l)), "the log says so at the start");
 	assert.ok(!(await h.pine.agents.availableModels()).includes("mock/m"), "its models are not offered");
 	await h.close();
 });
@@ -174,7 +174,7 @@ test("a server is written by pine and taken out again without a trace; its key i
 	const before = fs.readFileSync(file, "utf8");
 	const models = [{ id: "qwen-test", contextWindow: 32768, images: true, reasoning: false }, { id: "small", images: false, reasoning: true }];
 
-	assert.throws(() => addModelServer(h.home, { name: "studio", baseUrl: "http://100.64.0.7:8080/v1", models }), /does not say how much context its model small gets/);
+	assert.throws(() => addModelServer(h.home, { name: "studio", baseUrl: "http://100.64.0.7:8080/v1", models }), /does not say how much context the model small gets/);
 	assert.equal(fs.readFileSync(file, "utf8"), before, "nothing is written when something is missing");
 	assert.deepEqual(addModelServer(h.home, { name: "studio", baseUrl: "http://100.64.0.7:8080/v1", key: "typed-by-the-owner", models: [models[0]] }), ["studio/qwen-test"]);
 	assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).providers.studio, {
@@ -212,6 +212,55 @@ test("a server is written by pine and taken out again without a trace; its key i
 	await h.close();
 });
 
+test("the main agent signs pine in to a model provider and out again: the owner confirms, types the key into pine's dialog, and the key reaches no model", async () => {
+	// pi's own flow for a key, as Settings runs it: no network is needed to store one.
+	const h = await harness({ agents: { main: {}, gonzo: {} } });
+	const KEY = "sk-opencode-agent-77310";
+	const asked: any[] = [];
+	let answer: (req: any) => { allow: boolean; values?: Record<string, string> } = () => ({ allow: false });
+	h.pine.bus.subscribe("approval/requested", (e) => {
+		asked.push(e.payload);
+		const a = answer(e.payload);
+		h.pine.approvals.decide((e.payload as any).id, a.allow, "test", false, a.values);
+	});
+	const owner = { trust: "owner" as const };
+	const call = (name: string, args: Record<string, unknown>) => mockMsg([{ tools: [{ name, args }] }]);
+	const auth = () => (fs.existsSync(path.join(h.home, "auth.json")) ? JSON.parse(fs.readFileSync(path.join(h.home, "auth.json"), "utf8")) : {});
+
+	// Only the main agent has it: another agent's call asks nobody and stores nothing.
+	await h.pine.agents.run({ agent: "gonzo", prompt: call("sign_in", { provider: "opencode", way: "key" }), ...owner });
+	assert.equal(asked.length, 0);
+	// A provider pine does not know is named as such, before anybody is asked.
+	await h.pine.agents.run({ agent: "main", prompt: call("sign_in", { provider: "no-such-provider" }), ...owner });
+	assert.match(h.toolResults().at(-1)!, /there is no provider "no-such-provider"\. Known: .*opencode/);
+	assert.equal(asked.length, 0);
+	// The owner says no: nothing is stored, and the agent is told where the owner can do it.
+	await h.pine.agents.run({ agent: "main", prompt: call("sign_in", { provider: "opencode", way: "key" }), ...owner });
+	assert.match(h.toolResults().at(-1)!, /not signed in \(test\)\. Do not retry; .*Settings > Models.*pine login opencode/);
+	assert.equal(asked.length, 1);
+	assert.match(asked[0].summary, /^sign pine in to opencode with an API key/);
+	assert.equal(auth().opencode, undefined);
+
+	// Yes, and the key typed into pine's dialog: a hidden field of pine's, and the flow has it.
+	answer = (req) => ({ allow: true, values: req.inputs ? { answer: KEY } : undefined });
+	await h.pine.agents.run({ agent: "main", prompt: call("sign_in", { provider: "opencode", way: "key" }), ...owner });
+	assert.match(h.toolResults().at(-1)!, /^Signed in to opencode\. \d+ models? (is|are) available now/);
+	const field = asked.find((r) => r.inputs)?.inputs?.[0];
+	assert.deepEqual([field?.name, field?.secret], ["answer", true], JSON.stringify(asked));
+	assert.ok(auth().opencode, "the credential is in auth.json");
+	assert.equal(fs.statSync(path.join(h.home, "auth.json")).mode & 0o777, 0o600);
+	assert.ok(!JSON.stringify(h.mock.state.requests).includes(KEY), "the key is in no request to the model");
+	assert.ok(!h.logs.join("\n").includes(KEY), "and in no log line");
+	assert.ok(!asked.some((r) => JSON.stringify(r).includes(KEY)), "and in no question");
+
+	// Out again, confirmed.
+	await h.pine.agents.run({ agent: "main", prompt: call("sign_out", { provider: "opencode" }), ...owner });
+	assert.match(h.toolResults().at(-1)!, /^Signed out of opencode\./);
+	assert.match(asked.at(-1).summary, /^sign pine out of opencode/);
+	assert.equal(auth().opencode, undefined);
+	await h.close();
+});
+
 test("the main agent adds a model server by tool call: the owner confirms the address and types the key, and a conversation can use it at once", async (t) => {
 	const h = await harness({ agents: { main: { agent: { mode: "bypass", mcp: { feed: { command: process.execPath, args: [MCP_STUB], env: { MCP_LABEL: "feed" }, taints: true } } } }, gonzo: {} } });
 	const box = await studio({ key: "key-typed-into-the-dialog", chat: h.mock.baseUrl });
@@ -230,7 +279,7 @@ test("the main agent adds a model server by tool call: the owner confirms the ad
 	await h.pine.agents.run({ agent: "main", prompt: add, ...owner });
 	assert.match(h.toolResults().at(-1)!, /not added \(test\)\. Do not retry; tell your owner they can add it themselves with: pine model add studio http:\/\/127\.0\.0\.1:\d+\/v1/);
 	assert.equal(asked.length, 1, "asked even in bypass mode");
-	assert.ok(asked[0].summary.includes(`add the model server "studio" at ${box.url}/v1`) && /sends its conversations there/.test(asked[0].summary));
+	assert.ok(asked[0].summary.includes(`add the model server "studio" at ${box.url}/v1`) && /sends whole conversations there/.test(asked[0].summary));
 	assert.equal(box.seen.length, 0, "no request leaves pine before the owner has said yes");
 
 	// Confirmed, but the key is not given: nothing is written either.
@@ -249,7 +298,7 @@ test("the main agent adds a model server by tool call: the owner confirms the ad
 	// The right one: the entry names the key, .env holds it, and neither the agent nor its model sees it.
 	answer = (req) => ({ allow: true, values: req.inputs ? { key: "key-typed-into-the-dialog" } : undefined });
 	await h.pine.agents.run({ agent: "main", prompt: add, ...owner });
-	assert.match(h.toolResults().at(-1)!, /Your owner confirmed it\. Added the model server "studio" with studio\/qwen-test\. Its key is in pine's \.env file\..*\/model studio\/qwen-test/);
+	assert.match(h.toolResults().at(-1)!, /Your owner confirmed it\. Added the model server "studio" with studio\/qwen-test\. The server's key is in pine's \.env file\..*\/model studio\/qwen-test/);
 	const entry = JSON.parse(fs.readFileSync(path.join(h.home, "models.json"), "utf8")).providers.studio;
 	assert.equal(entry.apiKey, "$PINE_MODEL_STUDIO_API_KEY");
 	assert.deepEqual([entry.models[0].contextWindow, entry.models[0].input], [32768, ["text", "image"]]);
@@ -317,5 +366,17 @@ test("pine model: add, list and remove from the shell, and a running daemon has 
 	assert.ok(!(await h.pine.agents.availableModels()).includes("second/qwen-test"));
 	await assert.rejects(() => pine("remove", "second"), /no model server "second"/);
 	await assert.rejects(() => pine("remove", "mock"), /in use by the default model/);
+	await h.close();
+});
+
+test("a sign-in to ChatGPT (openai-codex) offers GPT-6.2 Sol, which came with pi 1.6.0", async () => {
+	// Issue 45: the model list is pi's, so a model newer than pine's pi is not offered at all.
+	// A raised version of pi in package.json is what this guards.
+	const h = await harness({ agents: { main: {} }, start: false });
+	const credential = { type: "oauth", access: "not-a-real-token", refresh: "not-a-real-token", expires: Date.now() + 86_400_000 };
+	fs.writeFileSync(path.join(h.home, "auth.json"), JSON.stringify({ "openai-codex": credential }), { mode: 0o600 });
+	await h.restart();
+	const models = await h.pine.agents.availableModels();
+	assert.ok(models.includes("openai-codex/gpt-6.2-sol"), models.filter((m) => m.startsWith("openai-codex/")).join(", "));
 	await h.close();
 });

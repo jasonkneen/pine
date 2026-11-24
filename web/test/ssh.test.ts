@@ -46,7 +46,7 @@ test("the key is generated non-extractable, its public half reads as an OpenSSH 
 
 test("with the host key's fingerprint and the authorized key, an exec channel runs a command and returns its output", async () => {
 	const result = await browser.page.evaluate(async ({ wsUrl, user, hostFingerprint }) => {
-		const connection = await ssh.connect({ url: wsUrl, user, key, hostFingerprint });
+		const connection = await ssh.connect({ open: ssh.relayStream(wsUrl), user, key, hostFingerprint });
 		const channel = await connection.exec("printf 'hello from %s' \"$(whoami)\"; exit 3");
 		let output = "";
 		channel.onData((bytes) => (output += new TextDecoder().decode(bytes)));
@@ -64,7 +64,7 @@ test("a host key other than the confirmed one is refused before the browser's ke
 	const wrong = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 	const result = await browser.page.evaluate(async (options) => {
 		try {
-			await ssh.connect({ url: options.wsUrl, user: options.user, key, hostFingerprint: options.wrong });
+			await ssh.connect({ open: ssh.relayStream(options.wsUrl), user: options.user, key, hostFingerprint: options.wrong });
 			return { connected: true };
 		} catch (error) {
 			const refused = error as Ssh.SshRefused;
@@ -79,7 +79,7 @@ test("a host key other than the confirmed one is refused before the browser's ke
 
 test("a direct-tcpip channel reaches a port on the server's loopback, both ways", async () => {
 	const echoed = await browser.page.evaluate(async (options) => {
-		const connection = await ssh.connect({ url: options.wsUrl, user: options.user, key, hostFingerprint: options.hostFingerprint });
+		const connection = await ssh.connect({ open: ssh.relayStream(options.wsUrl), user: options.user, key, hostFingerprint: options.hostFingerprint });
 		const channel = await connection.forward("127.0.0.1", options.echoPort);
 		const message = "round trip through the tunnel";
 		const received = new Promise<string>((resolve) => {
@@ -101,7 +101,7 @@ test("a key that is not in authorized_keys is refused", async () => {
 	const result = await browser.page.evaluate(async (options) => {
 		const stranger = await ssh.generateKey();
 		try {
-			await ssh.connect({ url: options.wsUrl, user: options.user, key: stranger, hostFingerprint: options.hostFingerprint });
+			await ssh.connect({ open: ssh.relayStream(options.wsUrl), user: options.user, key: stranger, hostFingerprint: options.hostFingerprint });
 			return "connected";
 		} catch (error) {
 			return (error as Ssh.SshRefused).reason;
@@ -120,7 +120,7 @@ test("a relay that never answers is given up on, as one that did not open a conn
 		const result = await browser.page.evaluate(async (options) => {
 			const started = Date.now();
 			try {
-				await ssh.connect({ url: options.url, user: "me", key, hostFingerprint: "none", openMs: 300 });
+				await ssh.connect({ open: ssh.relayStream(options.url, 300), user: "me", key, hostFingerprint: "none" });
 				return { connected: true };
 			} catch (error) {
 				return { connected: false, name: (error as Error).name, code: (error as Ssh.RelayClosed).code, ms: Date.now() - started };

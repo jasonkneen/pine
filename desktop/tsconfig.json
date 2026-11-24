@@ -13,7 +13,7 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "types": ["node", "vite/client"],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": { "@/*": ["./src/*"], "pine/view": ["../src/view-kit.ts"] }
   },
-  "include": ["src", "electron", "test", "scripts/preview.ts", "vite.config.ts", ".storybook"]
+  "include": ["src", "electron", "test", "scripts/preview.ts", "vite.config.ts", ".storybook", "../examples/home/views/*.ts"]
 }

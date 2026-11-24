@@ -68,7 +68,7 @@ test("an agent proposes a remote server, the owner confirms, and it works withou
 	// server: it does not mark the conversation as having read outside content.
 	allow = true;
 	const yes = await h.pine.agents.run({ agent: "main", prompt: propose, ...owner });
-	assert.match(yes.text, /Your owner confirmed it\. Added "notes" for all agents.*the actions of a tool called "notes".*\/mcp login notes/);
+	assert.match(yes.text, /Your owner confirmed it\. Added "notes" for all agents.*the actions of a tool called "notes".*sign_in_mcp_server/);
 	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h.home, "pine.json"), "utf8")).mcp.notes, { url: stub.url, description: "the owner's notes", approve: "tainted" });
 	const used = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("mcp__notes__lookup", { q: "grundbuch" })] }]), ...owner });
 	assert.equal(used.text, "FINAL:: looked up: grundbuch");
@@ -168,7 +168,7 @@ test("a server that only one conversation has: the agent is told where it is, an
 
 	// Where it is, the agent sees it with its state, without looking into a file.
 	await run("side", [{ tools: [call("mcp_servers", {})] }]);
-	assert.match(h.toolResults().at(-1)!, /^Your MCP servers in this conversation:\n- notes \(http[^)]*\): the owner's notes\n    only this conversation has it; connected: your tool "notes" has its \d+ tools? as actions/);
+	assert.match(h.toolResults().at(-1)!, /^Your MCP servers in this conversation:\n- notes \(http[^)]*\): the owner's notes\n    only this conversation has it; connected: your tool "notes" has the server's \d+ tools? as actions/);
 
 	// Another conversation is told that it exists, where, and how to get it. It is not a dead end.
 	await run("other", [{ tools: [call("mcp_servers", {}), call("add_mcp_server", { name: "notes", url: stub.url })] }]);
@@ -181,7 +181,7 @@ test("a server that only one conversation has: the agent is told where it is, an
 	// With scope agent the owner is asked, told what it replaces, and then every conversation has it.
 	const r = await run("other", [{ tools: [call("add_mcp_server", { name: "notes", url: stub.url, scope: "agent" })] }]);
 	assert.match(r.text, /Added "notes" for you, in all your conversations/);
-	assert.match(asked.at(-1).summary, /^add MCP server "notes" for agent main \(all its conversations\)\n[\s\S]*\nIt takes the place of the server of that name that only the conversation "side" had/);
+	assert.match(asked.at(-1).summary, /^add MCP server "notes" for agent main \(all of that agent's conversations\)\n[\s\S]*\nIt takes the place of the server of that name that only the conversation "side" had/);
 	assert.deepEqual(file().mcp.notes, { url: stub.url, approve: "tainted" });
 	await idle();
 	for (const session of ["other", "side", "third"]) assert.ok((await offered(session)).includes("mcp__notes__lookup"), session);
@@ -198,7 +198,7 @@ test("a server that only one conversation has: the agent is told where it is, an
 
 	// Having it already is said as that, with where its tools are.
 	await run("third", [{ tools: [call("add_mcp_server", { name: "notes", url: stub.url }), call("add_mcp_server", { name: "notes", url: stub.url, scope: "agent" })] }]);
-	for (const result of h.toolResults().slice(-2)) assert.match(result, /a server named "notes" exists already: you have it, in all your conversations\. Its tools are the actions of your tool "notes"/);
+	for (const result of h.toolResults().slice(-2)) assert.match(result, /a server named "notes" exists already: you have it, in all your conversations\. The server\'s tools are the actions of your tool "notes"/);
 	await h.close();
 });
 
@@ -263,7 +263,7 @@ test("setup by tool call: for the conversation by default, for the agent when as
 	assert.match(r.text, /Only the main agent \(main\) can add MCP servers for all agents\. Tell your owner/);
 	const gonzo = h.mock.state.requests.at(-1);
 	assert.ok(!h.toolsOffered(gonzo).includes("create_agent") && h.toolsOffered(gonzo).includes("add_mcp_server"));
-	assert.ok(h.system(gonzo).includes("Creating, changing and removing agents, pine's settings, and anything that is for all agents, is the main agent's job (its id is main): you have no tools for it."));
+	assert.ok(h.system(gonzo).includes("Creating, changing and removing agents, pine's settings, and anything that is for all agents, is the main agent's job (the main agent is main): you have no tools for it."));
 	r = await run("main", "main", [{ tools: [call("add_mcp_server", { name: "shared", url: stub.url, scope: "global" })] }]);
 	assert.match(r.text, /Added "shared" for all agents/);
 	assert.ok((await offered("gonzo", "main")).includes("mcp__shared__lookup"));
@@ -314,7 +314,7 @@ test("the main agent creates an agent by tool call: the owner confirms, it exist
 	assert.equal(answer.text, "here");
 	const research = h.requestsFor("RESEARCH-PERSONA")[0];
 	assert.deepEqual(h.toolsOffered(research).filter((x: string) => ["read", "bash", "edit", "write", "grep", "find", "ls"].includes(x)).sort(), ["find", "grep", "ls", "read"]);
-	assert.ok(!h.toolsOffered(research).includes("create_agent") && h.system(research).includes("is the main agent's job (its id is main)"));
+	assert.ok(!h.toolsOffered(research).includes("create_agent") && h.system(research).includes("is the main agent's job (the main agent is main)"));
 	h.mock.state.scripts.found = [{ text: "FOUND-IT" }];
 	r = await run("main", [{ tools: [call("delegate", { agent: "research", task: "look it up @@REF:found@@" })] }]);
 	assert.match(r.text, /\[research\] FOUND-IT/);
@@ -397,7 +397,7 @@ test("an agent proposes a local server by its command; the owner confirms the co
 	// A yes: the entry says the program is to be held, and its tools are there with the next message.
 	allow = true;
 	await main([{ tools: [call("add_mcp_server", { name: "cad", command, description: "builds parts" })] }]);
-	assert.match(h.toolResults().at(-1)!, /Your owner confirmed it\. Added "cad".*pine calls you again at once, in this same conversation.*Do not tell your owner to start a new chat.*its documentation names the command for it/);
+	assert.match(h.toolResults().at(-1)!, /Your owner confirmed it\. Added "cad".*pine calls you again at once, in this same conversation.*Do not tell your owner to start a new chat.*the server's documentation names the command for it/);
 	// It goes on by itself: called again in the same conversation, now with the server's tools.
 	const again = () => h.mock.state.requests.find((r: any) => JSON.stringify(r.body.messages.at(-1)).includes('the MCP server \\"cad\\" that you added is connected now'));
 	await until(() => again() && h.pine.tasks.list({ status: "done" }).some((x) => x.kind === "notify"), 5000, "the agent to be called again");
@@ -423,7 +423,7 @@ test("an agent proposes a local server by its command; the owner confirms the co
 	values = { PINE_TEST_LOCAL_TOKEN: "typed-by-the-owner" };
 	await main([{ tools: [call("add_mcp_server", { name: "keyed", command, secrets: ["PINE_TEST_LOCAL_TOKEN"] })] }]);
 	values = undefined;
-	assert.deepEqual(asked.at(-1).inputs, [{ name: "PINE_TEST_LOCAL_TOKEN", label: "PINE_TEST_LOCAL_TOKEN (the server reads it from its environment)", secret: true }]);
+	assert.deepEqual(asked.at(-1).inputs, [{ name: "PINE_TEST_LOCAL_TOKEN", label: "PINE_TEST_LOCAL_TOKEN (the server reads it from the environment)", secret: true }]);
 	assert.ok(asked.at(-1).summary.includes("It needs PINE_TEST_LOCAL_TOKEN, which you type here"), asked.at(-1).summary);
 	assert.deepEqual(agentJson().mcp.keyed.env, { PINE_TEST_LOCAL_TOKEN: "${PINE_MCP_KEYED_MAIN_PINE_TEST_LOCAL_TOKEN}" }, "the entry has the name, not the key");
 	const envFile = () => fs.readFileSync(path.join(h.home, ".env"), "utf8");

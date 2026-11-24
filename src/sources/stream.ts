@@ -498,7 +498,7 @@ export function ownServer(raw: unknown, usual: string): string {
 		throw new Error(`"${raw}" is not an address`);
 	}
 	if (url.username || url.password) throw new Error("an address with a user name or password in it is not taken");
-	if (url.protocol !== "https:" && !(url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) throw new Error("a server of your own in its place must be reached over https, or run on this machine");
+	if (url.protocol !== "https:" && !(url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) throw new Error("a server of your own in that place must be reached over https, or run on this machine");
 	return url.href.replace(/\/+$/, "");
 }
 

@@ -11,7 +11,7 @@ import { webBridge, type Store } from "../src/host.ts";
 import { mediaUrls } from "../src/page-media.ts";
 import { serve } from "../src/serve.ts";
 import { callDaemon } from "../src/tunnel.ts";
-import { fakeMachine, startDaemon, type Daemon } from "./support/fake-ssh.ts";
+import { fakeMachine, fakeStream, startDaemon, type Daemon } from "./support/fake-ssh.ts";
 import { windows } from "./support/windows.ts";
 
 let daemon: Daemon;
@@ -32,7 +32,7 @@ async function ready() {
 	const bridge = webBridge({
 		connect: machine.connect,
 		store: memoryStore(),
-		relay: (host, port) => `wss://relay.test/ssh?host=${host}&port=${port}`,
+		relay: (host, port) => fakeStream(`wss://relay.test/ssh?host=${host}&port=${port}`),
 		clipboard: async () => {},
 		open: (url) => void opened.push(url),
 		save: (name, text) => void saved.push([name, text]),

@@ -6,7 +6,7 @@
     "findings": [
       {
         "label": "ms",
-        "value": 40
+        "value": 43
       },
       {
         "label": "reply",
@@ -66,7 +66,7 @@
         "value": true
       }
     ],
-    "ms": 225
+    "ms": 224
   },
   {
     "id": "X3",
@@ -160,7 +160,7 @@
         }
       }
     ],
-    "ms": 2705
+    "ms": 2686
   },
   {
     "id": "X4",
@@ -204,7 +204,7 @@
         "value": 6
       }
     ],
-    "ms": 12
+    "ms": 6
   },
   {
     "id": "X6",
@@ -289,7 +289,7 @@
         }
       }
     ],
-    "ms": 25
+    "ms": 28
   },
   {
     "id": "X7",
@@ -319,7 +319,7 @@
         "value": "ECHO[still there?]"
       }
     ],
-    "ms": 5
+    "ms": 6
   },
   {
     "id": "X8",
@@ -331,19 +331,19 @@
         "value": {
           "100": {
             "heapMB": 1.3,
-            "rssMB": 20.8,
+            "rssMB": 24.4,
             "ctxTokens": 6551,
             "messagesInSession": 20
           },
           "200": {
-            "heapMB": 1.9,
-            "rssMB": 25.5,
+            "heapMB": 1.8,
+            "rssMB": 27.9,
             "ctxTokens": 11514,
             "messagesInSession": 38
           },
           "300": {
             "heapMB": 2.6,
-            "rssMB": 31.5,
+            "rssMB": 34.4,
             "ctxTokens": 9309,
             "messagesInSession": 30
           }
@@ -358,6 +358,6 @@
         "value": 0.97
       }
     ],
-    "ms": 491
+    "ms": 508
   }
 ]

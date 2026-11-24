@@ -19,7 +19,7 @@ import { errText, matchesAny, parseDuration } from "../util.ts";
  */
 export const type: SourceType = {
 	summary: "an MQTT broker: reports the messages on the topics you name. For home automation hubs, sensors, and devices that speak MQTT themselves (printers, plugs). With \"publish\" it can also send, to act on a device",
-	sends: 'an MQTT message to a topic on its "publish" list, to act on a device: {"topic": "lamp/set", "message": "on"} (message: text or JSON)',
+	sends: 'an MQTT message to a topic on the source\'s "publish" list, to act on a device: {"topic": "lamp/set", "message": "on"} (message: text or JSON)',
 	options: Type.Object(
 		{
 			url: Type.String({ description: "address of the broker: mqtt://host:1883, or mqtts://host:8883 for TLS" }),

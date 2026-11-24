@@ -517,7 +517,7 @@ test("mail: over TLS and with STARTTLS, and sending through a server that encryp
 	later.deliver(message({ subject: "after starttls" }));
 	await until(() => events("direct").length === 1 && events("later").length === 1, 4000, "a mail on each");
 	assert.deepEqual([events("direct")[0].payload.subject, events("later")[0].payload.subject], ["over tls", "after starttls"]);
-	assert.match(info("strict").status!, /^not connected since .*: its certificate could not be verified \([A-Z_]+\)\. Trying again$/);
+	assert.match(info("strict").status!, /^not connected since .*: the server's certificate could not be verified \([A-Z_]+\)\. Trying again$/);
 	assert.match(await h.pine.sources.send("main", "later", { text: "encrypted first" }), /^sent to me@example\.net$/);
 	assert.deepEqual([out.logins, out.got.map((m) => [m.from, m.to])], [["encrypted"], [["agent@example.net", ["me@example.net"]]]], "the password went over the encrypted connection");
 	await h.close();

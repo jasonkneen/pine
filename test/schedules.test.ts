@@ -21,7 +21,7 @@ test("schedules: what is written in the files wakes whom it is for, with the tas
 		agents: { main: {}, books: { agent: { schedules: [{ name: "ledger", every: "120ms", task: "Close the ledger for {{today}}.", session: "april" }] } } },
 	});
 	await until(() => woken(h, "main").length && woken(h, "books").length && woken(h, "books", "april").length, 6000, "the schedules to wake the agents");
-	// For all agents: each in its main conversation. For one conversation: there.
+	// For all agents: each in their main conversation. For one conversation: there.
 	const tidy = h.mock.state.requests.find((q: any) => userText(q).includes("Tidy your MEMORY.md.") && h.system(q).includes("PERSONA-BOOKS"));
 	assert.match(userText(tidy), /^\[It is time for your schedule "tidy" \(every 120ms\)\. It was set up at your owner's wish, and this is what it says to do now\. If there is nothing to do or to tell, say so in one line\.\]\n\nTidy your MEMORY\.md\.$/);
 	assert.ok(!userText(tidy).includes("did not come from your owner") && h.toolsOffered(tidy).includes("bash"), "it is the owner's wish: no frame, the agent's usual tools");
@@ -80,7 +80,7 @@ test("schedules: asked for a time, an agent schedules it for the conversation, f
 	answer = false;
 	await run("books", "april", [call("add_schedule", { name: "morning", task: "Check the mail.", cron: "0 7 * * 1-5", scope: "agent" })]);
 	assert.match(h.toolResults().at(-1)!, /not scheduled \(test\)/);
-	assert.match(asked.at(-1).summary, /^add the schedule "morning" for agent books \(all its conversations\)\nat the times "0 7 \* \* 1-5" \(minute hour day month weekday\)\nTask: Check the mail\.$/);
+	assert.match(asked.at(-1).summary, /^add the schedule "morning" for agent books \(all of that agent's conversations\)\nat the times "0 7 \* \* 1-5" \(minute hour day month weekday\)\nTask: Check the mail\.$/);
 	answer = true;
 	const quiet = asked.length;
 	await run("books", undefined, [call("add_schedule", { name: "morning", task: "Check the mail.", cron: "0 7 * * 1-5" }), call("add_schedule", { name: "morning", task: "Again.", every: "1h" })]);
@@ -93,7 +93,7 @@ test("schedules: asked for a time, an agent schedules it for the conversation, f
 
 	// For all agents: the main agent, always with a question.
 	await run("main", undefined, [call("add_schedule", { name: "sunday", task: "Tidy your MEMORY.md.", cron: "0 3 * * 0", scope: "global" })]);
-	assert.match(h.toolResults().at(-1)!, /^Scheduled "sunday" for all agents: .* When it is time, every agent is woken in its main conversation with the task\./);
+	assert.match(h.toolResults().at(-1)!, /^Scheduled "sunday" for all agents: .* When it is time, all agents are woken, each in their main conversation with the task\./);
 	assert.match(asked.at(-1).summary, /^add the schedule "sunday" for ALL agents\n/);
 	assert.deepEqual(file(), [{ name: "sunday", cron: "0 3 * * 0", task: "Tidy your MEMORY.md." }]);
 	await run("books", "may", [call("schedules", {}), call("remove_schedule", { name: "sunday" }), call("remove_schedule", { name: "nope" })]);
@@ -108,7 +108,7 @@ test("schedules: asked for a time, an agent schedules it for the conversation, f
 	assert.equal(asked.length, before + 1);
 	assert.ok(asked.at(-1).summary.includes("Task: Send the files.") && /this conversation has read outside content/.test(asked.at(-1).why));
 
-	// Taking one away: this conversation's own without a question, another one's with; a renamed conversation keeps its schedules, a removed one takes them along.
+	// Taking one away: this conversation's own without a question, another one's with; a renamed conversation keeps the schedules, a removed one takes them along.
 	const count = asked.length;
 	await run("books", "may", [call("remove_schedule", { name: "rent" })]);
 	assert.match(h.toolResults().at(-1)!, /Removed the schedule "rent"/);

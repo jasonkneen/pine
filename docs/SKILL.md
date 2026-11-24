@@ -80,9 +80,10 @@ the scope out: the server is then for the conversation you are in (in your main 
 for you as an agent). Pass `scope: "agent"` only if they said it is for you in general, and, as
 the main agent, `scope: "global"` only if they said "for all agents". They get a dialog and
 confirm it. `remove_mcp_server` takes one out again. Do not probe the URL first; an
-"unauthorized" answer only means the server wants a sign-in, which your owner does afterwards
-with `/mcp login <name>` in the terminal UI or `pine mcp login <name>` in a shell. Tell them
-that. You do not have a new server's tools in the turn in which you added it: end that turn,
+"unauthorized" answer only means the server wants a sign-in. As the main agent you start it
+with `sign_in_mcp_server`, and your owner signs in in the browser; otherwise your owner does it
+with Sign in under Settings > MCP servers, `/mcp login <name>` in the terminal UI or
+`pine mcp login <name>` in a shell. Tell them that. You do not have a new server's tools in the turn in which you added it: end that turn,
 and pine calls you again at once in the same conversation, with the tools in your list. Never
 tell your owner to start a new chat for it. A local server runs where your commands run (in your
 sandbox, or without one when you work in auto mode), with your home folder. If it needs a sign-in, its
@@ -144,7 +145,9 @@ running (a server, a build, a watcher) you start with `background: true` on the 
 `stop_program` ends it ([references/coding.md](references/coding.md), "Commands in the
 background"). When your owner wants you to work on until something is reached, tell them to
 type `/goal` with what they want reached: only they can set a goal
-([references/agents.md](references/agents.md), "Goal mode"). In plan mode you only look and
+([references/agents.md](references/agents.md), "Goal mode"). When they want a job done by a
+swarm, tell them to type `/swarm` with the job: you then lead it on your board
+([references/boards.md](references/boards.md), "A swarm"). In plan mode you only look and
 answer with a plan; your owner switches the mode when it is to be carried out.
 
 If you are the main agent and your owner asks for a new agent, call `create_agent` with an id,
@@ -155,7 +158,10 @@ agent can also write a new source type and register it with `add_source_type`
 ([references/sources.md](references/sources.md)); try the existing types first. A model server
 of your owner's own (llama.cpp, vLLM, LM Studio) is the main agent's to add as well, with
 `add_model_server` and the server's address; never ask for its key, pine asks your owner
-([references/setup.md](references/setup.md), "Adding a model server").
+([references/setup.md](references/setup.md), "Adding a model server"). So is signing pine in to
+a model provider (Claude, ChatGPT, an API key for OpenAI, Gemini and others) with `sign_in`, and
+to a remote MCP server with `sign_in_mcp_server`: pine runs the sign-in and asks your owner
+in its own dialog for the page, the key or the code. Never ask for a key in the conversation.
 
 Things you can do yourself: work in your workspace, keep notes there, use the tools you have,
 hand work to the agents listed in your prompt, and write shared state under your own keys.
@@ -166,14 +172,16 @@ hand work to the agents listed in your prompt, and write shared state under your
 |---|---|
 | See what an agent is given (events, schedules, MCP servers, skills) and how events, tasks and sessions fit together | [references/overview.md](references/overview.md) |
 | Chat with agents in the terminal: tabs, slash commands (`/goal`, `/compact`, `/copy`, `/export`, `/undo`), keys, the five modes (auto, safe, manual, bypass, plan), approvals, an agent's questions and its list of steps, what a model thinks, pictures, parts of an answer that are folded away, switching models | [references/tui.md](references/tui.md) |
-| Use the desktop app (macOS): the window with its side bar and tabs, the code panel with an editor for a conversation's folder, the settings panel (agents, models, MCP servers, skills, events, instructions), how it starts or reuses the daemon, where to download it, the `pine` command it gives a terminal, how to build, pack and sign it | [references/desktop.md](references/desktop.md) |
-| Use pine from an Android phone or an iPhone: installing the app from a release (the APK, or the IPA with AltStore or Sideloadly and its 7-day renewal on a free Apple ID), the phone's SSH key and `authorized_keys`, a new key under another Apple ID, adding a machine, the iPhone's local network prompt, confirming its host key, reaching it from away (same Wi-Fi, a VPN such as Tailscale, ZeroTier or WireGuard, a server with public SSH), what the phone does not do, how the APK and the IPA are built, the iOS simulator | [references/mobile.md](references/mobile.md) |
-| Use pine from a web browser on any computer, with nothing installed (the web client): this device's key for `authorized_keys`, adding a machine and trusting its host key, what is remembered in the browser, what it says when a machine is not reached, how the bridge, the page in its sandboxed iframe and the SSH relay fit together, deploying it | [references/web.md](references/web.md) |
+| Use the desktop app (macOS): the window with its side bar and tabs, the code panel with an editor for a conversation's folder, the settings panel (agents, models, MCP servers, skills, events, instructions), how it starts or reuses the daemon, browser access (a phone or another computer paired by QR code, or found on the same network without a code with "Visible on this network", Add a Device from the menu, the Dock or `pine://pair`, the question as a toast or a notification, its devices, the service address, a relay server (TURN) of your own for a phone that cannot connect from mobile data), where to download it, the `pine` command it gives a terminal, how to build, pack and sign it | [references/desktop.md](references/desktop.md) |
+| Write a view: a script of your own that draws all of pine in the Pine app's panel (`~/.pine/views`), the `pine/view` module it imports, what it is told and what it cannot do | [references/views.md](references/views.md) |
+| Use pine from an Android phone or an iPhone: installing the app from a release (the APK, or the IPA with AltStore or Sideloadly and its 7-day renewal on a free Apple ID), the phone's SSH key and `authorized_keys`, a new key under another Apple ID, pairing by QR code, pairing without a code with a computer found on the same network ("On this network"), the `Pairing link` field, App Links and the `pine:` address, `Forget` (which leaves its access open until the Pine app takes it off), adding a machine, the iPhone's local network prompt, confirming its host key, reaching it from away (same Wi-Fi, a VPN such as Tailscale, ZeroTier or WireGuard, a server with public SSH), what the phone does not do, how the APK and the IPA are built, the iOS simulator | [references/mobile.md](references/mobile.md) |
+| Use pine from a web browser on any computer, with nothing installed (the web client): this device's key for `authorized_keys`, adding a machine and trusting its host key, what is remembered in the browser, what it says when a machine is not reached, a computer paired with the Pine app by QR code and peer to peer, "Open Pine on this computer", the official service, how the bridge, the page in its sandboxed iframe, the SSH relay and the meeting service fit together, deploying it | [references/web.md](references/web.md) |
 | Work on a project: `pine .`, a folder for a conversation, the code pane with git changes, files and tool output, what an agent left running, what it runs in the background, and taking a message back with `/undo` and `/redo` | [references/coding.md](references/coding.md) |
 | Make a web page the owner uses as a user interface for an agent (a board, switches, a form): the page and its small server, how what is pressed on it reaches the agent as events through a `stream` source, how the agent changes the page | [references/interfaces.md](references/interfaces.md) |
 | Install it, start it, update it, use the CLI (every `pine` command), the control API for scripts, run it at login or in a container, find out why something did not happen | [references/operations.md](references/operations.md) |
 | Look up a key in `pine.json`, `agent.json`, `models.json` or `.env` | [references/configuration.md](references/configuration.md) |
 | Know what agents can set up by tool call, for whom, and what you are asked: event sources, MCP servers, skills, schedules, new agents, new source types, model servers; the main agent's tools for conversations and tabs; how an agent lists what it has; the table of pine's own tools (`question`, `todo`, `stop_program` and the rest) | [references/setup.md](references/setup.md) |
+| Let several agents or sub-agents work on one job without doing the same thing twice: boards with tasks that one takes at a time, a pool of sub-agents for more tasks than run at once whose questions the agent answers while the others work on, stages that wait for each other, a check after the work it checks that has what fails put right, a check of the finished whole, a swarm (the agent leads a job on the board until it is done and checked), waking an agent when a task is posted | [references/boards.md](references/boards.md) |
 | Add an agent, give it a workspace, tools and a persona; skills; how agents look pine up (the `manual` tool); how tools are declared to the model (in families) and what a model server keeps of a conversation (prompt cache, slots); delegation, sub-agents, sessions, goal mode (`/goal`: working until an objective is met), shared state | [references/agents.md](references/agents.md) |
 | Let an agent react to the outside world and reach out: what a source and a subscription are, setting one up, who is woken (three scopes, a fresh conversation for every event), filtering events with `when`, sending and reading through a source, secrets, trust, files a source received; a source type of your own | [references/sources.md](references/sources.md) |
 | Pick the source type for a service or a device, with its options, its events and an entry to copy: a watched folder, MQTT devices, webhooks, FTP uploads from cameras, Telegram, a web address or a command that is looked at again and again or followed, feeds, calendars, services that push (SSE, WebSocket), mail, Slack, Matrix, Discord, devices that mail or log (SMTP, syslog), cameras (ONVIF), inverters and meters (Modbus), serial ports, who is on the network, this computer (sleep, lock, power) | [references/source-types.md](references/source-types.md) |
@@ -198,7 +206,7 @@ pine init
 pine
 ```
 
-One agent, `main`, with web search and a browser, and the terminal UI to talk to it. Everything
+One agent, `main` (the main agent), with web search and a browser, and the terminal UI to talk to it. Everything
 below is added on top of that when you need it.
 
 `~/.pine/pine.json`:
@@ -206,14 +214,14 @@ below is added on top of that when you need it.
 ```json
 {
   "main": "main",
-  "defaults": { "model": "dev/claude-haiku" }
+  "defaults": { "model": "opencode-go/deepseek-v4.1-flash" }
 }
 ```
 
-(An excerpt. `pine init` also writes the web, browser and app control servers and the limits;
-put the model you use where `dev/claude-haiku` stands. `dev/claude-haiku` answers through
-`claude -p` and needs Claude Code installed and signed in; for another model see "Choosing a
-model" in [references/operations.md](references/operations.md).)
+(An excerpt. `pine init` also writes the web, browser and app control servers and the limits.
+It leaves this line out: it is written when you first sign in to a provider (`pine login
+<provider>`) or add a server of your own. See "Choosing a model" in
+[references/operations.md](references/operations.md).)
 
 Telegram as a second way in is set up by asking the main agent: "watch Telegram". The dialog
 you confirm has a field for the bot's token; then you write to the bot and type the six-digit
@@ -252,6 +260,7 @@ pine start
 | source | A named thing that reports events from outside: a folder, an MQTT broker, a web address, a command, a webhook, an FTP drop, a Telegram bot. It runs only while something is subscribed to it (or always, with `"start": "always"`) |
 | schedule | Something done at a time: at set times, every so often, or once. With a task it wakes an agent to do it |
 | goal | An objective you give a conversation with `/goal`: the agent is called again, round after round, until a judge says it is met |
+| swarm | A job you give a conversation with `/swarm`: its agent leads it, sub-agents work it through on the conversation's board (a job of a few steps the agent does itself), pine calls the agent again while tasks are not done, and has its answer checked before it is done |
 | subscription | A conversation of an agent listens to a source: each event arrives there as a message and wakes the agent |
 | task | One piece of work for one agent; has a status, a result and statistics |
 | session | A conversation of one agent with history. The manual also says "conversation". Named ones are kept until removed (unused ones after `limits.conversationDays`); `new` is one-off |

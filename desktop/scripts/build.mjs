@@ -11,8 +11,10 @@ const root = path.resolve(import.meta.dirname, "..");
 
 /** The main process and the preload, into `<app>/dist-electron`. */
 export async function buildMain(app = root) {
-	const common = { bundle: true, platform: "node", target: "node24", external: ["electron", "node-pty"], sourcemap: true, logLevel: "warning", absWorkingDir: root };
-	await build({ ...common, entryPoints: ["electron/main.ts"], outfile: path.join(app, "dist-electron", "main.js"), format: "esm" });
+	const common = { bundle: true, platform: "node", target: "node24", external: ["electron", "node-pty", "node-datachannel", "ssh2", "bonjour-service"], sourcemap: true, logLevel: "warning", absWorkingDir: root };
+	// A module bundled into it that is CommonJS (ws, of the agent's browser in the window) requires Node's own: an ES module has no require of its own.
+	const require = "import { createRequire as pineRequire } from 'node:module'; const require = pineRequire(import.meta.url);";
+	await build({ ...common, entryPoints: ["electron/main.ts"], outfile: path.join(app, "dist-electron", "main.js"), format: "esm", banner: { js: require } });
 	// A sandboxed preload is loaded as a classic script.
 	await build({ ...common, entryPoints: ["electron/preload.ts"], outfile: path.join(app, "dist-electron", "preload.cjs"), format: "cjs" });
 }

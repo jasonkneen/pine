@@ -1,4 +1,4 @@
-// The web client's bridge runs the same command on the other machine as the Pine app on a Mac,
+// The web client's bridge runs the same command on the other machine as the Pine app does,
 // over an exec channel of its own SSH: it keeps a copy (web/src/remote-command.ts, since the
 // browser build cannot load src/remote.ts), which has to be what src/remote.ts builds.
 import assert from "node:assert/strict";

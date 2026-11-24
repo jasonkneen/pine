@@ -6,6 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { Aedes } from "aedes";
 import mqtt from "mqtt";
+import { telegramChunks } from "../src/sources/telegram.ts";
 import { PineTui } from "../src/tui/app.ts";
 import { Client } from "../src/tui/client.ts";
 import { harness, MCP_STUB, mockMsg, notesOf, sleep, until } from "./support/harness.ts";
@@ -44,6 +45,8 @@ async function fakeTelegram() {
 			return reply(queue.filter((u) => u.update_id >= confirmed));
 		}
 		calls.push({ method: m[2], body });
+		// As Telegram does with HTML it cannot read: refused, and nothing is sent.
+		if (body.parse_mode === "HTML" && /UNREADABLE/.test(body.text ?? body.caption ?? "")) return reply("Bad Request: can't parse entities: unsupported start tag", false);
 		return reply(m[2] === "sendMessage" ? { message_id: messageId++ } : true);
 	});
 	await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -146,7 +149,7 @@ test("telegram: set up by asking, paired by the owner in pine, then a conversati
 	assert.match(out[0], /telegram \(telegram: my Telegram\) - running[\s\S]*can send \(tool: send\): a Telegram message to your owner/);
 	assert.equal(out[1], "telegram: sent to your owner on Telegram");
 	assert.match(out[2], /that chat is not your owner's/);
-	assert.deepEqual(tg.sent().at(-1), { chat_id: 1001, text: "heads up" });
+	assert.deepEqual(tg.sent().at(-1), { chat_id: 1001, text: "heads up", parse_mode: "HTML" });
 	// Another agent has no way to it: the source is the main agent's own.
 	await run([call("send", { source: "telegram", text: "from gonzo" })], "gonzo");
 	assert.match(h.toolResults().at(-1)!, /"telegram" is not a source you can send through/);
@@ -216,7 +219,7 @@ test("telegram: a list of user ids instead of pairing, and a wrong token says so
 	// Telegram folds nothing: a part the terminal UI would fold arrives as its summary and what it holds, without the tags.
 	tg.message(1001, mockMsg([{ text: "The landlord agrees.\n\n<details><summary>Full message</summary>\n\nDear Ms Okapi,\n\nthe keys are with the caretaker.\n\n</details>\n\nWrite `<details>` to fold.\n\n```\n<details>in code</details>\n```" }]));
 	await until(() => tg.sent().length === 2, 5000, "the second answer");
-	assert.equal(tg.sent()[1].text, "The landlord agrees.\n\n▾ Full message\nDear Ms Okapi,\n\nthe keys are with the caretaker.\n\nWrite `<details>` to fold.\n\n```\n<details>in code</details>\n```");
+	assert.equal(tg.sent()[1].text, "The landlord agrees.\n\n▾ Full message\nDear Ms Okapi,\n\nthe keys are with the caretaker.\n\nWrite <code>&lt;details&gt;</code> to fold.\n\n<pre>&lt;details&gt;in code&lt;/details&gt;</pre>");
 	// What a type will not take is said before anything is written.
 	const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("add_source", { name: "tg2", type: "telegram", description: "x", options: { token: "hello" } }), call("add_source", { name: "tg3", type: "telegram", description: "x", options: { token: TOKEN, apiBase: "http://example.com" } })] }]), ...owner });
 	assert.ok(/that is not a bot token/.test(h.toolResults().at(-2)!) && /must be reached over https/.test(h.toolResults().at(-1)!), r.text);
@@ -243,7 +246,7 @@ test("telegram: after outside content an agent still tells its owner without a q
 	await h.pine.agents.run({ agent: "main", prompt: mockMsg([outside, { tools: [call("send", { source: "phone", text: "Somebody is at the door." }), call("publish_event", { topic: "out/notes", payload: { text: "the notes" } })] }]), ...owner });
 	assert.ok(h.pine.agents.status().sessions.some((x: any) => x.agent === "main" && x.tainted), "the conversation has read outside content");
 	assert.equal(h.toolResults().at(-2), "phone: sent to your owner on Telegram");
-	assert.deepEqual(tg.sent().at(-1), { chat_id: 1001, text: "Somebody is at the door." });
+	assert.deepEqual(tg.sent().at(-1), { chat_id: 1001, text: "Somebody is at the door.", parse_mode: "HTML" });
 	assert.deepEqual(asked.map((a) => a.tool), ["publish_event"], "what leaves for somewhere else is still put to the owner, and only that");
 	assert.match(h.toolResults().at(-1)!, /not approved/);
 	// It still cannot write to anybody else through it: the source decides where a message goes.
@@ -268,14 +271,14 @@ test("telegram: after outside content an agent still tells its owner without a q
 	assert.equal(sentFiles[1], "phone: sent to your owner on Telegram, with clip.mp4");
 	assert.match(sentFiles[2], /notes\.txt is not a picture, a video or a sound file in your workspace/, "a file that is neither is not sent");
 	assert.match(sentFiles[3], /is not a picture, a video or a sound file in your workspace/, "and nothing from outside the workspace");
-	// The calls of one step run side by side: what arrives first is up to the machine.
-	const byText = (a: unknown[], b: unknown[]) => JSON.stringify(a).localeCompare(JSON.stringify(b));
-	assert.deepEqual(files().map((c) => [c.method, c.body.chat_id, c.body.caption, (c.body.photo ?? c.body.video).name, (c.body.photo ?? c.body.video).type]).sort(byText), [
+	// The calls of one turn run side by side, so the files reach Telegram in whatever order their uploads end.
+	const byCaption = (a: any[], b: any[]) => String(a[2]).localeCompare(String(b[2]));
+	assert.deepEqual(files().map((c) => [c.method, c.body.chat_id, c.body.caption, (c.body.photo ?? c.body.video).name, (c.body.photo ?? c.body.video).type]).sort(byCaption), [
 		["sendPhoto", "1001", "Somebody is at the door.", "door.png", "image/png"],
 		["sendVideo", "1001", "The clip.", "clip.mp4", "video/mp4"],
 		["sendPhoto", "1001", undefined, "door.png", "image/png"],
-	].sort(byText));
-	assert.equal(files().find((c) => c.method === "sendPhoto")!.body.photo.size, PNG.length, "the picture arrives whole");
+	].sort(byCaption));
+	assert.equal(files().find((c) => c.body.caption === "Somebody is at the door.")!.body.photo.size, PNG.length, "the picture arrives whole");
 	assert.equal(tg.sent().at(-1).text.length, 1500, "a message too long for a caption goes first, by itself");
 	assert.equal(asked.length, 1, "none of this was put to the owner");
 	// An owner who wants to see every message first says so, and is asked in every conversation.
@@ -287,13 +290,81 @@ test("telegram: after outside content an agent still tells its owner without a q
 	await h.close();
 });
 
+test("telegram: what an agent writes in Markdown arrives formatted; pine's own questions stay plain", async (t) => {
+	const [one] = telegramChunks("# News\n\n**Rainer** wants _you_ to look at `a<b` & ~~old~~\n\n- one\n  - two\n- [x] done\n\n> said so\n\n```ts\nif (a < b) {}\n```");
+	assert.equal(
+		one.html,
+		'<b>News</b>\n\n<b>Rainer</b> wants <i>you</i> to look at <code>a&lt;b</code> &amp; <s>old</s>\n\n• one\n    • two\n☑ done\n\n<blockquote>said so</blockquote>\n\n<pre><code class="language-ts">if (a &lt; b) {}</code></pre>',
+	);
+	// A link shows where it goes: an answer may repeat a page, and a link's text can say one thing and go to another.
+	assert.equal(telegramChunks("[your bank](https://evil.example/login) and <https://pine.dev>")[0].html, "your bank (https://evil.example/login) and https://pine.dev");
+	// Tags an agent writes itself are text: no hidden link, no markup of its own.
+	assert.equal(telegramChunks('<a href="https://evil.example">bank</a> <b>x</b>')[0].html, '&lt;a href="https://evil.example"&gt;bank&lt;/a&gt; &lt;b&gt;x&lt;/b&gt;');
+	assert.equal(telegramChunks("snake_case_name and 3 * 4 = 12. (Done!)")[0].html, "snake_case_name and 3 * 4 = 12. (Done!)", "punctuation is left alone");
+	// Long messages are cut between blocks; a block longer than a message goes as plain text in pieces.
+	const long = telegramChunks(`${"a".repeat(3000)}\n\n${"b".repeat(3000)}\n\n${"c".repeat(9000)}`);
+	assert.deepEqual(long.map((c) => [c.html === undefined ? "plain" : "html", c.text.length]), [["html", 3000], ["html", 3000], ["plain", 4000], ["plain", 4000], ["plain", 1000]]);
+
+	const tg = await fakeTelegram();
+	t.after(() => tg.close());
+	const phone = { type: "telegram", token: TOKEN, allow: [1001], apiBase: tg.apiBase, trust: "owner" };
+	const h = await harness({ pine: { sources: { phone }, subscribe: ["phone"] }, agents: { main: { agent: { approve: ["bash:*rm *"] } } } });
+	await until(() => h.pine.sources.list().find((s) => s.name === "phone")?.running, 4000, "the source to run");
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("send", { source: "phone", text: "**Roman** asks for a _review_" })] }]), ...owner });
+	assert.deepEqual(tg.sent().at(-1), { chat_id: 1001, text: "<b>Roman</b> asks for a <i>review</i>", parse_mode: "HTML" });
+	// Should Telegram refuse the HTML, the message goes as it was written, rather than not at all.
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("send", { source: "phone", text: "**UNREADABLE** still arrives" })] }]), ...owner });
+	assert.equal(h.toolResults().at(-1), "phone: sent to your owner on Telegram");
+	assert.deepEqual(tg.sent().at(-1), { chat_id: 1001, text: "**UNREADABLE** still arrives" });
+	// An approval request shows exactly what is asked: not read as Markdown.
+	const pending = h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("bash", { command: "rm -rf build/__init__ && echo **done**" })] }]), ...owner });
+	await until(() => tg.sent().some((m) => /Approval needed/.test(m.text)), 5000, "the approval request");
+	const asked = tg.sent().find((m) => /Approval needed/.test(m.text));
+	assert.equal(asked.parse_mode, undefined);
+	assert.match(asked.text, /rm -rf build\/__init__ && echo \*\*done\*\*/);
+	h.pine.approvals.decide(h.pine.approvals.pending()[0].id, false, "test");
+	await pending;
+	await h.close();
+});
+
+test("telegram: an agent's own bot carries that agent's questions, and nobody else's are shown or answered there", async (t) => {
+	const forSlack = await fakeTelegram();
+	const forKevin = await fakeTelegram();
+	t.after(() => Promise.all([forSlack.close(), forKevin.close()]));
+	const bot = (tg: { apiBase: string }) => ({ type: "telegram", token: TOKEN, allow: [1001], apiBase: tg.apiBase, trust: "owner", approvals: true });
+	const h = await harness({
+		agents: {
+			slack: { agent: { sources: { "tg-slack": bot(forSlack) }, subscribe: [{ source: "tg-slack" }] } },
+			kevin: { agent: { sources: { "tg-kevin": bot(forKevin) }, subscribe: [{ source: "tg-kevin" }] } },
+		},
+	});
+	await until(() => h.pine.sources.list().filter((s) => s.running).length === 2, 4000, "both bots to run");
+	const asking = h.pine.agents.run({ agent: "slack", prompt: mockMsg([{ tools: [call("question", { question: "Which color for the header?", choices: ["Blue", "Green"] })] }]), ...owner });
+	await until(() => forSlack.sent().some((m) => /slack asks:\nWhich color/.test(m.text)), 5000, "the question on slack's bot");
+	await sleep(150);
+	assert.equal(forKevin.sent().length, 0, "kevin's bot shows nothing of slack's");
+	const id = h.pine.approvals.pending()[0].id;
+	// Nor can it answer one: not by a command, and not by a button it never had.
+	forKevin.message(1001, "/allow");
+	await until(() => forKevin.sent().some((m) => m.text === "No such open request."), 4000, "kevin's bot to say there is none");
+	forKevin.callback(1001, `ap:${id}:c1`);
+	forKevin.message(1001, `/allow ${id}`);
+	await until(() => forKevin.sent().length === 2, 4000, "the second refusal");
+	assert.equal(h.pine.approvals.pending().length, 1, "the question is still open");
+	const question = forSlack.sent().find((m) => /Which color/.test(m.text));
+	forSlack.callback(1001, question.reply_markup.inline_keyboard[1][0].callback_data);
+	const r = await asking;
+	assert.match(r.text, /Your owner answered: Green/);
+	await h.close();
+});
+
 test("mqtt: an agent acts on a device through the source, on the listed topics only", async (t) => {
 	const broker = await Aedes.createBroker();
 	const server = net.createServer(broker.handle);
 	t.after(() => new Promise<void>((r) => broker.close(() => server.close(() => r()))));
 	await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
 	const url = `mqtt://127.0.0.1:${(server.address() as any).port}`;
-	const h = await harness({ pine: { sources: { house: { type: "mqtt", url, topics: "house/#", publish: ["house/+/set"] }, ears: { type: "mqtt", url, topics: "garden/#" } } }, agents: { main: {} } });
+	const h = await harness({ pine: { sources: { house: { type: "mqtt", url, topics: "house/#", publish: ["house/+/set"] }, ears: { type: "mqtt", url, topics: "garden/#" } } }, agents: { main: { agent: { approve: ["bash:*rm *"] } } } });
 	const outside = await mqtt.connectAsync(url);
 	const got: Array<[string, string]> = [];
 	await outside.subscribeAsync("#");
@@ -323,7 +394,7 @@ test("mqtt: an agent acts on a device through the source, on the listed topics o
 test("secrets: asked of the owner by pine, or named from .env; a yes without the value is not a yes", async (t) => {
 	const tg = await fakeTelegram();
 	t.after(() => tg.close());
-	const h = await harness({ pine: { http: { port: 0 } }, files: { ".env": `MY_BOT_TOKEN=${TOKEN}\n` }, agents: { main: {} } });
+	const h = await harness({ pine: { http: { port: 0 } }, files: { ".env": `MY_BOT_TOKEN=${TOKEN}\n` }, agents: { main: { agent: { approve: ["bash:*rm *"] } } } });
 	const asked: any[] = [];
 	h.pine.bus.subscribe("approval/requested", (e) => void asked.push(e.payload));
 	const api = (id: string, body: unknown) => fetch(`http://127.0.0.1:${h.pine.http!.port}/approvals/${id}`, { method: "POST", headers: { authorization: `Bearer ${h.pine.token}`, "content-type": "application/json" }, body: JSON.stringify(body) }).then(async (res) => ({ status: res.status, body: await res.json() }));
@@ -369,7 +440,7 @@ const pictures = { skip: process.platform !== "darwin" && !["/usr/local/bin/ffmp
 test("tui: a secret is typed into the dialog without being shown, and never appears in the conversation", pictures, async (t) => {
 	const tg = await fakeTelegram();
 	t.after(() => tg.close());
-	const h = await harness({ pine: { main: "main", http: { port: 0 } }, agents: { main: {} } });
+	const h = await harness({ pine: { main: "main", http: { port: 0 } }, agents: { main: { agent: { approve: ["bash:*rm *"] } } } });
 	const term = new FakeTerminal(120, 34);
 	const app = new PineTui({ client: new Client(`http://127.0.0.1:${h.pine.http!.port}`, h.pine.token), terminal: term, mode: "test" });
 	t.after(() => app.stop());
@@ -384,7 +455,8 @@ test("tui: a secret is typed into the dialog without being shown, and never appe
 	term.type(["\r"]);
 	await sees("Approval needed, and something only you have");
 	// The value's name on a line of its own, and under it what it is.
-	await sees(/│ token +│\n.*│ the bot's token, which @BotFather gives/);
+	// (What the conversation shows behind the dialog may stand to the right of its border.)
+	await sees(/│ token +│[^\n]*\n.*│ the bot's token, which @BotFather gives/);
 	await sees("Type or paste it here. It is not shown, goes into pine's .env file");
 	// Enter with nothing typed does not say yes, and letters are part of the value, not shortcuts.
 	term.type(["\r"]);
@@ -409,7 +481,7 @@ test("tui: a secret is typed into the dialog without being shown, and never appe
 	tg.message(1001, "", { caption: "what is this?", photo: [{ file_id: "f1", file_unique_id: "u1", file_size: PNG.length }] });
 	const code = async () => { await until(() => tg.sent().some((m) => /type this code/.test(m.text))); return tg.sent().findLast((m) => /type this code/.test(m.text))!.text.match(/(\d{3}) (\d{3})/)!.slice(1).join(""); };
 	await pair;
-	await sees(/│ code +│\n.*│ the six digits the bot just sent to that account in Telegram/);
+	await sees(/│ code +│[^\n]*\n.*│ the six digits the bot just sent to that account in Telegram/);
 	term.type(await code());
 	await sees(/> \d{6}/);
 	term.type(["\r"]);

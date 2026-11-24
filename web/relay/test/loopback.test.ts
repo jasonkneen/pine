@@ -39,7 +39,7 @@ test("the switch opens nothing but the loopback", async () => {
 });
 
 test("the switch does nothing for a relay served under any other name", async () => {
-	for (const origin of ["https://pine.example", "https://pine-relay.someone.workers.dev", "http://198.51.100.7:8787"]) {
+	for (const origin of ["https://pine.example", "https://pine-main.someone.workers.dev", "https://pine-pr-12.someone.workers.dev", "http://198.51.100.7:8787"]) {
 		assert.equal(await tried(origin, "127.0.0.1", "1"), "refused", origin);
 	}
 });

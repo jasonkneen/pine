@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, within } from "storybook/test";
+import { expect, fn, waitFor, within } from "storybook/test";
 import type { AgentDetail, AgentInfo, McpServer, Overview, Route, Schedule, Setting } from "./api.ts";
 import { store } from "./model.ts";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { NewRoute, NewSchedule, Routes, Schedules, Settings, ThemePicker } from "./Settings.tsx";
+import { NewRoute, NewSchedule, Routes, Schedules, Settings, SettingsItem, ThemePicker } from "./Settings.tsx";
 import { THEMES } from "../.storybook/themes.ts";
 import type { ThemeEntry } from "./theme.ts";
 
@@ -89,10 +89,26 @@ const answers: Record<string, unknown> = {
 	"/agents/scout/detail": scout,
 	"/settings": settings,
 	"/models": models,
+	// Signed in to one provider, and two model servers of the owner's own: one with several models and a number of
+	// runs of its own, one as it comes.
+	"/models/providers": [
+		{ id: "anthropic", name: "Anthropic", signedIn: true, oauth: true, models: 6 },
+		{ id: "openai", name: "OpenAI", signedIn: false, oauth: true, models: 12 },
+	],
+	"/models/servers": [
+		{ name: "local", baseUrl: "http://127.0.0.1:8080/v1", key: "none", runs: 8, models: [{ id: "qwen3-coder", contextWindow: 65536, images: false, reasoning: true }, { id: "gemma-4-vision", contextWindow: 32768, images: true, reasoning: false, limit: 1 }, { id: "nomic-embed-text-v2-moe-long-name-of-a-model", contextWindow: 8192, images: false, reasoning: false }] },
+		{ name: "studio", baseUrl: "http://studio.local:1234/v1", key: "PINE_MODEL_STUDIO_API_KEY in .env", runs: 8, models: [{ id: "glm-5.3", contextWindow: 131072, images: true, reasoning: true }] },
+	],
 	"/mcp": mcp,
 	"/mcp/states": { linear: "needs sign-in", notes: "connected" },
 	"/routes": routes,
 	"/schedules": schedules,
+	// The files for all agents, under the list on the Agents page: one written, two still empty.
+	"/shared": [
+		{ name: "AGENTS.md", about: "Traits and behaviour for all agents: how every agent is to be and to act.", text: "Answer in English, briefly.\n" },
+		{ name: "TOOLS.md", about: "Tooling for all agents: defaults and preferences for the tools, and other technical details of your setup.", text: "" },
+		{ name: "USER.md", about: "What every agent knows about you.", text: "" },
+	],
 };
 
 window.pine.call = async (_method, url) => (url in answers ? { ok: true, status: 200, data: answers[url] } : { ok: false, status: 404, data: { error: `no stand-in for ${url}` } });
@@ -120,16 +136,32 @@ const meta = {
 	},
 } satisfies Meta<typeof Tab>;
 
-/** Nothing of a local machine on the page: no row for it, no "This Mac", nothing to use or set up there. */
+/** Nothing of a local machine on the page: no row for it, no "This Mac" or "This computer", nothing to use or set up there. */
 async function noLocalMachine(root: HTMLElement) {
 	await expect(root.querySelector('[data-environment="local"]')).toBeNull();
-	await expect(within(root).queryAllByText(/This Mac|This computer|Use this Mac|Set up pine/)).toHaveLength(0);
+	await expect(within(root).queryAllByText(/This (Mac|computer)|Use this (Mac|computer)|Set up pine/)).toHaveLength(0);
 }
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** pine's own settings: the version and home, a note on the setup, and a control of each kind. */
 export const General: Story = { args: { section: "general" } };
+
+/** General while pine has not answered yet: a skeleton card for the overview and skeleton groups for the settings, no Pulse. */
+export const GeneralLoading: Story = {
+	args: { section: "general" },
+	beforeEach: () => {
+		const call = window.pine.call;
+		// The overview and the settings never answer: the page stays on its first load.
+		window.pine.call = (method, url) => (url === "/overview" || url === "/settings" ? new Promise(() => {}) : call(method, url));
+		return () => void (window.pine.call = call);
+	},
+	play: async ({ canvasElement }) => {
+		await expect(canvasElement.querySelector("[data-slot=settings-overview-skeleton]")).not.toBeNull();
+		await expect(canvasElement.querySelectorAll("[data-slot=settings-group-skeleton]").length).toBeGreaterThan(0);
+		await expect(canvasElement.querySelectorAll("[data-slot=settings-page] [data-slot=pulse]")).toHaveLength(0);
+	},
+};
 
 /** The list of agents, each a row to open: main, its mode, its model and workspace. */
 export const Agents: Story = { args: { section: "agents" } };
@@ -139,6 +171,41 @@ export const AgentPage: Story = { args: { section: "agents", agent: "scout" } };
 
 /** MCP servers in each scope and state, with Sign in and Remove, above the form that adds one. */
 export const McpServers: Story = { args: { section: "mcp" } };
+
+/** Models: the default, the providers signed in to, and the owner's own model servers, each with its models on lines of their own, and for each model how many runs it takes at a time. */
+export const Models: Story = {
+	args: { section: "models" },
+	play: async ({ canvasElement }) => {
+		const local = await within(canvasElement).findByText("qwen3-coder");
+		await expect(local.closest("[data-server]")).toHaveAttribute("data-server", "local");
+		await expect(canvasElement.querySelectorAll('[data-server="local"] [data-model]')).toHaveLength(3);
+		await expect(within(canvasElement).getByText("66k context · text only · can reason")).toBeInTheDocument();
+		// Each model says its number: one has its own, the others what holds everywhere. No number for a whole server.
+		await expect(canvasElement.querySelector('[data-setting^="server-runs:"]')).toBeNull();
+		await expect(canvasElement.querySelector('[data-setting="model-runs:studio/glm-5.3"] [data-slot=select-trigger]')).toHaveTextContent("Pine default (8)");
+		await expect(canvasElement.querySelector('[data-setting="model-runs:local/gemma-4-vision"] [data-slot=select-trigger]')).toHaveTextContent("1 at a time");
+		await expect(canvasElement.querySelector('[data-setting="model-runs:local/qwen3-coder"] [data-slot=select-trigger]')).toHaveTextContent("Pine default (8)");
+	},
+};
+
+/** The search at the top of the navigation, with words typed: what fits in place of the page, best first, and the pages with nothing that fits faded. */
+export const Search: Story = {
+	args: { section: "general" },
+	play: async ({ canvas, userEvent }) => {
+		await userEvent.type(await canvas.findByRole("searchbox", { name: "Search Settings" }), "mode");
+		await canvas.findByText("“mode”");
+		await expect(await canvas.findByText("General › Defaults for agents · How much an agent asks, and how far it reaches.")).toBeVisible();
+	},
+};
+
+/** Words that fit nothing in Settings. */
+export const SearchFindsNothing: Story = {
+	args: { section: "general" },
+	play: async ({ canvas, userEvent }) => {
+		await userEvent.type(await canvas.findByRole("searchbox", { name: "Search Settings" }), "zzqqxx");
+		await canvas.findByText("Nothing in Settings fits");
+	},
+};
 
 /** This computer and two machines added over SSH, the app on one of them: in use there, Use and Forget on the others. */
 export const Environments: Story = {
@@ -267,9 +334,9 @@ export const EnvironmentsHostKeyToConfirm: Story = {
 	},
 };
 
-/** The App page under a bridge with no local machine: the theme, the agent accent, notifications and the pine in use, without what only this computer has (its home folder, Keep running, Restart, the pine command, the browser build, the Electron version). */
+/** General under a bridge with no local machine: the theme, the agent accent, notifications and the pine in use, without what only this computer has (its home folder, Keep running, Restart, the pine command, the browser build, the Electron version). */
 export const AppWithoutLocal: Story = {
-	args: { section: "app", local: false },
+	args: { section: "general", local: false },
 	play: async ({ canvasElement, canvas }) => {
 		await canvas.findByText("Theme");
 		await noLocalMachine(canvasElement);
@@ -278,10 +345,13 @@ export const AppWithoutLocal: Story = {
 
 // The app's preferences as the main process keeps them: what is set is answered back, as `pine:prefs` does.
 window.pine.prefs = async (change) => ({ ...store.prefs, ...change });
+// `pine` for a terminal, as General asks about it on this computer: not set up. (Without this the stand-in's answer
+// is a function and no promise, and the page of every story with a local machine throws.)
+window.pine.command = async () => ({ state: "none", text: "" });
 
-/** The theme of the App page: pine's themes, pmndre in force, and a file in the folder that is not a theme. */
+/** The theme picker of General: pine's themes, pmndre in force, and a file in the folder that is not a theme. */
 export const Theme: Story = {
-	args: { section: "app" },
+	args: { section: "general" },
 	render: () => {
 		store.themes = [...THEMES, { id: "half-done", name: "half-done", problem: 'it names no color for the page: a theme needs "editor.background" and "editor.foreground" in "colors"' } satisfies ThemeEntry];
 		store.theme = "pmndre";
@@ -290,5 +360,126 @@ export const Theme: Story = {
 				<ThemePicker />
 			</div>
 		);
+	},
+};
+
+/** The entries of the settings' navigation, by their label. */
+const entries = (root: HTMLElement) => [...root.querySelectorAll("[data-slot=sidebar-menu-button]")].map((b) => b.textContent);
+
+/** The page drawn for a section that is not offered: General, marked as the entry in use, never a page with no entry lit. */
+async function generalInstead(root: HTMLElement) {
+	await expect(entries(root)).not.toContain("Browser access");
+	await expect(root.querySelector("[data-slot=sidebar-menu-button][aria-current=page]")).toHaveTextContent("General");
+}
+
+/** The desktop app on this computer's pine: Browser access is in the navigation, after Environments. (App is no entry of its own any more: it is a part of General.) */
+export const AccessOffered: Story = {
+	args: { section: "general" },
+	play: async ({ canvasElement }) => {
+		await expect(entries(canvasElement).slice(-2)).toEqual(["Environments", "Browser access"]);
+	},
+};
+
+/** A bridge with no local machine (the web client, a phone): no Browser access in the navigation, and the section once chosen opens General. */
+export const AccessNotOfferedWithoutLocal: Story = {
+	args: { section: "access", local: false },
+	play: async ({ canvasElement }) => await generalInstead(canvasElement),
+};
+
+/** The desktop app on another machine's pine: Browser access is this computer's door, so it is not offered there. */
+export const AccessNotOfferedOnAnotherMachine: Story = {
+	args: { section: "access" },
+	render: Environments.render,
+	play: async ({ canvasElement }) => await generalInstead(canvasElement),
+};
+
+/** A bridge that has no calls for Browser access (Storybook's stand-in answers every name, so the story takes it away). */
+export const AccessNotOfferedWithoutBridgeCalls: Story = {
+	args: { section: "access" },
+	beforeEach: () => {
+		(window.pine as unknown as Record<string, unknown>).access = false;
+		return () => void delete (window.pine as Partial<typeof window.pine>).access;
+	},
+	play: async ({ canvasElement }) => await generalInstead(canvasElement),
+};
+
+/** The outline row of the Settings lists: a title with its badges, lines below it, and actions. */
+export const SettingsItemDefault: Story = {
+	args: { section: "general" },
+	render: () => <SettingsItem title="linear" description={["https://mcp.linear.app/mcp", "for main"]} actions={<span>Sign in</span>} />,
+};
+
+/** The same row while its list loads: a bar for the title, bars for the lines, a block for the actions. */
+export const SettingsItemSkeleton: Story = {
+	args: { section: "general" },
+	render: () => <SettingsItem skeleton />,
+	play: async ({ canvasElement }) => {
+		await expect(canvasElement.querySelector("[data-slot=settings-item] [data-slot=skeleton]")).not.toBeNull();
+	},
+};
+
+/** Nothing the page asks for answers: it stays on its first load, drawn as skeletons, with no Pulse and no "…". */
+function neverAnswers(section: string, agent?: string): Story {
+	return {
+		args: { section, agent },
+		beforeEach: () => {
+			const call = window.pine.call;
+			window.pine.call = () => new Promise(() => {});
+			return () => void (window.pine.call = call);
+		},
+		play: async ({ canvasElement }) => {
+			const page = canvasElement.querySelector("[data-slot=settings-page]")!;
+			await expect(page.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
+			await expect(page.querySelectorAll("[data-slot=pulse]")).toHaveLength(0);
+			// A value still to come is a bar, never an element that says only "…".
+			await expect([...page.querySelectorAll("*")].filter((x) => x.textContent?.trim() === "…")).toHaveLength(0);
+		},
+	};
+}
+
+/** Models on its first load: the fallback model, the providers and the own servers as skeleton rows. */
+export const ModelsLoading = neverAnswers("models");
+/** MCP servers on their first load. */
+export const McpLoading = neverAnswers("mcp");
+/** Skills on their first load. */
+export const SkillsLoading = neverAnswers("skills");
+/** Events on their first load: sources, schedules and routes as skeleton rows. */
+export const EventsLoading = neverAnswers("events");
+/** One agent's page on its first load: its heading, fields and editor as skeletons. */
+export const AgentPageLoading = neverAnswers("agents", "scout");
+/** The shared instructions on their first load. */
+export const InstructionsLoading = neverAnswers("instructions");
+
+/** Only some addresses never answer: the rest of the page is drawn, and what waits on them is pending. */
+function withholding(section: string, urls: string[]) {
+	return {
+		args: { section },
+		beforeEach: () => {
+			const call = window.pine.call;
+			window.pine.call = (method, url) => (urls.includes(url) ? new Promise(() => {}) : call(method, url));
+			return () => void (window.pine.call = call);
+		},
+	} satisfies Story;
+}
+
+/** MCP servers listed while their states are still asked: each state badge is a bar, not "…". */
+export const McpStatesLoading: Story = {
+	...withholding("mcp", ["/mcp/states"]),
+	play: async ({ canvasElement }) => {
+		await within(canvasElement).findByText("linear");
+		const rows = canvasElement.querySelectorAll("[data-find^='mcp:']");
+		await expect(rows.length).toBe(mcp.length);
+		// The server turned off says so; the others wait on their state.
+		await expect(canvasElement.querySelectorAll("[data-find^='mcp:'] [data-slot=skeleton]")).toHaveLength(mcp.filter((x) => x.enabled).length);
+	},
+};
+
+/** General with its settings drawn while the models are still asked: the model select is pending, not a list of one. */
+export const GeneralModelsLoading: Story = {
+	...withholding("general", ["/models"]),
+	play: async ({ canvasElement }) => {
+		const row = await waitFor(() => canvasElement.querySelector('[data-setting-key="defaults.model"]') ?? Promise.reject(new Error("no model row")));
+		await expect(row.querySelector("[data-pending]")).not.toBeNull();
+		await expect(row.querySelector("[data-slot=select-trigger]")).toBeNull();
 	},
 };

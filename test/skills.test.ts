@@ -68,7 +68,7 @@ test("skills: an agent writes one down for a conversation, for itself, or (the m
 	await run("books", "april", [call("add_skill", { ...invoices, name: "ledger", scope: "agent" })]);
 	assert.match(h.toolResults().at(-1)!, /not added \(test\)/);
 	assert.equal(asked.at(-1).tool, "add_skill");
-	assert.match(asked.at(-1).summary, /^add the skill "ledger" for agent books \(all its conversations\)\nFile an invoice: where it goes[^\n]*\nInstructions:\n1\. Read the total\./);
+	assert.match(asked.at(-1).summary, /^add the skill "ledger" for agent books \(all of that agent's conversations\)\nFile an invoice: where it goes[^\n]*\nInstructions:\n1\. Read the total\./);
 	assert.ok(!fs.existsSync(path.join(dirs.agent, "ledger")));
 	answer = true;
 	const before = asked.length;

@@ -118,10 +118,40 @@ build test covers what ships for each platform either way.
   cover (SSH, events, the state machine) is held by two suites that mirror each other.
 - Rule 10 has a third holder of the token: the Swift plugin, beside `main.ts` and `PinePlugin.kt`.
 - The release workflow gains a job `ios` on a macOS runner with an Xcode able to build the project.
-  It needs no secret, so a release always has its IPA.
+  It needs no secret, so a release always has its IPA. (Taken out again in 0.49.1: the core's
+  `swift test` did not pass on GitHub's Xcode 27 preview image. The IPA is built by hand meanwhile.)
 - The owner installs and renews the app with their own Apple ID; the manual says how, and that a
   free Apple ID means a renewal every 7 days.
 - A reinstall under another Apple ID means adding the new key to every machine again.
 - iOS asks once for the local network when a machine on the Wi-Fi is reached.
 - What is proven only on the simulator (the hardening, the Keychain) is not proven by any workflow:
   the smoke run is run by hand before a release that changes the iOS app or upgrades Capacitor.
+
+## Amended: pairing, the `pine:` scheme and an embedded library
+
+The app now pairs with a computer that runs the Pine app ([0001](0001-mobile-app.md), "Amended:
+the app pairs with the Pine app"). What that changed on iOS:
+
+- **The `pine:` scheme.** Universal links need the app signed by a team the website names, which
+  an IPA that each owner signs cannot have. So the app registers `pine:` (`CFBundleURLTypes`),
+  and the web client, on an iPhone or iPad only, offers "Open in the Pine app" or "Continue in
+  this browser" before it uses a pairing code; the first opens
+  `pine://pair?service=<percent-encoded https origin>&id=<machine id>&code=<code>`. `SceneDelegate`
+  hands such an address to the plugin, at start or while running, and never to the web view; the
+  page reads it with the same parser as a pasted link and asks the owner before anything is used.
+  Any app can open a `pine:` address, so that question is the guard.
+- **libdatachannel, linked in.** The data channel is libdatachannel (`libdatachannel-xcframework`,
+  static, wrapped in Swift), bridged into a NIO channel by a socket pair so that swift-nio-ssh gets
+  what it gets over TCP. It needs OpenSSL, embedded as `OpenSSL.framework`; the IPA script takes
+  that framework's vendor signature off and checks that nothing in the IPA is signed. Re-signing
+  as a sideloading tool does was tried with a throwaway identity and passes `codesign --verify`;
+  installing with AltStore or Sideloadly was not tried. The xcframework has no Intel slice for
+  macOS, so `swift test` runs on Apple silicon only.
+- **No TCP keepalive on this path.** The loss of a paired connection is taken from the data
+  channel's and the peer connection's own state, and the health check on return.
+- **The Keychain key pairs too.** The phone presents the key it keeps in the Keychain; there is no
+  second key. A reinstall under another Apple ID means pairing again, and removing the old device
+  at the computer.
+- **The device's name** is "Pine on iPhone" or "Pine on iPad": iOS gives an app no model name
+  without a table of hardware ids, and the owner's own device name needs an entitlement.
+- **The local network sentence** now speaks of the machines the owner adds or pairs with.

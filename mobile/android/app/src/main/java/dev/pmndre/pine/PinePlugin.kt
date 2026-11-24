@@ -1,8 +1,10 @@
 // The native plugin the mobile bridge talks to (mobile/src/plugin.ts, registered as `Pine`): what
 // Electron's main process is for the desktop page. It holds the SSH sessions and the daemons'
-// tokens and makes every call; the page never sees either. What it decides lives in the core
-// (../../../../../../../core, package pine.mobile.core, tested on the JVM): this file is the Android
-// glue around it (the Keystore, the shelf, the WebView, intents, the back button, the app's life).
+// tokens and makes every call; the page never sees either. A computer paired by its link is reached
+// the same way, SSH over a data channel the core opens (LibWebRtc.kt). What it decides lives in the
+// core (../../../../../../../core, package pine.mobile.core, tested on the JVM): this file is the
+// Android glue around it (the Keystore, the shelf, the WebView, intents, App Links, the back button,
+// the app's life).
 package dev.pmndre.pine
 
 import android.content.ClipData
@@ -41,7 +43,9 @@ import pine.mobile.core.Pines
 import pine.mobile.core.Remote
 import pine.mobile.core.SealedVault
 import pine.mobile.core.Shelf
+import pine.mobile.core.deviceName
 import pine.mobile.core.mediaRequest
+import pine.mobile.core.openedLink
 import pine.mobile.core.outside
 import pine.mobile.core.stays
 import java.security.KeyStore
@@ -59,6 +63,16 @@ class PinePlugin : Plugin() {
 	// The system bars' color and whether the page's theme is dark: pmndre's (index.css) until the page says.
 	private var barColor = Color.parseColor("#1b1e28")
 	private var barsDark = true
+	/**
+	 * What the computer is told this phone is called when it pairs, and what it lists in its Settings >
+	 * Browser access: "Pine on" and the phone's model ("Pine on Pixel 9").
+	 */
+	private val phone = deviceName(Build.MODEL)
+	/** Computers that announce themselves on this network, looked for only while the page asks (`nearby`). */
+	private lateinit var browser: NearbyBrowser
+	/** Whether the page asks to look: looking stops while the app is in the back, and starts again on its return. */
+	@Volatile
+	private var looking = false
 
 	override fun load() {
 		// Android carries a cut-down BouncyCastle under the name sshj asks for; the full one takes its place.
@@ -68,11 +82,12 @@ class PinePlugin : Plugin() {
 		val vault = SealedVault(::keystoreKey, shelf)
 		device = DeviceKey(vault)
 		val known = KnownHosts(vault)
-		pines = Pines(Remote(device, known), known, shelf, object : Page {
+		pines = Pines(Remote(device, known, LibWebRtc(context)), known, shelf, object : Page {
 			override fun service(state: JSONObject) = notifyListeners("service", JSObject().put("state", state))
 			override fun events(batch: List<Any>) = notifyListeners("events", JSObject().put("events", JSONArray(batch)))
 			override fun connection(up: Boolean) = notifyListeners("connection", JSObject().put("connected", up))
 		})
+		browser = NearbyBrowser(context) { list -> notifyListeners("nearby", JSObject().put("computers", list.getJSONArray("computers"))) }
 		harden(bridge)
 		// Posted: Capacitor's SystemBars paints the window's own background when it loads, before this runs.
 		activity.window.decorView.post { paintBars() }
@@ -163,7 +178,55 @@ class PinePlugin : Plugin() {
 	@PluginMethod
 	fun state(call: PluginCall) {
 		val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
-		call.resolve(JSObject().put("state", pines.state()).put("connected", pines.connected).put("version", version))
+		// This build pairs with a computer by its link (the page then offers pairing first).
+		// It also finds computers on this network and pairs with them without a code.
+		call.resolve(JSObject().put("state", pines.state()).put("connected", pines.connected).put("version", version).put("canPair", true).put("canPairNearby", true))
+	}
+
+	/**
+	 * The owner's yes, in the page, to a pairing link: read again by the core (an https service only,
+	 * the machine id and code of their shape), which rejects anything else, or a second pairing.
+	 */
+	@PluginMethod
+	fun pair(call: PluginCall) = later(call) { pines.pair(call.getString("link") ?: "", phone).let { null } }
+
+	@PluginMethod
+	fun cancelPairing(call: PluginCall) = later(call) { pines.cancelPairing().let { null } }
+
+	/** Start or stop looking for computers on this network; what is found comes as `nearby` events, none at first. */
+	@PluginMethod
+	fun nearby(call: PluginCall) {
+		val on = call.data.opt("on") as? Boolean ?: return call.reject("Say whether to look: on, true or false.")
+		looking = on
+		if (on) browser.start() else browser.stop()
+		call.resolve()
+	}
+
+	/**
+	 * The owner's tap on a computer found on the network: paired without a code, as user
+	 * `nearby.<nonce>` with the nonce of its announcement. The core checks the id, the service and the
+	 * nonce again (a machine id, an https origin, 22 base64url characters), and refuses a second pairing.
+	 */
+	@PluginMethod
+	fun pairNearby(call: PluginCall) = later(call) {
+		pines.pairNearby(call.getString("id") ?: "", call.getString("service") ?: "", call.getString("nonce") ?: "", phone).let { null }
+	}
+
+	/**
+	 * The app was opened with an address of the web: an App Link of Pine's meeting service (the
+	 * manifest's filter), or a view intent another app sent this activity by name. At its start
+	 * (BridgeActivity hands the plugins the intent it started with) or while it runs (singleTask). It
+	 * starts nothing: the page reads it as it reads a pasted link, says so when it is not one, and
+	 * otherwise asks the owner, naming a service that is not Pine's own; only their yes calls `pair`.
+	 * Kept until the page listens, for a link the app was started with. Only what comes as a pairing
+	 * link (the core's `openedLink`, mobile/cases/opened-links.json): the service's own address
+	 * without a pairing opens the app, and nothing more.
+	 */
+	override fun handleOnNewIntent(intent: Intent) {
+		super.handleOnNewIntent(intent)
+		if (intent.action != Intent.ACTION_VIEW) return
+		val link = openedLink(intent.dataString) ?: return
+		notifyListeners("link", JSObject().put("link", link), true)
 	}
 
 	@PluginMethod
@@ -193,6 +256,9 @@ class PinePlugin : Plugin() {
 		val out = JSObject().put("hosts", JSArray(pines.hosts))
 		pines.prefs?.let { text -> runCatching { JSONObject(text) }.getOrNull()?.let { out.put("prefs", it) } }
 		pines.use?.let { out.put("use", it) }
+		// The names paired computers gave, which the page shows in place of their machine ids.
+		val names = pines.names
+		if (names.isNotEmpty()) out.put("names", JSONObject(names))
 		out
 	}
 
@@ -287,15 +353,21 @@ class PinePlugin : Plugin() {
 	// (and connected again when it no longer answers) before the page is told it has the focus.
 	override fun handleOnResume() {
 		if (!::pines.isInitialized) return
+		if (looking) browser.start()
 		work.execute {
 			runCatching { pines.check() }
 			notifyListeners("focus", JSObject().put("focused", true))
 		}
 	}
 
-	override fun handleOnPause() = notifyListeners("focus", JSObject().put("focused", false))
+	override fun handleOnPause() {
+		// Looking for computers costs the network's multicast and the battery: never while in the back.
+		if (::browser.isInitialized) browser.stop()
+		notifyListeners("focus", JSObject().put("focused", false))
+	}
 
 	override fun handleOnDestroy() {
+		if (::browser.isInitialized) browser.close()
 		if (::pines.isInitialized) work.execute { pines.close() }
 	}
 

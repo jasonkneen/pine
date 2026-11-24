@@ -63,6 +63,7 @@ export function frameBridge(parent: Target, self: MessageSource): FrameBridge {
 		use: (host?: string) => ask("use", host),
 		addHost: (host: string) => ask("addHost", host),
 		forgetHost: (host: string) => ask("forgetHost", host),
+		renameHost: (host: string, name: string) => ask("renameHost", host, name),
 		trustHostKey: (host: string, fingerprint: string) => ask("trustHostKey", host, fingerprint),
 		disconnect: () => ask("disconnect"),
 		deviceKey: async () => {
@@ -72,6 +73,7 @@ export function frameBridge(parent: Target, self: MessageSource): FrameBridge {
 		mediaBase: MEDIA_BASE,
 		media: (target: string) => ask("media", target),
 		open: (url: string) => ask("open", url),
+		openApp: () => ask("openApp"),
 		saveText: (name: string, text: string) => ask("saveText", name, text),
 		// What only the desktop app has, refused or done nothing.
 		contextMenu: async () => undefined,

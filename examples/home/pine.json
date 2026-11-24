@@ -1,12 +1,5 @@
 {
   "main": "main",
-  "defaults": {
-    "model": "dev/claude-haiku",
-    "thinking": "off"
-  },
-  "limits": {
-    "maxConcurrentRuns": 2
-  },
   "http": {
     "host": "127.0.0.1",
     "port": 7463,

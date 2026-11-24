@@ -1,0 +1,18 @@
+{
+	"about": "A machine of the list: a computer paired by its link (paired:<machine id>, as the page writes it) beside user@host[:port] (hosts.json). input is the machine as stored, or null. expect is null (nothing written), {\"paired\": machine id}, {\"ssh\": given} (a user@host machine as sshHost reads it), or {\"error\": kind} (refused). The colon of paired: is never read as a port.",
+	"cases": [
+		{"name": "a paired computer", "input": "paired:EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs", "expect": {"paired": "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs"}},
+		{"name": "a paired computer, trimmed", "input": " paired:EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs ", "expect": {"paired": "EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs"}},
+		{"name": "a user@host machine", "input": "me@server", "expect": {"ssh": "me@server"}},
+		{"name": "a user@host machine with a port", "input": "me@server:2222", "expect": {"ssh": "me@server:2222"}},
+		{"name": "a host named paired", "input": "me@paired", "expect": {"ssh": "me@paired"}},
+		{"name": "a user called paired", "input": "paired@server", "expect": {"ssh": "paired@server"}},
+		{"name": "nothing", "input": "", "expect": null},
+		{"name": "no value", "input": null, "expect": null},
+		{"name": "paired with no machine id", "input": "paired:", "expect": {"error": "ssh"}},
+		{"name": "paired with a machine id one character short", "input": "paired:EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-q", "expect": {"error": "ssh"}},
+		{"name": "paired with a number, which is no port", "input": "paired:22", "expect": {"error": "ssh"}},
+		{"name": "paired with a port after the machine id", "input": "paired:EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs:22", "expect": {"error": "ssh"}},
+		{"name": "paired in capitals", "input": "Paired:EKN2VkO6uLv7SOTEAyIGDru_1I_cTOGadqwTlLFm-qs", "expect": {"error": "ssh"}}
+	]
+}

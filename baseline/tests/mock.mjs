@@ -1,6 +1,8 @@
 // Scripted OpenAI-compatible chat/completions server.
 // The last user message may carry a directive:  <<MOCK {"steps":[ ... ]}>>
-//   step = { tools:[{name,args}|{name,rawArgs}], text?, delayMs?, chunkDelayMs?, stall? } | { text }
+//   step = { tools:[{name,args}|{name,rawArgs}], text?, delayMs?, until?, chunkDelayMs?, stall? } | { text }
+//   (until: a function; the step is answered when it returns true, ten seconds at most. For a test whose steps
+//   have to come in an order: a time that is long enough on an idle machine is not on a busy one.)
 // Step index = number of assistant messages after the directive message.
 // Without a directive the server echoes the last user text. Requests without tools get a summary reply.
 import http from "node:http";
@@ -157,6 +159,7 @@ export async function startMock(opts = {}) {
 		const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 		if (step.delayMs) await sleep(step.delayMs);
+		if (typeof step.until === "function") for (const end = Date.now() + 10_000; !step.until() && Date.now() < end && !res.destroyed; ) await sleep(10);
 		if (res.destroyed) return;
 		// A request that is not to be streamed (a host that has a slot read a beginning ahead of time) is answered in one piece.
 		if (body.stream === false) {

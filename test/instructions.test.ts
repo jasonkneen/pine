@@ -4,6 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { assertPrivate, harness, MCP_STUB, mockMsg, notesOf, refused } from "./support/harness.ts";
 import { sandboxAvailable } from "../src/security.ts";
+import { FORMER_TEMPLATES } from "../src/config.ts";
 
 const owner = { trust: "owner" as const };
 const mac = { skip: !sandboxAvailable() };
@@ -35,6 +36,18 @@ test("instructions: an agent's own files and the files for all agents are read i
 	assert.ok(main.includes("So you have two TOOLS.md and two AGENTS.md to tell apart: those in pine's home hold for every agent, you too;") && main.includes("is for all agents unless they say otherwise: write it into the TOOLS.md in pine's home right away") && main.includes("Only what they say is for you alone goes into the TOOLS.md in your workspace;"));
 	assert.ok(main.includes("part of every agent's instructions, and you are the one who keeps them") && main.includes(`${at("AGENTS.md")}: traits and behaviour for all agents`) && main.includes(`${at("TOOLS.md")}: tooling for all agents`) && main.includes(`${at("USER.md")}: what all agents know about your owner`));
 	assert.ok(gonzo.includes(`${at("TOOLS.md")} (tooling for all agents: defaults and preferences for the tools`) && gonzo.includes("your own AGENTS.md and TOOLS.md say what is different or more for you") && gonzo.includes("main keeps them and you cannot change them") && !gonzo.includes("you are the one who keeps them"));
+	await h.close();
+});
+
+test("instructions: an empty file, and one that still holds only what pine once put there, are left out of the prompt", async () => {
+	// A home made before the files started empty still has pine's old line on what SOUL.md is for.
+	const soul = [...FORMER_TEMPLATES].find((t) => t.startsWith("# Soul"));
+	assert.ok(soul, "the old text of SOUL.md is among the former templates");
+	const h = await harness({ agents: { main: { files: { "SOUL.md": `${soul}\n`, "TOOLS.md": "", "MEMORY.md": "WS-MEMORY\n" } } } });
+	await h.pine.agents.run({ agent: "main", prompt: "hello", ...owner });
+	const main = h.system(h.requestsFor("PERSONA-MAIN")[0]);
+	assert.ok(main.includes("WS-MEMORY"), "a file with something in it is read");
+	assert.ok(!main.includes("Nothing is set yet"), "the line pine once wrote into SOUL.md is not");
 	await h.close();
 });
 
@@ -108,7 +121,7 @@ test("instructions: a home from before gets the files for all agents; as pine st
 	const h = await harness({ agents: { main: {}, gonzo: {} } });
 	const rules = path.join(h.home, "AGENTS.md"), tools = path.join(h.home, "TOOLS.md");
 	for (const f of [rules, tools, path.join(h.home, "USER.md")]) assertPrivate(f, 0o600, f);
-	assert.match(fs.readFileSync(tools, "utf8"), /^# Tools\n/);
+	assert.equal(fs.readFileSync(tools, "utf8"), "", "it starts empty");
 	await h.pine.agents.run({ agent: "gonzo", prompt: "hello", ...owner });
 	assert.ok(!h.system(h.mock.state.requests.at(-1)).includes("# Tools") && !h.system(h.mock.state.requests.at(-1)).includes("# All agents"), "a file nobody has written into is not read to a small model");
 	// The main agent writes a default for all agents: the conversation gonzo is in is told, and which file it is.

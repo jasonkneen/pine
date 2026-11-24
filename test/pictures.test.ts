@@ -222,6 +222,9 @@ test("tui: a menu opened over a real picture is not covered by it; the picture i
 	try {
 		const t = await open({ agents: { main: {} } });
 		await t.sees("type a message");
+		// pine's welcome stands above an empty main conversation: in a new one the menu lies over the picture.
+		await t.send("/new pics");
+		await t.sees("session pics");
 		fs.writeFileSync(path.join(t.h.workspace("main"), "chart.png"), png(64, 40));
 		await t.send(mockMsg([{ text: "![the chart](chart.png)" }]));
 		await t.sees("the chart · 64×40 · click to enlarge");
@@ -655,6 +658,9 @@ test("tui: on a terminal with the Kitty graphics protocol a video plays as real 
 	try {
 		const t = await open({ agents: { main: {} } });
 		await t.sees("type a message");
+		// pine's welcome stands above an empty main conversation: in a new one the menu lies over the video.
+		await t.send("/new pics");
+		await t.sees("session pics");
 		execFileSync(ffmpeg!, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10", "-t", "1", "-pix_fmt", "yuv420p", path.join(t.h.workspace("main"), "clip.mp4")]);
 		await t.send(mockMsg([{ text: "![test pattern](clip.mp4)" }]));
 		await t.sees("‖ pause · test pattern");

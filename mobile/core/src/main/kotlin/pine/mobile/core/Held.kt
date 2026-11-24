@@ -40,6 +40,8 @@ class HeldRemote(
 	private val failed: (Exception) -> Unit = {},
 	private val retryMs: Long = 1_000,
 	private val batchMs: Long = 24,
+	/** What the list keeps beside a paired computer (its meeting service, its name), read at each connection; none for user@host. */
+	private val computer: () -> PairedComputer? = { null },
 ) : AutoCloseable {
 	private val lock = Object()
 	private var following: Following? = null
@@ -54,7 +56,7 @@ class HeldRemote(
 	fun ensure(): RemoteService = synchronized(lock) {
 		service?.let { s -> if (s.isOpen && answers(s)) return s }
 		letGo()
-		val s = remote.connect(host)
+		val s = remote.connect(host, computer())
 		if (stopped) {
 			s.stop()
 			throw RemoteError("failed", "The connection to $host was closed.")

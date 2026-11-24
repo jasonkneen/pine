@@ -101,7 +101,10 @@ Topics pine itself uses:
 | `agent/<id>/started`, `agent/<id>/done`, `agent/<id>/failed` | A task starts or ends |
 | `agent/<id>/tool` | A tool call starts or ends (live only, not stored) |
 | `agent/<id>/todos` | The agent changed its list of steps (`items`, each with `text` and `status`; live only) |
+| `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | Something happened on a board with a name that an agent or all agents have ([boards.md](boards.md)) |
+| `pine/board` | A board changed (`board`, `scope`, `agent`, `session`, `name`, `change`; live only): a UI asks the control API for the rest |
 | `agent/<id>/steered` | A message was given to a task that was already working (`task`), instead of becoming work of its own (live only) |
+| `agent/<id>/read` | The work (`task`) read a message that was steered into it (`by`), at `at` (live only) |
 | `agent/<id>/goal` | The goal of a conversation was set, judged, paused, resumed or cleared (the goal with its `objective`, `status`, `round`, `note` and the judge's `reason`, and `event`: what just happened) |
 | `agent/<id>/undone`, `agent/<id>/redone` | The owner took back their last message in a conversation, or brought it back (`session`, `message`, how many `tasks` and `files`) |
 | `agent/<id>/delta`, `agent/<id>/thinking`, `agent/<id>/message` | Streamed answer text; what the model thinks (`phase: "start"`, then pieces of `text`, then `phase: "end"` with `ms`); the end of a model message with token counts (live only) |
@@ -169,7 +172,8 @@ line saying so; a cancelled one sends nothing.
 ## Agents working together
 
 - `delegate` gives another agent a task. That agent runs it in its own workspace with its own
-  tools and sees only the task text. By default the caller waits for the answer; with
+  tools and sees only the task text, held to the caller's mode where that is stricter. By
+  default it can go to everyone but the main agent. By default the caller waits for the answer; with
   `wait: false` the answer arrives later as a message in the caller's session.
 - `subagent` runs several copies of the same agent in parallel, each with its own task and an
   empty context, and returns their final answers. It keeps large searches out of the caller's
@@ -177,6 +181,9 @@ line saying so; a cancelled one sends nothing.
   or less (`thinking`).
 - Shared state (`state_get`, `state_set`) holds small facts such as `house/mode` that every agent
   can read and that can be shown to an agent in every turn.
+- A board holds the tasks of a job that several work on: a pool of sub-agents works through
+  any number of them a few at a time, one that cannot decide something asks, and the agent
+  that gave out the work answers ([boards.md](boards.md)).
 - `publish_event` lets an agent put an event on a topic you allowed, which routes then act on.
 - `send` lets an agent reach out through a source that can send: a message to you on Telegram,
   a command to a device over MQTT.

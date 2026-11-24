@@ -21,7 +21,7 @@ const withTheme: Decorator = (Story, context) => {
 const preview: Preview = {
 	globalTypes: {
 		theme: {
-			description: "One of pine's themes, as Settings > App picks it",
+			description: "One of pine's themes, as Settings > General picks it",
 			toolbar: {
 				title: "Theme",
 				icon: "mirror",

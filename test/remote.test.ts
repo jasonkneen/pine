@@ -148,7 +148,7 @@ test("remote: one connection, the forward goes through its control socket, and a
 test("remote: a service line that points away from the other machine's loopback is refused", { skip: process.platform === "win32" && "the stand-in for ssh is a script that Windows does not start by itself" }, async () => {
 	const r = await reach({ SAY: JSON.stringify({ base: "http://10.1.2.3:7463", token: "far-token", started: false }) });
 	assert.ok(r.e instanceof RemoteError);
-	assert.match(r.e!.message, /not a port of its own loopback/);
+	assert.match(r.e!.message, /not a port on that machine's own loopback/);
 	assert.ok(!r.lines().some((l) => l.startsWith("forward ")), "no forward was asked for");
 	assert.equal(r.lines().at(-1), "ended");
 });

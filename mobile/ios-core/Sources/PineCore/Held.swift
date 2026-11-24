@@ -71,19 +71,22 @@ public final class HeldRemote: @unchecked Sendable {
 	private let failed: @Sendable (Error) -> Void
 	private let retry: Duration
 	private let batch: Duration
+	/** What is kept for a paired computer, read again at each connection (it is paired anew, say). */
+	private let paired: @Sendable () -> PairedComputer?
 	private let turn = Turn()
 	private let lock = NSLock()
 	private var following: Following?
 	private var stopped = false
 	private var _service: RemoteService?
 
-	public init(remote: Remote, host: String, on: EventHandlers, failed: @escaping @Sendable (Error) -> Void = { _ in }, retry: Duration = .seconds(1), batch: Duration = .milliseconds(24)) {
+	public init(remote: Remote, host: String, on: EventHandlers, failed: @escaping @Sendable (Error) -> Void = { _ in }, retry: Duration = .seconds(1), batch: Duration = .milliseconds(24), paired: @escaping @Sendable () -> PairedComputer? = { nil }) {
 		self.remote = remote
 		self.host = host
 		self.on = on
 		self.failed = failed
 		self.retry = retry
 		self.batch = batch
+		self.paired = paired
 	}
 
 	/** The session in use, if there is one. */
@@ -98,7 +101,7 @@ public final class HeldRemote: @unchecked Sendable {
 	private func ensureInTurn() async throws -> RemoteService {
 		if let s = service, s.isOpen, await answers(s) { return s }
 		await letGo()
-		let s = try await remote.connect(host)
+		let s = try await remote.connect(host, paired: paired())
 		let kept = lock.withLock {
 			if stopped { return false }
 			_service = s
@@ -110,7 +113,9 @@ public final class HeldRemote: @unchecked Sendable {
 		}
 		let f = followEvents(s, Relay(on) { [weak self] times in
 			// An SSH connection that broke does not come back by waiting: it is made again.
-			guard times == 5 else { return false }
+			// A data channel that ended took its session with it: nothing comes back by waiting there
+			// (that path has no TCP keepalive to say so later), so it is made again at the first loss.
+			guard times == 5 || (s.paired && !s.isOpen) else { return false }
 			Task.detached { await self?.again(s) }
 			return true
 		}, retry: retry, batch: batch)
@@ -163,5 +168,5 @@ private final class Relay: EventHandlers, @unchecked Sendable {
 
 	func batch(_ events: [Any]) { to.batch(events) }
 	func connection(_ up: Bool) { to.connection(up) }
-	func lost(_ times: Int) -> Bool { times == 5 ? onLoss(times) : to.lost(times) }
+	func lost(_ times: Int) -> Bool { onLoss(times) || to.lost(times) }
 }

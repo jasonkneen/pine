@@ -10,14 +10,14 @@
       },
       {
         "label": "runtime.dispose() ms",
-        "value": 2
+        "value": 3
       },
       {
         "label": "server pid alive after runtime.dispose()",
         "value": false
       }
     ],
-    "ms": 667
+    "ms": 622
   },
   {
     "id": "M4c",
@@ -29,6 +29,6 @@
         "value": false
       }
     ],
-    "ms": 1256
+    "ms": 1255
   }
 ]
