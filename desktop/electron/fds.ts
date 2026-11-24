@@ -15,10 +15,10 @@ import path from "node:path";
 /**
  * Closes every descriptor above the three standard ones, then runs its arguments. It runs in the
  * child itself, after the start: a descriptor another thread of the app opens meanwhile is closed
- * too. SHLVL goes back to what it was (bash counted itself), and POSIX mode is left before the
- * program starts: an exported SHELLOPTS would carry it to every bash below.
+ * too. SHLVL is what it was: bash counted itself, and its `exec` takes that back. POSIX mode is left
+ * before the program starts: an exported SHELLOPTS would carry it to every bash below.
  */
-const CLOSE_FDS = 'for fd in /proc/$$/fd/*; do fd=${fd##*/}; [ "$fd" -gt 2 ] && eval "exec $fd>&-"; done; SHLVL=$((SHLVL-1)); set +o posix; exec -- "$@"';
+const CLOSE_FDS = 'for fd in /proc/$$/fd/*; do fd=${fd##*/}; [ "$fd" -gt 2 ] && eval "exec $fd>&-"; done; set +o posix; exec -- "$@"';
 
 /** bash: in its usual places, else on the PATH (NixOS has neither folder). */
 function bash(): string | undefined {

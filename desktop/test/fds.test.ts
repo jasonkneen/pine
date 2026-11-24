@@ -31,8 +31,12 @@ test("a program the app starts holds none of the app's descriptors, and gets its
 		// The program itself runs with its arguments as they were, bash reads no file of the owner's on the way, and a
 		// shell started this way does not count the bash in front of it.
 		fs.writeFileSync(path.join(dir, "bash-env"), "echo read-by-bash\n");
-		const [echo, ...args] = withoutFds(["/bin/sh", "-c", 'echo "$1 $SHLVL"', "sh", "a b"]);
-		assert.equal(spawnSync(echo, args, { encoding: "utf8", env: { ...process.env, SHLVL: "3", BASH_ENV: path.join(dir, "bash-env") } }).stdout, "a b 3\n");
+		const env = { ...process.env, SHLVL: "3", BASH_ENV: path.join(dir, "bash-env") };
+		const [sh, ...args] = withoutFds(["/bin/sh", "-c", 'echo "$1"', "sh", "a b"]);
+		assert.equal(spawnSync(sh, args, { encoding: "utf8", env }).stdout, "a b\n");
+		// SHLVL as the program finds it in its environment (a shell would count itself on top: dash does not, bash does).
+		const [printenv, ...name] = withoutFds(["/usr/bin/env", "printenv", "SHLVL"]);
+		assert.equal(spawnSync(printenv, name, { encoding: "utf8", env }).stdout, "3\n");
 		assert.deepEqual(withoutFds(["/bin/echo", "x"], "darwin"), ["/bin/echo", "x"]);
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });

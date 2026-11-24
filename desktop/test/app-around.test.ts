@@ -596,7 +596,8 @@ test("many tabs keep their width and scroll instead of stepping on each other", 
 	assert.ok(Math.min(...gaps) >= 0, `tabs overlap: the smallest gap between two tabs is ${Math.min(...gaps)}px`);
 	assert.ok(Math.min(...m.tabs.map((t: any) => t.width)) >= 96, "every tab keeps room for its avatar, a few letters and its close button");
 	const on = m.tabs.find((t: any) => t.on);
-	assert.ok(on.left >= m.strip.left - 0.5 && on.right <= m.strip.right + 0.5, `the tab in front is in view: ${JSON.stringify({ on, strip: m.strip })}`);
+	// (Within a pixel: a strip whose width is not whole scrolls to a fraction of one.)
+	assert.ok(on.left >= m.strip.left - 1 && on.right <= m.strip.right + 1, `the tab in front is in view: ${JSON.stringify({ on, strip: m.strip })}`);
 	assert.ok(m.plus.left >= m.strip.right && m.plus.right <= m.width, "the plus stays in view after the tabs");
 	// Going back to the first tab scrolls it into view.
 	await page.click("[data-slot=tab] >> nth=0");

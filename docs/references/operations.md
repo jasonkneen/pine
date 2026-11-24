@@ -317,8 +317,9 @@ list.
 ### A UI of its own
 
 The terminal UI starts a daemon inside itself when none runs. A UI that is another program (a
-desktop app, an editor plug-in) gets the same with `pine service`, and is then a client of the
-control API like every other:
+desktop app, an editor plug-in) gets the same with `pine service`: it starts the daemon where none
+runs, and says where it answers and its token. The UI is then a client of the control API like
+every other:
 
 ```bash
 pine service
