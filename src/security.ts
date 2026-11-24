@@ -848,7 +848,7 @@ export function audit(cfg: PineConfig): string[] {
 		const tools = a.tools ?? ["read", "bash", "edit", "write"];
 		const level = levelOf(a);
 		if (level !== a.level) out.push(`agent ${a.id}: works in auto mode, with your rights and no sandbox, because this machine has no sandbox and nobody chose a mode for the agent. Set the agent's mode to say what you want`);
-		if (!unsandboxed(level) && a.sandbox.network && tools.includes("bash")) out.push(`agent ${a.id}: shell has network access; a prompt injection could send workspace files anywhere (approval is required once the session has seen outside content)`);
+		if (!unsandboxed(level) && a.sandbox.network && tools.includes("bash")) out.push(`agent ${a.id}: shell has network access; a prompt injection could send workspace files anywhere (the shell is not asked about after outside content; turn network off or use manual mode to see each command)`);
 		if (level === "bypass") out.push(`agent ${a.id}: bypass mode. It never asks, and the agent's shell reaches your whole account and the network${cfg.security.bypassWhenTainted ? ", even after it has read outside content (security.bypassWhenTainted)" : " (it asks again once a session has read outside content)"}`);
 		// The main agent works in auto mode unless told otherwise; that is how pine comes, and not a note. Another agent does by somebody's choice.
 		if (level === "auto" && a.level === "auto" && a.id !== mainAgentId(cfg) && tools.includes("bash")) out.push(`agent ${a.id}: auto mode. The agent's shell and file tools reach your whole account and the network in your own conversations, without a sandbox; what is critical is checked, and after outside content what reaches out, sends or changes the agent's memory`);

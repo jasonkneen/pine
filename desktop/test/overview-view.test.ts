@@ -112,6 +112,64 @@ test("three columns: triggers, agents, tools; each card has the size of its kind
 	assert.ok(l.boxes.every((b: any) => b.title.length > 0));
 });
 
+test("on a tall panel triggers, agents and tools stand one under the other, each with its cards side by side in rows", () => {
+	const s = state(STORY(T0));
+	const wide = layoutOf(s, T0);
+	assert.ok(!wide.tall && !wide.parts);
+	for (const width of [336, 536, 900]) {
+		const l = layoutOf(s, T0, width);
+		assert.ok(l.tall && l.parts!.length === 3 && l.w === width);
+		assert.deepEqual(l.cols.map((c: any) => c.title), ["Triggers", "Agents", "Tools"]);
+		assert.deepEqual([...l.boxes.map((b: any) => b.id)].sort(), [...wide.boxes.map((b: any) => b.id)].sort(), "the same cards");
+		const of = (col: number) => l.boxes.filter((b: any) => b.col === col);
+		assert.ok(l.parts!.every((p: any, i: number) => i === 0 || l.parts![i - 1].bottom < p.top), "the parts one under the other");
+		for (const col of [0, 1, 2]) {
+			const p = l.parts![col];
+			assert.ok(of(col).every((b: any) => b.y >= p.top && b.y + b.h <= p.bottom), `${l.cols[col].title}: its cards within it`);
+			assert.ok(of(col).every((b: any) => b.x >= 0 && b.x + b.w <= l.w), "within the width");
+			assert.ok(of(col).filter((b: any) => b.row === 0).length <= p.n);
+		}
+		for (const a of l.boxes) for (const b of l.boxes) if (a !== b) assert.ok(a.y + a.h <= b.y || b.y + b.h <= a.y || a.x + a.w <= b.x || b.x + b.w <= a.x, `${a.id} and ${b.id} do not overlap`);
+		// The more room, the more in a row: on a phone one agent in a row, on a wide panel several.
+		if (width === 336) assert.equal(l.parts![1].n, 1);
+		if (width === 900) assert.ok(l.parts![1].n >= 3 && l.parts![0].n >= 5);
+		// You stand in the first row with the event sources, under whose name they are.
+		assert.equal(of(0)[0].id, "you");
+		assert.equal(of(0)[1].row, 0);
+		assert.equal(l.heads.find((h: any) => h.text === "Events")?.x, of(0)[1].x);
+		// A line runs beside the cards, never across one: from the side of one, along gutters and gaps, into the side of the other.
+		const links = [
+			{ from: "source:inbox", to: "agent:books", color: "#22a06b", live: true },
+			{ from: "you", to: "agent:main", color: "#3b82f6", live: true },
+			{ from: "agent:main", to: "you", color: "ask", live: true },
+			{ from: "agent:scout", to: "mcp:web", color: "#f59e0b", live: true },
+			{ from: "agent:main", to: "agent:scout", color: "#3b82f6", live: true, side: true },
+			{ from: "agent:scout", to: "agent:main", color: "#f59e0b", live: true, side: true, back: true },
+		];
+		const ways = routesOf(links, l).map((pts) => pts!);
+		ways.forEach((pts, i) => {
+			const from = l.byId.get(links[i].from)!;
+			const to = l.byId.get(links[i].to)!;
+			assert.ok(Math.abs(pts[0][1] - (from.y + from.h / 2)) < from.h / 2 && Math.abs(pts.at(-1)![1] - (to.y + to.h / 2)) < to.h / 2, `${links[i].from}: from a side, into a side`);
+			for (let k = 1; k < pts.length; k++) {
+				const [x0, y0] = pts[k - 1];
+				const [x1, y1] = pts[k];
+				for (const b of l.boxes) {
+					// A piece of the line, a little inside its ends: it does not pass through any card.
+					const inside = (t: number) => {
+						const x = x0 + (x1 - x0) * t;
+						const y = y0 + (y1 - y0) * t;
+						return x > b.x + 1 && x < b.x + b.w - 1 && y > b.y + 1 && y < b.y + b.h - 1;
+					};
+					assert.ok(![0.1, 0.3, 0.5, 0.7, 0.9].some(inside), `${links[i].from} to ${links[i].to} crosses ${b.id} at ${width}`);
+				}
+			}
+		});
+		const lanes = ways.map((pts) => pts.slice(1, -1).map(([x, y]) => `${Math.round(x)},${Math.round(y)}`).join(" "));
+		assert.equal(new Set(lanes).size, lanes.length, "a lane each");
+	}
+});
+
 test("a card keeps its size when zoomed, its words keep theirs, and the more room it has the more it says, the most important first", () => {
 	const s = state(STORY(T0));
 	const l = layoutOf(s, T0);
