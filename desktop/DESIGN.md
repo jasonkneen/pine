@@ -14,7 +14,10 @@ The examples below illustrate a rule; they are not the code of any page.
 examples compose them, with their own variants, sizes and gaps. A page of a kind (settings, a
 list, an empty state, a framed block, a conversation) is the stock composition of that kind: find
 shadcn's example for it and follow it. A good page reads like a shadcn example with pine's words
-in it.
+in it. Each part keeps its meaning: `Field` and `FieldSet` hold what is filled in, while what is
+only read is an `Item` or plain HTML (`dl`, `section`); a dialog's words are its `Description`; a
+confirmation's yes is `AlertDialogAction`, with the variant the action calls for, and
+`AlertDialogCancel` only ever backs out.
 
 ```tsx
 // Do: a settings page as shadcn composes a form.
@@ -49,8 +52,14 @@ const SmallButton = (props) => <Button variant="outline" size="sm" {...props} />
 
 **`className` places, the component styles.** A class says what the component cannot know: how
 wide, where it aligns, whether it wraps, grows or truncates. Colour, type and spacing inside a
-component are the component's. Classes are on Tailwind's default scale; an arbitrary value is for
-what no utility can say, and carries its reason in the stock check's allow-list.
+component are the component's: a monospaced value goes in a `code` or `span` inside the part,
+not on the part. An icon outside a stock part carries `shrink-0`; inside one, the part sizes it.
+Classes are on Tailwind's default scale; an arbitrary value is for what no utility can say, and
+carries its reason in the stock check's allow-list.
+
+**Type has one base.** The root keeps the browser's 16px, each top-level part of the app (the
+window, a side bar, a panel, a page) sets `text-sm` once on its root, and nothing below sets a
+base size of its own: the stock parts carry their sizes.
 
 ```tsx
 // Do: where the card goes and how wide it gets.
@@ -61,8 +70,9 @@ what no utility can say, and carries its reason in the stock check's allow-list.
 ```
 
 **Colour is a role.** Every colour is a semantic token, so that every theme reaches it; a raw
-colour reaches none. Where shadcn has no name for a role, pine adds the role to the theme
-(`src/index.css`), never a colour to the markup.
+colour reaches none. Where shadcn has a name for the role, use shadcn's (`bg-muted`, `bg-accent`);
+where it has none, pine adds the role to the theme (`src/index.css`), never a colour to the
+markup.
 
 ```tsx
 // Do: a token, or a role the theme defines.
@@ -73,9 +83,13 @@ colour reaches none. Where shadcn has no name for a role, pine adds the role to 
 <span className="text-[#fffac2]">…</span>
 ```
 
-**Space comes from containers.** Vertical rhythm is the stock containers' own gaps, nested as
-shadcn nests them. A gap of your own is for parts no stock container holds, and takes a step the
-stock ones use.
+**Space comes from containers, and makes one rhythm.** Vertical rhythm is the stock containers'
+own gaps, nested as shadcn nests them: the deeper a level, the tighter its gap, and things at the
+same level always stand the same step apart. A gap of your own is for parts no stock container
+holds, and takes a step the stock ones use: Tailwind's scale, in `gap-*` on the parent, never a
+margin on a child. Edges line up: a page's parts share one column and one inset, the inset its
+containers already carry, so that text starts at the same place from top to bottom. A part with
+nothing to show is not rendered: an empty wrapper still takes its gap.
 
 ```tsx
 // Do: the container's gap.
@@ -84,11 +98,39 @@ stock ones use.
   <Field>…</Field>
 </FieldGroup>
 
-// Don't: margins that fight it.
+// Don't: margins that fight it, and steps that differ between equals.
 <FieldGroup>
   <Field className="mb-5">…</Field>
   <Field className="mt-1">…</Field>
 </FieldGroup>
+
+// Do: one column, the inset the card already has.
+<div className="flex w-full max-w-2xl flex-col gap-6">
+  <Card>…</Card>
+  <Card>…</Card>
+</div>
+
+// Don't: a padding of its own on each block, so their text starts at different places.
+<Card className="px-6">…</Card>
+<Card className="px-3">…</Card>
+```
+
+**Loading has the shape of what comes.** While a part waits for what it shows, it draws stock
+`Skeleton`s shaped like it, inside the same stock frame, so that nothing jumps when the real part
+takes their place and no screen flashes in between. A part whose shape is not known yet, and work
+under way, show that something is at work instead: loading and working read apart.
+
+```tsx
+// Do: the frame of the screen to come, with skeletons where its text will be.
+<Empty>
+  <EmptyHeader>
+    <Skeleton className="h-5 w-48" />
+    <Skeleton className="h-4 w-64" />
+  </EmptyHeader>
+</Empty>
+
+// Don't: a different screen first ("Starting…"), or a spinner where the shape is known.
+<div className="flex h-full items-center justify-center"><Spinner /></div>
 ```
 
 **The stylesheet is a bridge.** `src/index.css` holds stock Tailwind and shadcn, the theme's
@@ -106,10 +148,32 @@ tokens, and what no `className` can reach. A look belongs in the markup.
 }
 ```
 
+**Every hand reaches it.** What the pointer can do, the keyboard can do: a control of your own is
+the stock part that brings the keyboard with it (a `Button`, `Tabs`, a `Collapsible`, a link), and
+shows focus with the stock ring, never one of its own. What appears on hover also appears on
+keyboard focus, and is always shown where there is no hover (a narrow, touch screen).
+
+```tsx
+// Do: a stock trigger, its actions shown on hover and on focus.
+<div className="group/row flex items-center">
+  <CollapsibleTrigger render={<Button variant="ghost" />}>Details</CollapsibleTrigger>
+  <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 max-md:opacity-100" aria-label="Remove"><XIcon /></Button>
+</div>
+
+// Don't: a clickable div, a focus outline of its own, an action only a mouse can find.
+<div onClick={toggle} className="cursor-pointer focus:outline-2">Details</div>
+```
+
 ## When pine departs from stock
 
 pine departs from stock only for a reason that holds across the page, never for one screen. These
 are the reasons; a departure that fits none of them is not made.
+
+**Valid and usable come before stock structure.** Where stock composition would make invalid HTML
+or the wrong behaviour, the HTML and the behaviour win, and the look stays as close to stock as
+it can: a row with two actions is two side-by-side buttons, since a button cannot hold a button;
+a choice that must not be dismissed by a click outside stays an `AlertDialog`, even where it looks
+like a palette.
 
 **Reading comes first.** Text the owner reads at length is at the body's size; the controls
 around it stay stock. A stock behaviour that serves the reader is kept even when it looks like
