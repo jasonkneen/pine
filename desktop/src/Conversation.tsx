@@ -1182,7 +1182,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 				<MessageScrollerProvider autoScroll defaultScrollPosition="end">
 					<QuoteJump tab={tab} root={scroller} />
 					<BookmarkJump tab={tab} root={scroller} />
-					<MessageScroller className="flex-1">
+					<MessageScroller className="flex-1 mask-t-from-7">
 						<MessageScrollerViewport ref={scroller}>
 							{/* The column of the conversation, under the head and above the input. */}
 							<MessageScrollerContent className={TRANSCRIPT} aria-busy={tab.busy}>
