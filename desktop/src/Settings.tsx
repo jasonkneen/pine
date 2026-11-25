@@ -771,7 +771,7 @@ export function NewAgent({ close, made }: { close: () => void; made: (id: string
 				<DialogHeader>
 					<DialogTitle>A new agent</DialogTitle>
 				</DialogHeader>
-				<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+				<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 					<FieldGroup className="px-4 select-text">
 						<Field>
 							<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
@@ -901,7 +901,7 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 			<DialogHeader>
 				<DialogTitle>Sign in to {provider}</DialogTitle>
 			</DialogHeader>
-			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+			<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<div className="flex flex-col gap-3 px-4 select-text">
 					{error || state?.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error ?? state?.error}</AlertDescription></Alert> : null}
 					{state?.lines.length ? (
@@ -1016,7 +1016,7 @@ function NewModelServer({ made }: { made: () => void }) {
 				<DialogTitle>Connect a model server</DialogTitle>
 				<DialogDescription>A model you run yourself with LM Studio, Ollama or llama.cpp. Start the server first; pine asks it which models it has.</DialogDescription>
 			</DialogHeader>
-			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+			<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<FieldGroup className="px-4 select-text">
 					<Field>
 						<FieldLabel htmlFor={`${field}-url`}>Address</FieldLabel>
@@ -1242,7 +1242,7 @@ function NewMcpServer({ made }: { made: () => void }) {
 				<DialogTitle>Add an MCP server</DialogTitle>
 				<DialogDescription>The server's documentation gives an address or a command to run. Paste it here.</DialogDescription>
 			</DialogHeader>
-			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+			<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<FieldGroup className="px-4 select-text">
 					<Field>
 						<FieldLabel htmlFor={`${field}-kind`}>Kind</FieldLabel>
@@ -1618,7 +1618,7 @@ function NewSource({ types, made }: { types: SourceType[]; made: () => void }) {
 			<DialogHeader>
 				<DialogTitle>A new event source</DialogTitle>
 			</DialogHeader>
-			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+			<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<div className="flex flex-col gap-3 px-4 select-text">
 					{plan ? (
 						<>
@@ -1871,7 +1871,7 @@ export function NewSchedule({ made }: { made: () => void }) {
 				<DialogTitle>A new schedule</DialogTitle>
 				<DialogDescription>When it is time, then an agent is woken with a task, in your name.</DialogDescription>
 			</DialogHeader>
-			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+			<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<FieldGroup className="px-4">
 					<FieldSet>
 						<FieldLegend>When</FieldLegend>
@@ -2022,7 +2022,7 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 				<DialogTitle>A new route</DialogTitle>
 				<DialogDescription>When an event arrives, then one thing happens.</DialogDescription>
 			</DialogHeader>
-			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+			<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<FieldGroup className="px-4">
 					<FieldSet>
 						<FieldLegend>When</FieldLegend>
@@ -2976,7 +2976,7 @@ export function Settings() {
 	// An item's title wraps (its badges go under its name where the row is narrow): set once here for every row.
 	// What the search picked is outlined for a moment (`data-found`).
 	return (
-		<div ref={root} className="@container/settings flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border bg-background **:data-[slot=item-title]:flex-wrap **:data-found:rounded-md **:data-found:outline-2 **:data-found:outline-offset-4 **:data-found:outline-ring">
+		<div ref={root} className="@container/settings flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border bg-background text-sm **:data-[slot=item-title]:flex-wrap **:data-found:rounded-md **:data-found:outline-2 **:data-found:outline-offset-4 **:data-found:outline-ring">
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col @3xl/settings:flex-row">
 				{/* A provider of its own, as in shadcn's sidebar in a dialog: the page needs one where no app side bar is around it (Storybook).
 				    Its ⌘B listener changes nothing here (open is fixed and the side bar cannot collapse); the app's provider still gets the key. */}

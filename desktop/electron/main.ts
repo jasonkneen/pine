@@ -168,11 +168,11 @@ function windowBackground(look?: Look): string {
 }
 
 /**
- * How tall the bar along the top of the page is in the page's pixels (h-11 at the page's 15px, index.css): off a
+ * How tall the bar along the top of the page is in the page's pixels (h-11: 2.75rem at the stock 16px root): off a
  * Mac the system draws its window controls over the page at its top right (titleBarOverlay), as tall as it. The
  * window counts in its own pixels, which are the page's times its zoom.
  */
-const TITLE_BAR = 41.25;
+const TITLE_BAR = 44;
 
 /** The system's window controls off a Mac, in the theme's colors: on the bar's background (the page's `sunk`), drawn in its quieter text. */
 function windowControls(zoom = 1, look?: Look): { color: string; symbolColor: string; height: number } {

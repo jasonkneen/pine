@@ -73,7 +73,7 @@ export function TerminalView({ tab }: { tab: Tab }) {
 	const id = tab.key;
 
 	useEffect(() => {
-		const xterm = new Xterm({ fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono") || "monospace", fontSize: 12, lineHeight: 1.2, cursorBlink: true, allowProposedApi: false, scrollback: 5000, theme: theme(), macOptionIsMeta: true });
+		const xterm = new Xterm({ fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono") || "monospace", fontSize: 12, lineHeight: 1.2, cursorBlink: true, allowProposedApi: false, scrollback: 5000, theme: theme(), macOptionIsMeta: true });
 		const fit = new FitAddon();
 		xterm.loadAddon(fit);
 		xterm.open(host.current!);

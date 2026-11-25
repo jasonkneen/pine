@@ -178,7 +178,8 @@ desktop/            the desktop app (Electron; a package of its own, not part of
                     update them with the shadcn CLI and components.json. Stock is used directly where it is needed:
                     no wrapper that only renames or bundles stock components. src/components/ holds only a
                     composition stock cannot express in place, and wraps the stock one. No hand-written stylesheet:
-                    utilities on Tailwind's default scale, tokens and one root font-size in src/index.css.
+                    utilities on Tailwind's default scale in the markup; src/index.css is stock plus the theme bridge and what
+                    a className cannot say (no global rule that changes a stock component).
                     docs/references/desktop.md describes it and its layout.
                     Before you change anything under desktop/src, read desktop/.agents/skills/shadcn/SKILL.md and the
                     files in its rules/ folder, and hold the page to them. Do it yourself: from the repository's root
@@ -1078,8 +1079,8 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   test in `desktop/test/voice-live.test.ts` (`PINE_LIVE=1`) puts the real helper behind it,
   listening to a recording. No test shows the app's real window with its title bar (only
   `view-perf.test.ts` puts a window on the screen, to measure it in front): after a
-  change to the frame (`app-drag` and `app-no-drag` in `src/index.css`, the parts of
-  `src/App.tsx` that carry them: `TitleBar`, `Sidebar` and `Gate`; the side panel's sheet in a
+  change to the frame (`[-webkit-app-region:drag]` and `[-webkit-app-region:no-drag]`, written on
+  the parts of `src/App.tsx` that carry them: `TitleBar`, `Sidebar` and `Gate`; the side panel's sheet in a
   narrow window, in `src/CodePanel.tsx`, whose header lies under the Mac window buttons and over
   the title bar's drag area; the window's options in `electron/main.ts`: `titleBarStyle`,
   `trafficLightPosition`, `vibrancy`), look at it once in light and dark, with the side panel

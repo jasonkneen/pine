@@ -96,7 +96,7 @@ const bar = (key: string): Story => ({
 	parameters: { layout: "fullscreen" },
 	render: () => (
 		<SidebarProvider className="min-h-0 w-full" open={false}>
-			<div className="flex w-full flex-col bg-sunk">
+			<div className="flex w-full flex-col bg-muted">
 				<TitleBar />
 			</div>
 		</SidebarProvider>
@@ -140,7 +140,7 @@ export const TitleBarWithRemoteEnvironment: Story = {
 		store.connected = true;
 		return (
 			<SidebarProvider className="min-h-0 w-full" open={true}>
-				<div className="flex w-full flex-col bg-sunk">
+				<div className="flex w-full flex-col bg-muted">
 					<TitleBar />
 				</div>
 			</SidebarProvider>

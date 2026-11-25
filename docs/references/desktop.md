@@ -281,13 +281,13 @@ its own, which editors ignore:
 
 | `pine` key | What it colors |
 |---|---|
-| `bg`, `surface`, `raised`, `sunk`, `composer`, `side` | The page, cards and the input, buttons, what lies below (the side bar off a Mac), the side bar on a Mac (translucent) |
+| `bg`, `surface`, `raised`, `sunk`, `side` | The page, cards and popovers, buttons, what lies below (the side bar off a Mac), the side bar on a Mac (translucent) |
 | `text`, `text-muted`, `faint` | Text, quieter text, the quietest (hints, times, icons) |
-| `line`, `line-soft`, `hover`, `press`, `select` | Borders, soft dividers, a row under the pointer, a row in front, selected text |
-| `brand`, `brand-soft`, `on-accent` | The accent (what is on or at work), its tint, text on it |
-| `warn`, `bad`, `info`, `plan`, `add`, `del` (and `warn-soft`, `bad-soft`, `add-bg`, `del-bg`) | Warnings, errors, renamed files, keywords, added and removed lines |
+| `line`, `line-soft`, `hover`, `press`, `select` | Borders, soft dividers, a row under the pointer, the side bar's row in front, selected text |
+| `brand`, `on-accent` | The accent (what is on or at work), text on it |
+| `warn`, `bad`, `info`, `plan`, `add`, `del` (and `warn-soft`) | Warnings, errors, renamed files, keywords, added and removed lines |
 | `code-<kind>` | Code: `text`, `comment`, `keyword`, `control`, `definition`, `modifier`, `string`, `regexp`, `literal`, `null`, `name`, `attribute`, `function`, `call`, `type`, `namespace`, `tag`, `operator`, `punctuation`, `heading`, `link`, `inserted`, `deleted`, `gutter`, `cursor`, `match`; `code-meta-style` and `code-attribute-style` are `italic` or `normal` |
-| `term-0` … `term-15`, `term-bg`, `term-fg` | The terminal's sixteen colors, its page and its text |
+| `term-0` … `term-15`, `term-bg`, `term-fg`, `term-cursor`, `term-select` | The terminal's sixteen colors, its page, its text, its cursor and its selection |
 
 An agent can have a color of its own (on its page under Agents, or ask the main agent: "make scout
 blue"). Its avatar is drawn in it in every theme, in the side bar, on its tabs and on its
@@ -1273,27 +1273,36 @@ text color. Settings keeps to this; other parts of the page are brought to it as
   express in place, and wraps the stock one; add one or a style override only for what stock
   cannot do.
 - Sizes and spacing are Tailwind's default scale and shadcn's defaults, never arbitrary values.
-  The page's density is one `font-size` on `:root` in `index.css` (15px): every rem size (text,
-  spacing, components) follows it, so no component sets a font size of its own. On that root the
-  scale's `text-sm` and `text-xs` are set to 14px and 12px (`@theme` in `index.css`), the app's own
-  text and its small labels; a conversation (answers, your messages, the message box) is
-  `text-base` with `leading-snug`, 15px on lines of 20.6px. Corners come from shadcn's
-  `--radius`. The sizes that are not on the scale are the room for the window's buttons at the ends
+  The root is the browser's stock 16px and the text scale is Tailwind's own: the app's text is
+  `text-sm`, set on the root of each of its parts (the window, the side bar, a conversation,
+  Settings, the panels), small labels `text-xs`, and a conversation's answers, your messages and
+  the message box `text-base` with `leading-snug`. Corners come from shadcn's `--radius`, shadows
+  are Tailwind's own. The font is the system's, written into `--font-sans` and `--font-mono`, which
+  the code editor and the terminal read from script. The sizes that are not on the scale are the room for the window's buttons at the ends
   of a bar along the top, tokens in `index.css`: `pl-window-buttons` at the start for a Mac's, and
   `pr-window-controls` at the end for the window controls Windows and Linux draw over the page. The
   window says where they are (`titleBarOverlay` in `electron/main.ts`, read as `env(titlebar-area-x)`
   and `env(titlebar-area-width)`), so each is none where there are no such buttons: in full screen,
   in an ordinary browser (the preview, Storybook), and on the other systems.
 - Every color is one of pine's roles, a variable in `index.css` (`--bg`, `--surface`, `--raised`,
-  `--sunk`, `--side`, `--line`, `--line-soft`, `--text`, `--text-muted`, `--faint`, `--brand`,
-  `--warn`, `--bad`, `--info`, `--plan`, `--add`, `--del` and their soft variants, `--select`,
-  `--scrim`). shadcn's tokens point at them (`--background` is `--bg`, `--primary` `--brand`,
-  `--accent` `--hover`, `--ring` `--faint`: what the keyboard was taken to is grey, never the accent;
-  a click draws no ring, and a text field looks the same with the caret in it as without), and the
-  ones shadcn has no name for are utilities of their own (`text-faint`, `border-line-soft`,
-  `bg-press`, `bg-hover`, `text-warn`, `text-add`...). A new color points at a role, never at a
-  literal color. The values in `index.css` are pmndre's: what the window shows before a theme is set,
-  and in a page that has none.
+  `--sunk`, `--side`, `--hover`, `--press`, `--line`, `--line-soft`, `--text`, `--text-muted`,
+  `--faint`, `--brand`, `--warn`, `--warn-soft`, `--bad`, `--info`, `--plan`, `--add`, `--del`,
+  `--select`). shadcn's tokens point at them (`--background` is `--bg`, `--primary` `--brand`,
+  `--secondary` `--raised`, `--muted` `--sunk`, `--accent` `--hover`, `--sidebar-accent` `--press`,
+  `--ring` `--faint`: what the keyboard was taken to is grey, never the accent), and a component
+  uses shadcn's token (`bg-muted`, `bg-accent`), never the role. The few that shadcn has no name for
+  are utilities of their own: `text-warn`, `bg-warn-soft`, `text-info`, `text-faint`,
+  `border-line-soft`, `text-add`, `text-del`. A new color points at a role, never at a literal
+  color. The values in `index.css` are pmndre's: what the window shows before a theme is set, and in
+  a page that has none.
+- `index.css` is the stock Tailwind and shadcn stylesheet, that theme bridge, and only what cannot
+  be said in a `className`: the room for the window's buttons, the window's chrome on `body` (it
+  never scrolls as a whole; on a Mac it is transparent for the system's material), `::selection`,
+  the highlights of find, and `-webkit-app-region: no-drag` on what Base UI puts in a portal. No
+  rule there changes how a stock component looks: scroll areas, text fields, shadows and
+  scrollbars are stock. What moves the window on a Mac is written where it applies,
+  `[-webkit-app-region:drag]` and `[-webkit-app-region:no-drag]`; a dialog's body says its own
+  height (`max-h-[50vh]`).
 - A theme sets them all. The daemon resolves the theme file (src/theme-colors.ts) into the roles, the
   code colors (`--code-*`) and the terminal's (`--term-*`), and hands the app only those, as
   `#rrggbb[aa]` (`GET /themes`). The page checks them again (`cleanLook` in `theme.ts`: a role's name,

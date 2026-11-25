@@ -1148,7 +1148,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const chat = tab.kind === "chat";
 	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
-		<div ref={frame} className="relative flex min-w-85 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
+		<div ref={frame} className="relative flex min-w-85 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
 			<ConvHead tab={tab} />
 			{selected && chat && source ? (
 				<SelectionToolbar rect={selected.rect} bounds={frame}>

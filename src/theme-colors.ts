@@ -13,7 +13,7 @@
 export type ThemeKind = "dark" | "light";
 
 /** The roles of pine's look (the app's index.css draws with each as `--<name>`). */
-export const UI_ROLES = ["bg", "surface", "raised", "sunk", "composer", "side", "hover", "press", "line", "line-soft", "text", "text-muted", "faint", "brand", "brand-soft", "on-accent", "warn", "warn-soft", "bad", "bad-soft", "info", "plan", "add", "add-bg", "del", "del-bg", "select", "scrim"] as const;
+export const UI_ROLES = ["bg", "surface", "raised", "sunk", "side", "hover", "press", "line", "line-soft", "text", "text-muted", "faint", "brand", "on-accent", "warn", "warn-soft", "bad", "info", "plan", "add", "del", "select"] as const;
 /** The colors of code, in the code pane and in answers (`--code-<name>`). */
 export const CODE_ROLES = ["text", "gutter", "gutter-active", "active-line", "cursor", "match", "match-line", "comment", "meta", "keyword", "definition", "control", "modifier", "string", "regexp", "literal", "null", "name", "attribute", "call", "function", "type", "namespace", "tag", "heading", "emphasis", "link", "inserted", "deleted", "punctuation", "operator"] as const;
 /** The font style of two kinds of code: "italic" or "normal". */
@@ -232,7 +232,6 @@ export function resolveTheme(raw: unknown, fallbackName: string): ResolvedTheme 
 		surface,
 		raised: mix(text, bg, dark ? 0.05 : 0.04),
 		sunk,
-		composer: surface,
 		side: alpha(sunk, dark ? 0.88 : 0.86),
 		hover: alpha(muted, dark ? 0.07 : 0.055),
 		press: alpha(muted, dark ? 0.12 : 0.09),
@@ -242,20 +241,15 @@ export function resolveTheme(raw: unknown, fallbackName: string): ResolvedTheme 
 		"text-muted": muted,
 		faint,
 		brand,
-		"brand-soft": alpha(brand, 0.12),
 		"on-accent": onAccent,
 		warn,
 		"warn-soft": alpha(warn, 0.12),
 		bad,
-		"bad-soft": alpha(bad, dark ? 0.15 : 0.1),
 		info,
 		plan,
 		add,
-		"add-bg": alpha(add, dark ? 0.1 : 0.12),
 		del,
-		"del-bg": alpha(del, dark ? 0.14 : 0.11),
 		select: read("editor.selectionBackground") ?? alpha(brand, 0.28),
-		scrim: dark ? [10, 11, 17, 0.55] : [20, 24, 22, 0.28],
 	};
 
 	// Code: the token colors by scope, each kind falling back on a kin and finally on the text.

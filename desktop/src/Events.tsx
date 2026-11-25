@@ -41,7 +41,7 @@ export function Events({ tab }: { tab: Tab }) {
 		tab.logFilter = filter;
 	}, [filter, tab]);
 	return (
-		<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
+		<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
 			<div className="flex flex-none flex-wrap items-center gap-2 border-b border-line-soft px-4 py-2.5">
 				<InputGroup className="max-w-90">
 					<InputGroupAddon>

@@ -14,16 +14,10 @@
    default theme, pmndre (github.com/drcmda/poimandres-theme), for the moment before a theme is set, and for a
    page that has none (Storybook). shadcn's tokens below only point at these names, so one place holds each color. */
 :root {
-	color-scheme: dark;
-	/* The density of the whole page: every rem size (text, spacing, shadcn's components) follows this one. */
-	font-size: 15px;
-	--font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
-	--mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 	--bg: #1b1e28;
 	--surface: #1e212c;
 	--raised: #232633;
 	--sunk: #171922;
-	--composer: #1e212c;
 	--side: #13151de0;
 	--hover: #a6accd12;
 	--press: #a6accd1f;
@@ -33,20 +27,15 @@
 	--text-muted: #a6accd;
 	--faint: #767c9d;
 	--brand: #5de4c7;
-	--brand-soft: #5de4c71f;
 	--on-accent: #171922;
 	--warn: #fffac2;
 	--warn-soft: #fffac21a;
 	--bad: #d0679d;
-	--bad-soft: #d0679d26;
 	--info: #add7ff;
 	--plan: #89ddff;
 	--add: #5de4c7;
-	--add-bg: #5de4c71a;
 	--del: #d0679d;
-	--del-bg: #d0679d24;
 	--select: #717cb44d;
-	--scrim: #0a0b118c;
 	/* The colors of code: the code editor's (CodePanel.tsx: its CodeMirror theme and highlight style read only these) and
 	   the answers' (markdown.tsx: the highlighter's theme reads them too). */
 	--code-text: #a6accd;
@@ -82,7 +71,7 @@
 	--code-deleted: #d0679d;
 	--code-punctuation: #a6accd;
 	--code-operator: #91b4d5;
-	/* The terminal beside a conversation (Terminal.tsx): its sixteen colors. */
+	/* The terminal beside a conversation (Terminal.tsx): its sixteen colors, then its page, text, cursor and selection. */
 	--term-0: #1b1e28;
 	--term-1: #d0679d;
 	--term-2: #5de4c7;
@@ -99,29 +88,17 @@
 	--term-13: #f087bd;
 	--term-14: #add7ff;
 	--term-15: #ffffff;
-	--shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.4);
-	--shadow-l: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 64px rgba(0, 0, 0, 0.6);
-	/* How tall a dialog's body grows before it scrolls: shadcn's own value for a scrollable dialog. */
-	--dialog-scroll: 50vh;
+	--term-bg: #1b1e28;
+	--term-fg: #a6accd;
+	--term-cursor: #a6accd;
+	--term-select: #717cb425;
 }
 
-/* A light theme: the system's controls in light, and shadows that suit a bright page. */
-:root:not(.dark) {
-	color-scheme: light;
-	--shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 28px rgba(0, 0, 0, 0.1);
-	--shadow-l: 0 2px 6px rgba(0, 0, 0, 0.08), 0 24px 64px rgba(0, 0, 0, 0.22);
-}
-
-/* The type scale on the 15px root: a conversation is text-base (15px), the app's own text text-sm (14px), small
-   labels text-xs (12px). Tailwind's own sm and xs (0.875rem, 0.75rem) were made for a 16px root and come out at
-   13.1px and 11.25px here, a size smaller than the apps beside pine. Line heights keep Tailwind's ratios.
-   The editor's theme (CodePanel.tsx) reads --text-xs from script, where Tailwind cannot see it, and Tailwind
-   emits a theme variable only when a utility uses it: static keeps these emitted. */
+/* The system's own fonts. Static, so that they are on the root for script too: the code editor and the terminal
+   (CodePanel.tsx, Terminal.tsx) read them there, where Tailwind cannot see a utility that uses them. */
 @theme static {
-	--text-xs: 0.8rem;
-	--text-sm: calc(1rem * 14 / 15);
-	--leading-relaxed: 1.625;
-	--font-weight-semibold: 600;
+	--font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+	--font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
 /* Room for the Mac's window buttons at the start of a bar along the top (`pl-window-buttons`). The window says
@@ -140,12 +117,8 @@
 	--spacing-window-controls: max(calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)), calc(var(--spacing) * 2));
 }
 
-/* shadcn's tokens, set from pine's own colors (above). They only point at pine's names, so one place holds each
-   color. The font is the system's, as it always was. */
 @theme inline {
-	--font-sans: var(--font);
-	--font-mono: var(--mono);
-	--font-heading: var(--font);
+	--font-heading: var(--font-sans);
 	--color-sidebar-ring: var(--sidebar-ring);
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -177,25 +150,14 @@
 	--color-card: var(--card);
 	--color-foreground: var(--foreground);
 	--color-background: var(--background);
-	/* pine's own colors that shadcn has no name for, as utilities (text-warn, bg-bad-soft...). */
+	/* pine's own colors that shadcn has no name for (warnings, diffs, the quietest text), as utilities: text-warn... */
 	--color-warn: var(--warn);
 	--color-warn-soft: var(--warn-soft);
-	--color-bad-soft: var(--bad-soft);
 	--color-info: var(--info);
-	--color-plan: var(--plan);
 	--color-faint: var(--faint);
-	--color-brand-soft: var(--brand-soft);
 	--color-line-soft: var(--line-soft);
-	--color-raised: var(--raised);
-	--color-sunk: var(--sunk);
-	--color-hover: var(--hover);
-	--color-press: var(--press);
-	--color-scrim: var(--scrim);
-	--color-composer: var(--composer);
 	--color-add: var(--add);
-	--color-add-bg: var(--add-bg);
 	--color-del: var(--del);
-	--color-del-bg: var(--del-bg);
 	--radius-sm: calc(var(--radius) * 0.6);
 	--radius-md: calc(var(--radius) * 0.8);
 	--radius-lg: var(--radius);
@@ -203,45 +165,6 @@
 	--radius-2xl: calc(var(--radius) * 1.8);
 	--radius-3xl: calc(var(--radius) * 2.2);
 	--radius-4xl: calc(var(--radius) * 2.6);
-	--shadow-md: var(--shadow);
-	--shadow-lg: var(--shadow-l);
-	/* A line too long for its place slides to show its end, and back (needs a container around it). */
-	--animate-slide-end: slide-end 5s linear 0.5s infinite alternate;
-	@keyframes slide-end {
-		0%,
-		12% {
-			transform: translateX(0);
-		}
-		88%,
-		100% {
-			transform: translateX(min(0px, 100cqw - 100%));
-		}
-	}
-}
-
-/* What moves the window on a Mac: the bar along the top and the side bar, where nothing is to click. */
-@utility app-drag {
-	-webkit-app-region: drag;
-}
-@utility app-no-drag {
-	-webkit-app-region: no-drag;
-}
-/* A drag region takes the clicks in its place whatever is drawn over it: a menu, a popover or a dialog that
-   opens over the side bar would move the window instead of being chosen from. What Base UI puts in a portal
-   is not part of the window's frame. */
-[data-base-ui-portal] * {
-	-webkit-app-region: no-drag;
-}
-/* A click draws no ring. A button shows its ring only when the keyboard brought it there (the browser's
-   :focus-visible), but a text field counts as focus-visible however it was reached, so the stock fields and
-   the input groups around them would light up a halo and a brighter border on every click. The caret says
-   where the typing goes: a field and what wraps it look the same with the keyboard as without. A field that
-   is wrong keeps its red. The stock fields draw their border in the input's color, so the ring's color is that
-   one here (`--ring`, which the theme inlines into the utilities). */
-:is(input, textarea, [contenteditable]):focus-visible:not([aria-invalid="true"]),
-[data-slot]:has(:is(input, textarea, [contenteditable]):focus-visible):not(:has([aria-invalid="true"])) {
-	--ring: var(--input);
-	--tw-ring-color: transparent;
 }
 
 :root {
@@ -270,7 +193,6 @@
 	--chart-4: var(--warn);
 	--chart-5: var(--bad);
 	--radius: 0.625rem;
-	/* The side bar's rows are muted until the pointer is on one; the one in front stays pressed. */
 	--sidebar: var(--side);
 	--sidebar-foreground: var(--text-muted);
 	--sidebar-primary: var(--brand);
@@ -285,6 +207,13 @@
 	* {
 		@apply border-border outline-ring/50;
 	}
+	/* The system's own controls follow the theme: theme.ts sets `.dark` for a dark one. */
+	:root {
+		color-scheme: light;
+	}
+	:root.dark {
+		color-scheme: dark;
+	}
 	html,
 	body,
 	#root {
@@ -293,27 +222,16 @@
 	html {
 		@apply font-sans;
 	}
-	/* On a Mac the window is the system's material, which shows through; elsewhere it is the page's color. */
+	/* The page is an app's window: it never scrolls as a whole, and its text is not picked up like a document's. */
 	body {
-		@apply overflow-hidden bg-transparent text-sm text-foreground antialiased select-none cursor-default;
+		@apply overflow-hidden bg-background text-foreground antialiased select-none cursor-default;
 	}
-	html:not([data-platform="darwin"]) body {
-		@apply bg-background;
+	/* On a Mac the window is the system's material (vibrancy), which shows through. */
+	html[data-platform="darwin"] body {
+		@apply bg-transparent;
 	}
 	::selection {
 		background: var(--select);
-	}
-	::-webkit-scrollbar {
-		@apply size-2.5;
-	}
-	::-webkit-scrollbar-thumb {
-		@apply rounded-full border-2 border-solid border-transparent bg-press bg-clip-content;
-	}
-	::-webkit-scrollbar-thumb:hover {
-		@apply bg-faint;
-	}
-	svg.lucide {
-		@apply shrink-0;
 	}
 	/* What find in a conversation matches (the CSS Highlight API: no element to put a class on). */
 	::highlight(pine-find) {
@@ -326,13 +244,10 @@
 		background-color: var(--warn);
 		color: var(--background);
 	}
-}
-
-/* A scroll area's bar shows only while it scrolls or under the pointer: the fade at its cut edge already says there is more.
-   Outside the base layer, so that the stock bar's transition-colors utility does not take the fade away. */
-[data-slot="scroll-area-scrollbar"] {
-	@apply opacity-0 transition-opacity duration-200;
-}
-[data-slot="scroll-area-scrollbar"]:is([data-hovering], [data-scrolling], :hover) {
-	@apply opacity-100;
+	/* What moves the window on a Mac takes the clicks in its place whatever is drawn over it: a menu, a popover or a
+	   dialog that opens over the side bar would move the window instead of being chosen from. What Base UI puts in
+	   a portal is not part of the window's frame, and its DOM is not ours to put a class on. */
+	[data-base-ui-portal] * {
+		-webkit-app-region: no-drag;
+	}
 }

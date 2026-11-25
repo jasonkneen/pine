@@ -52,7 +52,7 @@ export function SideSheet({ id, slot, title, sheet, widthKey, savedWidth, defaul
 			}}>
 				{/* The sheet lies over the title bar's drag region, which Electron honours whatever is drawn on top:
 				    without this a click in the sheet would move the window on a Mac. */}
-				<SheetContent side="right" showCloseButton={false} className="app-no-drag gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
+				<SheetContent side="right" showCloseButton={false} className="[-webkit-app-region:no-drag] gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
 					<SheetTitle className="sr-only">{title}</SheetTitle>
 					{frame}
 				</SheetContent>

@@ -595,7 +595,7 @@ test("a long quote given to work that runs is known as the owner's own message: 
 	assert.doesNotMatch(await page.textContent("[data-slot=message-scroller-content]"), /elsewhere/);
 });
 
-test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
+test("a click into the composer draws the stock focus ring and border, as every shadcn field does", async () => {
 	const look = () =>
 		page.$eval("[data-slot=composer] [data-slot=input-group]", (el: Element) => {
 			const s = getComputedStyle(el);
@@ -611,7 +611,10 @@ test("a click into the composer draws no ring and no brighter border: it looks a
 	await page.click("[data-slot=composer] textarea");
 	await settled();
 	assert.equal(await page.$eval("[data-slot=composer] textarea", (el: Element) => el.matches(":focus-visible")), true);
-	assert.deepEqual(await look(), before);
+	const focused = await look();
+	assert.equal(before.ring, "", `the composer has a ring before it has focus: ${before.ring}`);
+	assert.notEqual(focused.ring, "", "the focused composer draws no ring");
+	assert.notEqual(focused.border, before.border, "the focused composer's border keeps its color");
 });
 
 test("the context meter turns to a warning past two thirds, and to danger past 85%", async () => {

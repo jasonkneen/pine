@@ -259,6 +259,8 @@ export async function started(): Promise<void> {
 	await sees(`[data-slot=dialog-title] >> text=The browser for the web tools is not on this ${HERE}`);
 	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	// "Not now" is kept once pine said its version: a reload before that would ask again, over what the test clicks.
+	await page.waitForFunction(() => localStorage.getItem("pine.browser.later"));
 }
 
 /** Where focus is: the field's role, and the option it marks active, as a screen reader hears them. */

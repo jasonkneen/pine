@@ -43,7 +43,7 @@ test("the side bar is the agents: one made elsewhere appears, a group folds away
 		return { name: stands(el.querySelector("[data-slot=agent-label] > :first-child")!), what: stands(el.querySelector("[data-slot=agent-label] > :last-child > span")!), row: el.getBoundingClientRect().height };
 	});
 	assert.ok(one.what.left > one.name.right && Math.abs(one.what.baseline - one.name.baseline) <= 0.75, `an agent's name and what it is for are not on one line: ${JSON.stringify(one)}`);
-	assert.equal(one.row, 30, "an agent's line is as high as a conversation's");
+	assert.equal(one.row, 32, "an agent's line is as high as a conversation's (h-8)");
 	// The side bar is as wide as it is dragged.
 	const before = await page.$eval("#sidebar-panel [data-slot=sidebar]", (el: Element) => el.getBoundingClientRect().width);
 	const edge = await page.$eval(SIDE_EDGE, (el: Element) => el.getBoundingClientRect());
@@ -733,26 +733,13 @@ test("the panel's Agent view scrolls up and down only, however narrow the panel 
 	const seen = await fits();
 	await shot("agent-view-narrow");
 	assert.ok(seen.scroll <= seen.client, `the Agent view is wider than the panel: ${JSON.stringify(seen)}`);
-	// Its scroll bar, like every scroll area's, is hidden at rest and shows under the pointer and while it scrolls.
-	// The fade is turned off for the reading: a window in the background runs its transitions slowly.
+	// Its scroll bar is the stock one: drawn at rest, away from the pointer, while there is more to scroll.
 	const area = "[data-slot=code-panel] [data-slot=scroll-area]:has-text(\"What it remembers\")";
 	const bar = `${area} > [data-slot=scroll-area-scrollbar][data-orientation=vertical]`;
-	const handle = await page.$(bar);
-	assert.ok(handle, "the Agent view has no scroll bar");
-	const settled = (state: string) => page.waitForFunction(([el, state]) => {
-		el.style.transition = "none";
-		const on = el.hasAttribute("data-hovering") || el.hasAttribute("data-scrolling");
-		return (state === "rest" ? !on : on) && getComputedStyle(el).opacity === (state === "rest" ? "0" : "1");
-	}, [handle, state] as const, { timeout: 3000 }).then(() => true, () => false);
 	await page.mouse.move(5, 5);
-	assert.ok(await settled("rest"), "a scroll bar shows at rest");
-	const box = await page.$eval(area, (el: Element) => el.getBoundingClientRect());
-	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-	assert.ok(await settled("on"), "a scroll bar stays hidden under the pointer");
-	await page.mouse.move(5, 5);
-	assert.ok(await settled("rest"), "a scroll bar stays shown once the pointer has left");
-	await page.$eval(`${area} > [data-slot=scroll-area-viewport]`, (el: Element) => el.scrollBy(0, 40));
-	assert.ok(await settled("on"), "a scroll bar stays hidden while it scrolls");
+	const shown = await page.$eval(bar, (el: Element) => ({ opacity: getComputedStyle(el).opacity, width: el.getBoundingClientRect().width })).catch(() => undefined);
+	assert.ok(shown, "the Agent view has no scroll bar");
+	assert.ok(shown.opacity === "1" && shown.width > 0, `the scroll bar is hidden at rest: ${JSON.stringify(shown)}`);
 	// Back to the width it had, for the tests after this one.
 	const back = await page.$eval(CODE_EDGE, (el: Element) => el.getBoundingClientRect());
 	await page.mouse.move(back.x + back.width / 2, 300);

@@ -166,7 +166,7 @@ export function BoardList({ view, actions }: { view: BoardView; actions: BoardAc
 				{loose.length ? (
 					<div className="flex flex-col gap-2 px-2" data-slot="board-notes">
 						<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-							<StickyNoteIcon className="size-3.5" />
+							<StickyNoteIcon className="size-3.5 shrink-0" />
 							{plural(loose.length, "note")}
 						</span>
 						{loose.map((n) => (
