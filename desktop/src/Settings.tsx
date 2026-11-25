@@ -285,7 +285,7 @@ function SettingRow({ s, models, reload }: { s: Setting; models?: string[]; relo
 		const commit = () => (draft === undefined || draft.trim() === s.now ? setDraft(undefined) : void set(draft.trim()));
 		control = (
 			<HoverTooltip>
-				<TooltipTrigger render={<Input id={id} className={cn(CONTROL, "font-mono")} value={draft ?? s.now} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === "Enter" ? commit() : e.key === "Escape" ? setDraft(undefined) : undefined)} />} />
+				<TooltipTrigger render={<Input id={id} className={CONTROL} value={draft ?? s.now} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === "Enter" ? commit() : e.key === "Escape" ? setDraft(undefined) : undefined)} />} />
 				<TooltipContent>{hint}</TooltipContent>
 			</HoverTooltip>
 		);
@@ -327,26 +327,32 @@ function General() {
 		<Page title="General" lead="This app, the pine it uses, and what all agents start from. pine checks each change before it saves it.">
 			<AppSections overview={overview.data} />
 			{notes.length ? (
-				<Section title="Worth a look" about="pine noticed these about this setup.">
-					<div className="flex flex-col gap-2">
-						{notes.map((w, i) => (
-							<Alert key={i}>
-								<TriangleAlertIcon />
-								<AlertDescription className="wrap-anywhere">{w}</AlertDescription>
-							</Alert>
-						))}
-					</div>
-				</Section>
+				<>
+					<FieldSeparator />
+					<Section title="Worth a look" about="pine noticed these about this setup.">
+						<div className="flex flex-col gap-2">
+							{notes.map((w, i) => (
+								<Alert key={i}>
+									<TriangleAlertIcon />
+									<AlertDescription className="wrap-anywhere">{w}</AlertDescription>
+								</Alert>
+							))}
+						</div>
+					</Section>
+				</>
 			) : null}
 			{!overview.data && !overview.error ? <div data-slot="settings-overview-skeleton"><SettingsItem skeleton /></div> : null}
 			{overview.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{overview.error}</AlertDescription></Alert> : null}
 			{settings.data ? (
 				GROUPS.map((g) => (
-					<Section key={g.prefix} title={g.title} about={g.about}>
-						<FieldGroup>
-							{settings.data!.filter((x) => x.key.startsWith(g.prefix)).map((x) => <SettingRow key={x.key} s={x} models={models.data ?? (models.error ? [] : undefined)} reload={settings.reload} />)}
-						</FieldGroup>
-					</Section>
+					<Fragment key={g.prefix}>
+						<FieldSeparator />
+						<Section title={g.title} about={g.about}>
+							<FieldGroup>
+								{settings.data!.filter((x) => x.key.startsWith(g.prefix)).map((x) => <SettingRow key={x.key} s={x} models={models.data ?? (models.error ? [] : undefined)} reload={settings.reload} />)}
+							</FieldGroup>
+						</Section>
+					</Fragment>
 				))
 			) : settings.error ? (
 				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{settings.error}</AlertDescription></Alert>
@@ -591,7 +597,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 					</Field>
 				</FieldGroup>
 			</Section>
-
+			<FieldSeparator />
 			<Section title="Instructions" about="The files the agent reads with each message." data-find="agent-instructions">
 				<FileTabs files={FILES.filter((f) => f.edit || d.files[f.key] !== undefined)} value={file} onChange={setFile}>
 					{(key) => {
@@ -604,7 +610,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 					}}
 				</FileTabs>
 			</Section>
-
+			<FieldSeparator />
 			<Section title="Permissions" about="What the agent may do without asking you.">
 				<FieldGroup>
 					<Field orientation="responsive" data-find="agent-mode">
@@ -648,7 +654,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 					</FieldSet>
 				</FieldGroup>
 			</Section>
-
+			<FieldSeparator />
 			<Section
 				title="Folders outside the workspace"
 				data-find="agent-folders"
@@ -695,7 +701,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 					<Empty><EmptyHeader><EmptyMedia variant="icon"><FolderIcon /></EmptyMedia><EmptyTitle>No other folders</EmptyTitle><EmptyDescription>The agent works in the agent's own workspace only.</EmptyDescription></EmptyHeader></Empty>
 				)}
 			</Section>
-
+			<FieldSeparator />
 			<Section data-find="agent-holdings" title="What this agent has" about="Ask the agent, or use the other pages of Settings, to add or remove any of these.">
 				<FieldGroup>
 					{(
@@ -730,19 +736,22 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 			</Section>
 
 			{d.main ? null : (
-				<Section data-find="agent-remove">
-					<FieldGroup>
-						<Field orientation="responsive">
-							<FieldContent className="min-w-0">
-								<FieldTitle>Remove this agent</FieldTitle>
-								<FieldDescription>{`Removes the agent with all conversations, sources, schedules, servers and skills, the routes that wake it, and the agent's folder and private home.${d.holdings.outside ? " The workspace lies outside pine's home and is left as it is." : ""}`}</FieldDescription>
-							</FieldContent>
-							<Control>
-								<Button variant="destructive" onClick={() => void remove()}><Trash2Icon data-icon="inline-start" />Remove…</Button>
-							</Control>
-						</Field>
-					</FieldGroup>
-				</Section>
+				<>
+					<FieldSeparator />
+					<Section data-find="agent-remove">
+						<FieldGroup>
+							<Field orientation="responsive">
+								<FieldContent className="min-w-0">
+									<FieldTitle>Remove this agent</FieldTitle>
+									<FieldDescription>{`Removes the agent with all conversations, sources, schedules, servers and skills, the routes that wake it, and the agent's folder and private home.${d.holdings.outside ? " The workspace lies outside pine's home and is left as it is." : ""}`}</FieldDescription>
+								</FieldContent>
+								<Control>
+									<Button variant="destructive" onClick={() => void remove()}><Trash2Icon data-icon="inline-start" />Remove…</Button>
+								</Control>
+							</Field>
+						</FieldGroup>
+					</Section>
+				</>
 			)}
 
 			{/* While something is changed, the way to keep it stays in sight at the foot of the page, wherever the change was made. */}
@@ -1170,7 +1179,7 @@ function Models() {
 					</FieldGroup>
 				</Section>
 			) : null}
-
+			{!fallbackSeen || anyModel ? <FieldSeparator /> : null}
 			<Section title="Subscriptions and API keys" about="A model from a provider on the internet." data-find="providers">
 				<InputGroup>
 					<InputGroupAddon>
@@ -1193,7 +1202,7 @@ function Models() {
 				)}
 				{providers.data && !q && more > 0 ? <p className="text-muted-foreground">{plural(more, "more provider")} with an API key or an account. Search to find one.</p> : null}
 			</Section>
-
+			<FieldSeparator />
 			<Section
 				title="Models on your own computer"
 				data-find="model-servers"
@@ -1547,7 +1556,7 @@ function OptionField({ name, schema, required, value, onChange }: { name: string
 		return (
 			<Field>
 				<FieldLabel htmlFor={id}>{label}</FieldLabel>
-				<Input id={id} aria-required={required || undefined} className="font-mono" value={value === undefined ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} inputMode="decimal" />
+				<Input id={id} aria-required={required || undefined} value={value === undefined ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} inputMode="decimal" />
 				{hint ? <FieldDescription>{hint}</FieldDescription> : null}
 			</Field>
 		);
@@ -2233,7 +2242,9 @@ function EventsPage() {
 		<Page title="Events" lead="What starts your agents without you typing a message: sources that report something, schedules at set times, and routes that pass events on." actions={<Button variant="outline" onClick={() => void store.openEvents()}><AudioLinesIcon data-icon="inline-start" />Event log</Button>}>
 			{/* All three at once, each with what it has: nothing set up is hidden behind a tab. Routes last, the one few need. */}
 			<Sources />
+			<FieldSeparator />
 			<Schedules />
+			<FieldSeparator />
 			<Routes />
 		</Page>
 	);
@@ -2669,11 +2680,14 @@ function Environments() {
 			<MachineList />
 			{/* In the pairing view, the list's how-to is all there is to say. */}
 			{!pairing ? (
-				<Section title="What a machine needs" data-find="machine-needs">
-					<ul className="flex list-disc flex-col gap-1 ps-5 text-muted-foreground">
-						{needs.map((line, i) => <li key={i}>{line}</li>)}
-					</ul>
-				</Section>
+				<>
+					<FieldSeparator />
+					<Section title="What a machine needs" data-find="machine-needs">
+						<ul className="flex list-disc flex-col gap-1 ps-5 text-muted-foreground">
+							{needs.map((line, i) => <li key={i}>{line}</li>)}
+						</ul>
+					</Section>
+				</>
 			) : null}
 		</Page>
 	);
@@ -2762,6 +2776,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 					</Field>
 				</FieldGroup>
 			</Section>
+			<FieldSeparator />
 			<Section title="pine" about="The program behind the app that runs your agents.">
 				{service?.olderThan ? (
 					<Alert data-notice="older-pine">

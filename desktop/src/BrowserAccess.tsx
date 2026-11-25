@@ -12,7 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
@@ -155,7 +155,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					</Field>
 				</FieldGroup>
 			</Section>
-
+			<FieldSeparator />
 			<Section title="Devices" data-find="access-devices" actions={<Button variant="outline" disabled={state.status === "off"} onClick={actions.add}><PlusIcon data-icon="inline-start" />Add a device</Button>}>
 				{state.devices.length ? (
 					<ItemGroup>
@@ -192,7 +192,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					<Empty><EmptyHeader><EmptyMedia variant="icon"><LaptopIcon /></EmptyMedia><EmptyTitle>No device is paired</EmptyTitle><EmptyDescription>Add one by scanning a code with the device's camera, or with a link you open in the device's browser.</EmptyDescription></EmptyHeader></Empty>
 				)}
 			</Section>
-
+			<FieldSeparator />
 			{/* A set of its own: inside the group of This Mac, its fields were drawn with no height once the try's line appeared. */}
 			<Section title="Relay server (TURN)" about="Used when no direct connection can be made, for example from some mobile networks. Leave it empty if you have none." data-setting="access-relay">
 				<FieldGroup>

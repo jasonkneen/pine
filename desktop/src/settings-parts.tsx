@@ -1,12 +1,14 @@
 // The parts every page of Settings is made of, so that all of them look alike: Settings.tsx and
 // BrowserAccess.tsx draw their pages with these and stock components, and nothing else frames a page.
 import { ChevronLeftIcon } from "lucide-react";
-import type { ComponentProps, ReactNode } from "react";
+import { useId, type ComponentProps, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { FieldContent, FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
 
 // One grid for every page: a header (a way back above the title, the title, one line on what the page is
-// for, the page's buttons on the right), then sections 8 apart, each a heading, a line, its buttons on the
-// right, and what it holds. What a section holds is one of three things, the same on every page:
+// for, the page's buttons on the right), then its parts in a stock FieldGroup. A section is a stock FieldSet
+// (its legend, a line, its buttons on the right, and what it holds), with a stock FieldSeparator between two
+// sections that follow each other. What a section holds is one of three things, the same on every page:
 // - settings: stock Fields in a FieldGroup, no frame. A row has its text on the left and its control on the
 //   right, in one column of one width (CONTROL, inside Control); a wide control (a toggle group, an editor)
 //   goes under its label.
@@ -39,26 +41,37 @@ export function Page({ title, lead, children, actions, back }: { title: ReactNod
 					{actions ? <div className="flex flex-none items-center gap-2">{actions}</div> : null}
 				</div>
 			</header>
-			{children}
+			<FieldGroup>{children}</FieldGroup>
 		</div>
 	);
 }
 
-/** A part of a page: its heading, a line on what it is for, its buttons on the right, then what it holds. */
-export function Section({ title, about, actions, children, ...rest }: { title?: ReactNode; about?: ReactNode; actions?: ReactNode; children: ReactNode } & Omit<ComponentProps<"section">, "title">) {
+/**
+ * A part of a page: a stock FieldSet with its FieldLegend and FieldDescription, its buttons on the right, then
+ * what it holds. A page puts a stock FieldSeparator between two sections that follow each other.
+ */
+export function Section({ title, about, actions, children, ...rest }: { title?: ReactNode; about?: ReactNode; actions?: ReactNode; children: ReactNode } & Omit<ComponentProps<"fieldset">, "title">) {
+	const legend = useId();
+	if (!actions)
+		return (
+			<FieldSet className="min-w-0" {...rest}>
+				{title ? <FieldLegend>{title}</FieldLegend> : null}
+				{about ? <FieldDescription>{about}</FieldDescription> : null}
+				{children}
+			</FieldSet>
+		);
+	// With buttons beside the title the legend is not the set's first child, so it names the set by its id.
 	return (
-		<section className="flex flex-col gap-3" {...rest}>
-			{title || about || actions ? (
-				<div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-					<div className="flex min-w-0 flex-[1_1_20rem] flex-col gap-0.5">
-						{title ? <h2 className="text-base font-medium">{title}</h2> : null}
-						{about ? <p className="text-muted-foreground">{about}</p> : null}
-					</div>
-					{actions ? <div className="flex flex-none items-center gap-2">{actions}</div> : null}
-				</div>
-			) : null}
+		<FieldSet className="min-w-0" aria-labelledby={title ? legend : undefined} {...rest}>
+			<div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+				<FieldContent className="min-w-0 flex-[1_1_20rem]">
+					{title ? <FieldLegend id={legend}>{title}</FieldLegend> : null}
+					{about ? <FieldDescription>{about}</FieldDescription> : null}
+				</FieldContent>
+				<div className="flex flex-none items-center gap-2">{actions}</div>
+			</div>
 			{children}
-		</section>
+		</FieldSet>
 	);
 }
 
