@@ -373,7 +373,7 @@ function General() {
 function CheckList({ label, items, onToggle }: { label: string; items: Array<{ value: string; label: ReactNode; about?: string; checked: boolean; disabled?: boolean }>; onToggle: (value: string, on: boolean) => void }) {
 	const id = useId();
 	return (
-		<FieldGroup role="group" aria-label={label} className="grid grid-cols-1 gap-3 @md/field-group:grid-cols-2">
+		<FieldGroup role="group" aria-label={label} className="grid grid-cols-1 gap-3 @sm/field-group:grid-cols-2">
 			{items.map((x) => (
 				<Field key={x.value} orientation="horizontal" data-disabled={x.disabled || undefined}>
 					<Checkbox id={`${id}-${x.value}`} checked={x.checked} disabled={x.disabled} onCheckedChange={(on) => onToggle(x.value, on === true)} />
@@ -410,7 +410,7 @@ const FILES: Array<{ key: "instructions" | "soul" | "tooling" | "memory" | "rule
 function FileTabs<K extends string>({ files, value, onChange, children }: { files: Array<{ key: K; label: string; about?: string }>; value: K; onChange: (v: K) => void; children: (key: K) => ReactNode }) {
 	return (
 		<Tabs value={value} onValueChange={onChange}>
-			<TabsList activateOnFocus>
+			<TabsList activateOnFocus className="gap-1">
 				{files.map((f) => (
 					<TabsTrigger key={f.key} value={f.key}>
 						{f.label}
