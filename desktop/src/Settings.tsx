@@ -2304,7 +2304,7 @@ function Swatch({ colors }: { colors: Record<string, string> }) {
 	const dots = [colors.brand, colors["code-keyword"], colors["code-string"], colors["code-function"]];
 	return (
 		<span aria-hidden className="inline-flex flex-none items-center gap-0.5 rounded-sm border px-1 py-0.5" style={{ backgroundColor: colors.bg }}>
-			<span className="text-[0.625rem] font-semibold leading-none" style={{ color: colors.text }}>Aa</span>
+			<span className="text-xs font-semibold leading-none" style={{ color: colors.text }}>Aa</span>
 			{dots.map((c, i) => <span key={i} className="size-1.5 rounded-full" style={{ backgroundColor: c }} />)}
 		</span>
 	);
@@ -2499,7 +2499,7 @@ export function MachineList() {
 			media={h?.startsWith("wsl:") ? <TerminalSquareIcon /> : h && !isPaired(h) ? <ServerIcon /> : <LaptopIcon />}
 			mediaVariant="icon"
 			// The text asks for 20rem before it shares its line: where the buttons would leave it less (a phone, the Gate, the four of a machine in error), the Item wraps them onto a line of their own.
-			contentClassName="flex-[1_1_20rem]"
+			contentClassName="grow basis-80"
 			// A long host (a Tailscale Funnel name and its port) wraps where it breaks naturally, and the badge goes onto the next line: neither spills out of the row. `flex` again after `line-clamp-none`, which sets `display: block`.
 			titleClassName="name line-clamp-none flex w-full min-w-0 flex-wrap"
 			title={<>

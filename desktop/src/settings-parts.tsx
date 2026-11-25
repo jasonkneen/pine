@@ -34,7 +34,7 @@ export function Page({ title, lead, children, actions, back }: { title: ReactNod
 					</Button>
 				) : null}
 				<div className="flex flex-wrap items-start gap-x-4 gap-y-3">
-					<div className="flex min-w-0 flex-[1_1_20rem] flex-col gap-1">
+					<div className="flex min-w-0 grow basis-80 flex-col gap-1">
 						<h1 className="text-xl font-semibold tracking-tight">{title}</h1>
 						{lead ? <p className="max-w-2xl text-muted-foreground">{lead}</p> : null}
 					</div>
@@ -64,7 +64,7 @@ export function Section({ title, about, actions, children, ...rest }: { title?: 
 	return (
 		<FieldSet className="min-w-0" aria-labelledby={title ? legend : undefined} {...rest}>
 			<div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-				<FieldContent className="min-w-0 flex-[1_1_20rem]">
+				<FieldContent className="min-w-0 grow basis-80">
 					{title ? <FieldLegend id={legend}>{title}</FieldLegend> : null}
 					{about ? <FieldDescription>{about}</FieldDescription> : null}
 				</FieldContent>

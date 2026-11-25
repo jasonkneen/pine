@@ -704,7 +704,7 @@ function BoardDetail({ id, task, pick }: { id: number; task?: number; pick: (s: 
 			<>
 				{head}
 				<p data-slot="view-task-text" className="whitespace-pre-wrap break-words">{t.text}</p>
-				<dl className="grid grid-cols-[6rem_1fr] gap-x-2 gap-y-1">
+				<dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
 					<dt className="text-muted-foreground">Now</dt>
 					<dd className={cn(t.state === "blocked" && "text-warn", t.state === "failed" && "text-destructive")}>{taskLine(t)}</dd>
 					<dt className="text-muted-foreground">Posted by</dt>
@@ -749,7 +749,7 @@ function JobDetail({ j, now, pick }: { j: Job; now: number; pick: (s: Sel) => vo
 				<Button variant="outline" size="xs" onClick={() => openJob(j)}><ExternalLinkIcon data-icon="inline-start" />Open</Button>
 				<Button variant="ghost" size="icon-xs" aria-label="Back to what happened" onClick={() => pick(undefined)}><XIcon /></Button>
 			</div>
-			<dl className="grid grid-cols-[6rem_1fr] gap-x-2 gap-y-1">
+			<dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
 				<dt className="text-muted-foreground">Agent</dt>
 				<dd><button type="button" className="hover:underline" onClick={() => pick({ k: "agent", id: j.agent })}>{j.agent}</button>{j.kind === "subagent" ? ", a copy (sub-agent)" : ""}</dd>
 				<dt className="text-muted-foreground">Came from</dt>

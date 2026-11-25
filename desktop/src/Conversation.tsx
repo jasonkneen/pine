@@ -61,7 +61,7 @@ type RunStatus = "run" | "ok" | "fail" | "done" | "failed" | "cancelled";
  * nearly nothing (desktop/test/view-perf.test.ts measures both). Important, since the stock trace sets
  * the shimmer from its line, which outweighs a class of the title's.
  */
-const STEPPED = "[background-image:none]! [-webkit-text-fill-color:currentColor]! in-data-[status=running]:[animation:pulse_2s_steps(4,jump-none)_infinite]! motion-reduce:[animation:none]!";
+const STEPPED = "bg-none! [-webkit-text-fill-color:currentColor]! in-data-[status=running]:[animation:pulse_2s_steps(4,jump-none)_infinite]! motion-reduce:animate-none!";
 
 const traceStatus = (status: RunStatus) => (status === "run" ? "running" : status === "fail" || status === "failed" ? "error" : undefined);
 

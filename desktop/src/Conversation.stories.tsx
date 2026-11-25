@@ -13,7 +13,7 @@ function Items({ items, running }: { items: Made[]; /** Tasks at work in the con
 	for (const id of running ?? []) tab.running.add(id);
 	for (const item of items) tab.add(item as never);
 	return (
-		<div className="flex h-[40rem] w-full max-w-160 flex-col">
+		<div className="flex h-160 w-full max-w-160 flex-col">
 			<MessageScrollerProvider defaultScrollPosition="start">
 				<MessageScroller>
 					<MessageScrollerViewport>
