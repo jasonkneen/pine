@@ -30,12 +30,18 @@ export function ports() {
 	return { preview: base, home: base + 1, dev: base + 2 };
 }
 
-/** The entries of the preview pane, as the file had them when it was kept in git. */
+/**
+ * The entries of the preview pane. They run with the Node that runs this script (`npm install` in
+ * desktop/), not the first `node` the pane's shell finds: that one may be older than the preview needs.
+ * Storybook keeps its own port: one checkout at a time, or `npm run storybook -- -p <port>` by hand.
+ */
 function entries() {
 	const p = ports();
+	const desktop = (...args) => [path.join("desktop", ...args)];
 	return [
-		{ name: "desktop-preview", runtimeExecutable: "npm", runtimeArgs: ["--prefix", "desktop", "run", "dev:preview"], port: p.preview },
-		{ name: "desktop-preview-home", runtimeExecutable: "npm", runtimeArgs: ["--prefix", "desktop", "run", "dev:preview:home"], port: p.home },
+		{ name: "desktop-preview", runtimeExecutable: process.execPath, runtimeArgs: desktop("scripts", "preview.ts"), port: p.preview },
+		{ name: "desktop-preview-home", runtimeExecutable: process.execPath, runtimeArgs: [...desktop("scripts", "preview.ts"), "--home", "~/.pine"], port: p.home },
+		{ name: "storybook", runtimeExecutable: process.execPath, runtimeArgs: [...desktop("node_modules", "storybook", "dist", "bin", "dispatcher.js"), "dev", "-p", "6006", "-c", "desktop/.storybook", "--no-open"], port: 6006 },
 	];
 }
 
