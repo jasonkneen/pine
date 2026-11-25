@@ -823,7 +823,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					nativeButton={false}
 					render={<div />}
 					data-slot="tab"
-					className={cn("group/tab max-w-55 min-w-28 flex-initial justify-start gap-2 px-1 [-webkit-app-region:no-drag]", drop && "before:absolute before:inset-y-1 before:w-0.5 before:rounded-full before:bg-primary", drop && (drop === "after" ? "before:-right-0.5" : "before:-left-0.5"))}
+					className={cn("group/tab max-w-55 min-w-28 flex-initial justify-start gap-2 px-1 [-webkit-app-region:no-drag]", drop && "before:absolute before:inset-y-1 before:w-1 before:rounded-full before:bg-primary", drop && (drop === "after" ? "before:-right-1" : "before:-left-1"))}
 					draggable
 					onDragStart={(e) => {
 						const origin = tabDragOrigin();
@@ -922,7 +922,7 @@ export function TitleBar() {
 			    under a tab (hidden in this variant, but there): without it the row is taller than its room. */}
 			<ScrollArea className="flex min-h-0 min-w-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade-x">
 				<Tabs className="pb-0.5" value={s.active?.id ?? null} onValueChange={(id) => { const t = s.tabs.find((x) => x.id === id); if (t) s.activate(t); }}>
-					<TabsList aria-label="Tabs">
+					<TabsList aria-label="Tabs" className="gap-1">
 						{s.tabs.map((t, i) => <TabButton key={t.id} tab={t} index={i} />)}
 					</TabsList>
 				</Tabs>
