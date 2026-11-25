@@ -3005,7 +3005,7 @@ export function Settings() {
 							<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade-x @3xl/settings:*:data-[slot=scroll-area-viewport]:scroll-fade">
 								<SidebarGroup role="navigation" className="py-2">
 									<SidebarGroupContent>
-										<SidebarMenu className="flex-row @3xl/settings:flex-col">
+										<SidebarMenu className="flex-row gap-1 @3xl/settings:flex-col">
 											{sections.map((x) => (
 												<SidebarMenuItem key={x.id} className="flex-none @3xl/settings:flex-initial">
 													{/* While searching, a section with nothing that fits fades, as in the system's settings; a click on one ends the search. */}
