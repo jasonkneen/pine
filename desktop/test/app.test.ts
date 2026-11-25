@@ -1459,12 +1459,10 @@ const alphaOf = (color: string) => Number(/rgba\([^)]*,\s*([\d.]+)\)/.exec(color
 /** The theme the window is drawn in, by its name (theme.ts sets it on the root element). */
 const themeIs = (id: string) => page.waitForFunction((t: string) => document.documentElement.dataset.theme === t, id, { timeout: 10_000 });
 /** The tab in front: drawn in the page color of the theme. */
-const tabColor = () => page.evaluate(() => getComputedStyle(document.querySelector("[data-slot=tab][data-active]")!).backgroundColor);
-
 test("the window is drawn in pmndre, the theme pine names when pine.json names none, with pine's own colors", { skip: Boolean(process.env.PINE_DESKTOP_THEME) }, async () => {
 	await themeIs("pmndre");
 	assert.equal(await page.evaluate(() => document.documentElement.classList.contains("dark")), true);
-	assert.equal(await tabColor(), rgb("#1b1e28"));
+	assert.equal(await resolved("var(--background)"), rgb("#1b1e28"));
 	assert.equal(await resolved("var(--primary)"), rgb("#5de4c7"), "the accent is pmndre's mint");
 	assert.equal(await resolved("var(--foreground)"), rgb("#e4f0fb"));
 	assert.equal(await resolved("var(--border)"), rgb("#2b2e3c"));
@@ -1499,7 +1497,7 @@ test("a theme picked in Settings draws the window and is pine's setting; a VS Co
 		await pick("GitHub Light Default");
 		await themeIs("github-light");
 		assert.equal(await page.evaluate(() => document.documentElement.classList.contains("dark")), false);
-		assert.equal(await tabColor(), rgb("#ffffff"));
+		assert.equal(await resolved("var(--background)"), rgb("#ffffff"));
 		assert.equal(JSON.parse(fs.readFileSync(path.join(home, "pine.json"), "utf8")).ui.theme, "github-light");
 		// The app keeps it, to open in it next time.
 		const prefs = () => JSON.parse(fs.readFileSync(path.join(home, "desktop-data", "prefs.json"), "utf8"));
@@ -1507,14 +1505,14 @@ test("a theme picked in Settings draws the window and is pine's setting; a VS Co
 
 		await pick("Mine");
 		await themeIs("mine");
-		assert.equal(await tabColor(), rgb("#102030"));
+		assert.equal(await resolved("var(--background)"), rgb("#102030"));
 		assert.equal(await resolved("var(--primary)"), rgb("#ff8800"));
 		assert.equal(await resolved("var(--code-keyword)"), rgb("#ff00aa"));
 
 		// Another hand (the main agent's set_setting, another UI) changes it through pine: the window follows.
 		await api("POST", "/settings", { key: "ui.theme", value: "dracula" });
 		await themeIs("dracula");
-		assert.equal(await tabColor(), rgb("#282a36"));
+		assert.equal(await resolved("var(--background)"), rgb("#282a36"));
 		// A theme pine cannot draw is not taken.
 		const refused = await api("POST", "/settings", { key: "ui.theme", value: "broken" });
 		assert.equal(refused.ok, false);

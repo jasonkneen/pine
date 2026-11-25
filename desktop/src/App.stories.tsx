@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { SidebarFooter, SidebarMenu, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import type { AgentInfo, Conversation } from "./api.ts";
 import { AgentGroup, ConversationRow, Machines, Sidebar, TitleBar } from "./App.tsx";
-import { store } from "./model.ts";
+import { store, Tab } from "./model.ts";
 
 // The foot of the side bar, open on its list of machines, without a daemon: the store is set as
 // the bridge's state would set it. `local` stands for what the bridge's `state()` says: false
@@ -94,13 +94,17 @@ const onSystem = (platform: string) => () => {
 const bar = (key: string): Story => ({
 	args: { local: true },
 	parameters: { layout: "fullscreen" },
-	render: () => (
-		<SidebarProvider className="min-h-0 w-full" open={false}>
-			<div className="flex w-full flex-col bg-muted">
-				<TitleBar />
-			</div>
-		</SidebarProvider>
-	),
+	render: () => {
+		store.tabs = [];
+		store.active = undefined;
+		return (
+			<SidebarProvider className="min-h-0 w-full" open={false}>
+				<div className="flex w-full flex-col bg-muted">
+					<TitleBar />
+				</div>
+			</SidebarProvider>
+		);
+	},
 	// Reached with the keyboard, as a tooltip shows for a button the keyboard brought it to.
 	play: async ({ canvas, userEvent }) => {
 		// (In a phone-wide window the button that shows the side bar comes first.)
@@ -151,6 +155,33 @@ export const TitleBarWithRemoteEnvironment: Story = {
 		await expect(pill).toBeVisible();
 		await userEvent.click(pill);
 		await expect(await within(document.body).findByRole("menuitemradio", { name: "me@build-box" })).toBeVisible();
+	},
+};
+
+/** The bar with tabs: stock tabs, one stop for the keyboard, where the arrows go from tab to tab and Enter brings one to the front. */
+export const TitleBarWithTabs: Story = {
+	args: { local: true },
+	parameters: { layout: "fullscreen" },
+	beforeEach: onSystem("darwin"),
+	render: () => {
+		store.local = true;
+		store.tabs = [new Tab("chat", "main", "main"), new Tab("events", "events", ""), new Tab("settings", "settings", "")];
+		store.active = store.tabs[0];
+		return (
+			<SidebarProvider className="min-h-0 w-full" open={false}>
+				<div className="flex w-full flex-col bg-muted">
+					<TitleBar />
+				</div>
+			</SidebarProvider>
+		);
+	},
+	play: async ({ canvas, userEvent }) => {
+		const tabs = canvas.getAllByRole("tab");
+		await expect(tabs).toHaveLength(3);
+		await expect(tabs[0]).toHaveAttribute("data-active");
+		tabs[0].focus();
+		await userEvent.keyboard("{ArrowRight}{Enter}");
+		await waitFor(() => expect(canvas.getAllByRole("tab")[1]).toHaveAttribute("data-active"));
 	},
 };
 

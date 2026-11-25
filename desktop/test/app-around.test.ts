@@ -178,9 +178,13 @@ test("a conversation is opened from the side bar with the keyboard alone, and a 
 	await page.keyboard.press("Space");
 	await page.waitForFunction(() => document.activeElement?.getAttribute("aria-expanded") === "true");
 	assert.ok((await group.locator("[role=option]").count()) > 0);
-	// Its conversations are one stop after the agent's plus: Tab goes in, the arrows move, Enter opens.
-	await page.keyboard.press("Tab");
-	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "New conversation with scout");
+	// The buttons on the agent's line are stops of their own, shown while the keyboard is on the line; its conversations come after the plus:
+	// Tab goes in, the arrows move, Enter opens.
+	for (const label of ["Settings of scout", "Open a folder for a conversation with scout", "New conversation with scout"]) {
+		await page.keyboard.press("Tab");
+		assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), label);
+		assert.equal(await page.evaluate(() => getComputedStyle(document.activeElement!).opacity), "1", `${label} is shown while it has the keyboard`);
+	}
 	await page.keyboard.press("Tab");
 	const at = () => page.evaluate(() => ({ role: document.activeElement?.getAttribute("role"), text: document.activeElement?.textContent ?? "" }));
 	assert.equal((await at()).role, "option");
@@ -189,6 +193,36 @@ test("a conversation is opened from the side bar with the keyboard alone, and a 
 	await page.keyboard.press("Enter");
 	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=where is the okapi invoice");
 	await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
+});
+
+test("a conversation is removed by its row's own button, which the keyboard reaches too, after a yes in a dialog that then closes", async () => {
+	const group = page.locator("[data-slot=collapsible]:has([data-slot=agent-label])", { has: page.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) });
+	await group.locator("button[aria-label='New conversation with scout']").click();
+	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=new conversation");
+	await page.fill("[data-slot=composer] textarea", "a conversation to remove");
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=a conversation to remove", 15_000);
+	const option = group.locator("[role=option]", { hasText: "a conversation to remove" });
+	await option.focus();
+	await page.keyboard.press("Tab");
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Remove this conversation for good");
+	await page.keyboard.press("Enter");
+	const dialog = page.locator("[role=alertdialog]");
+	await dialog.getByRole("button", { name: "Remove" }).click();
+	await dialog.waitFor({ state: "detached" });
+	await option.waitFor({ state: "detached" });
+});
+
+test("the tabs are reached with the keyboard: the arrows go from one to the next, and Enter brings it to the front", async () => {
+	await menu("events");
+	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=Events");
+	await page.focus("[data-slot=tab][data-active]");
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "tab");
+	await page.keyboard.press("ArrowLeft");
+	await page.keyboard.press("Enter");
+	// (A conversation brought to the front takes the keyboard into its input.)
+	await page.waitForFunction(() => { const on = document.querySelector("[data-slot=tab][data-active] [data-slot=tab-name]"); return on && on.textContent !== "Events"; });
+	await page.click("[data-slot=tab]:has([data-slot=tab-name]:text-is('Events')) button[aria-label='Close this tab']");
 });
 
 test("a right click on an agent renames it in place, colors it, and offers to remove it, and never the main agent", async () => {
@@ -715,7 +749,7 @@ test("a right click on a tab closes the others, those to its right or all of the
 	await choose(had + 1, "Close Others");
 	await count(2);
 	await sees("[data-slot=toast] >> text=1 tab stayed open: it waits for your answer.");
-	assert.equal(await tabs.nth(1).getAttribute("data-active"), "true");
+	assert.notEqual(await tabs.nth(1).getAttribute("data-active"), null);
 	assert.equal(await page.locator("[data-slot=tab] [data-slot=tab-name]", { hasText: /^main$/ }).count(), 0);
 	// Close, the menu's first item, closes that tab alone.
 	await (await opened(1)).getByRole("menuitem").first().click();
