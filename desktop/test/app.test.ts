@@ -857,8 +857,8 @@ test("an approval is asked in a dialog and answered from it, and so is a questio
 	// The owner listed bash under "approve": it asks in every mode.
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo hello" } }] }, { tools: [{ name: "question", args: { question: "Which database?", choices: ["the old one", "the new one"] } }] }, { text: "done" }], "run it "));
 	await page.keyboard.press("Enter");
-	await sees("[data-slot=dialog-content][data-tone=warn]");
-	assert.match(await page.textContent("[data-slot=dialog-content][data-tone=warn]"), /Approval needed[\s\S]*echo hello/);
+	await sees("role=dialog[name=/^Approval needed/]");
+	assert.match(await page.textContent("role=dialog[name=/^Approval needed/]"), /Approval needed[\s\S]*echo hello/);
 	await shot("03-approval");
 	// What is at work is a grey dot that pulses, announced as working: here the line of the turn's work and the line
 	// under the conversation (its tab and its row say ! instead). No spinner turns anywhere, and every dot is in step.
@@ -882,23 +882,43 @@ test("an approval is asked in a dialog and answered from it, and so is a questio
 			.map((el) => el.getAttribute("data-slot") ?? el.className.toString().slice(0, 40)),
 	);
 	assert.deepEqual(smooth, [], "no animation runs smoothly forever");
-	await page.locator("[data-slot=dialog-content][data-tone=warn]").getByRole("button", { name: /^Allow/ }).click();
+	await page.locator("role=dialog[name=/^Approval needed/]").getByRole("button", { name: /^Allow/ }).click();
 	await sees('[data-item="approval"][data-state="allowed"]');
 	// Then the agent asks something: the answers it offers, the recommended one first.
-	await sees("[data-slot=dialog-content][data-tone=accent]");
-	assert.match(await page.textContent("[data-slot=dialog-content][data-tone=accent]"), /Which database\?[\s\S]*the old one[\s\S]*the new one/);
+	await sees("role=dialog[name=/ asks$/]");
+	assert.match(await page.textContent("role=dialog[name=/ asks$/]"), /Which database\?[\s\S]*the old one[\s\S]*the new one/);
 	await shot("03-question");
+	// The line for the owner's own words is named for a screen reader, not only by its placeholder.
+	assert.equal(await page.locator("role=dialog[name=/ asks$/]").getByRole("textbox", { name: "Or answer in your own words" }).count(), 1);
 	await page.keyboard.press("2");
 	await sees('[data-item="approval"][data-state="allowed"] >> text=Answered');
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	await sees("[data-slot=markdown] >> text=done");
 });
 
+test("a value only the owner has, left empty, is marked as missing in the approval and nothing is allowed", { skip: process.platform === "win32" && "a local MCP server needs a sandbox, and Windows has none of pine's" }, async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "add_mcp_server", args: { name: "keyed", command: "npx -y example-mcp", secrets: ["EXAMPLE_KEY"] } }] }, { text: "not added then" }], "add a server with a key "));
+	await page.keyboard.press("Enter");
+	const asked = "role=dialog[name=/^Approval needed, and something only you have/]";
+	await sees(asked);
+	const field = page.locator(asked).locator("[data-slot=field]", { has: page.locator("#ap-EXAMPLE_KEY") });
+	assert.equal(await field.getAttribute("data-invalid"), null, "not marked before the owner tried to allow it");
+	await page.locator(asked).getByRole("button", { name: "Save and allow" }).click();
+	await sees(`${asked} >> [data-slot=field][data-invalid] #ap-EXAMPLE_KEY[aria-invalid=true]`);
+	assert.equal(await page.evaluate(() => document.activeElement?.id), "ap-EXAMPLE_KEY");
+	// A value typed there takes the mark away again.
+	await page.locator("#ap-EXAMPLE_KEY").fill("a-key");
+	assert.equal(await field.getAttribute("data-invalid"), null);
+	await page.locator(asked).getByRole("button", { name: "Deny" }).click();
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	await sees("[data-slot=markdown] >> text=not added then");
+});
+
 test("what is asked is answered from the conversation too: an approval by its buttons, a question by one of its answers", async () => {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo again" } }] }, { tools: [{ name: "question", args: { question: "Which color?", choices: ["green", "blue"] } }] }, { text: "answered from the line" }], "ask in line "));
 	await page.keyboard.press("Enter");
 	// The dialog is put off ("Later"); the request stays in the conversation, with what it is and why.
-	await sees("[data-slot=dialog-content][data-tone=warn]");
+	await sees("role=dialog[name=/^Approval needed/]");
 	await page.keyboard.press("Escape");
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	const asked = '[data-item="approval"][data-state="open"] [data-slot="item"]';
@@ -908,7 +928,7 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	await page.click(`${asked} button:has-text("Allow once")`);
 	await sees('[data-item="approval"][data-state="allowed"] >> text=Allowed');
 	// The question offers its answers as suggestions; one click answers.
-	await sees("[data-slot=dialog-content][data-tone=accent]");
+	await sees("role=dialog[name=/ asks$/]");
 	await page.keyboard.press("Escape");
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	await sees(`${asked} >> text=Which color?`);

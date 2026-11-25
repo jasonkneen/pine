@@ -59,7 +59,7 @@ test("live: the agent's real browser is shown in the panel, and the owner's hand
 
 		// The agent opens a page (a local one: the owner says yes) and wants its owner to see the browser.
 		const opened = say("open the shop", [{ tools: [{ name: "mcp__browser__browser_navigate", args: { url: `${at}/one` } }] }, { tools: [{ name: "mcp__browser__browser_show", args: {} }] }, { text: "It is open." }], "It is open.");
-		const allow = page.locator("[data-slot=dialog-content][data-tone=warn]").getByRole("button", { name: /^Allow/ });
+		const allow = page.locator("role=dialog[name=/^Approval needed/]").getByRole("button", { name: /^Allow/ });
 		await allow.waitFor({ timeout: 30_000 });
 		await allow.click();
 		await opened;

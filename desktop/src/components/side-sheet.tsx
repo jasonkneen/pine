@@ -50,9 +50,9 @@ export function SideSheet({ id, slot, title, sheet, widthKey, savedWidth, defaul
 				if (details.reason === "escape-key" && details.event.target instanceof Element && details.event.target.closest(ESCAPE_KEEPERS)) return details.cancel();
 				onClose();
 			}}>
-				{/* The sheet lies over the title bar's drag region, which Electron honours whatever is drawn on top:
-				    without this a click in the sheet would move the window on a Mac. */}
-				<SheetContent side="right" showCloseButton={false} className="[-webkit-app-region:no-drag] gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
+				{/* The sheet lies over the title bar's drag region; it takes its own clicks by the rule index.css has for
+				    everything Base UI puts in a portal. */}
+				<SheetContent side="right" showCloseButton={false} className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
 					<SheetTitle className="sr-only">{title}</SheetTitle>
 					{frame}
 				</SheetContent>

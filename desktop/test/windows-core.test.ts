@@ -363,8 +363,8 @@ test("shared SSE stream fans out live events without duplicate notifications or 
 		mockMsg([{ tools: [{ name: "bash", args: { command: "echo badge-check" } }] }, { text: "badge check done" }], "run bash "),
 	);
 	await win1.locator("[data-slot=composer] textarea").press("Enter");
-	await win1.waitForSelector("[data-slot=dialog-content][data-tone=warn]", { timeout: 15_000 });
-	assert.match((await win1.textContent("[data-slot=dialog-content][data-tone=warn]")) ?? "", /Approval needed[\s\S]*echo badge-check/);
+	await win1.waitForSelector("role=dialog[name=/^Approval needed/]", { timeout: 15_000 });
+	assert.match((await win1.textContent("role=dialog[name=/^Approval needed/]")) ?? "", /Approval needed[\s\S]*echo badge-check/);
 	await new Promise((r) => setTimeout(r, 200));
 
 	const badgesWhileOpen: number[] = await app.evaluate(() => [...((globalThis as any).__badgeSpy ?? [])]);
@@ -372,7 +372,7 @@ test("shared SSE stream fans out live events without duplicate notifications or 
 	assert.equal(Math.max(0, ...badgesWhileOpen), 1, `expected deduplicated badge count 1 (not 2), got ${JSON.stringify(badgesWhileOpen)}`);
 
 	// Approve from win1; both windows finish the turn and badge resets to 0.
-	await win1.locator("[data-slot=dialog-content][data-tone=warn]").getByRole("button", { name: /^Allow/ }).click();
+	await win1.locator("role=dialog[name=/^Approval needed/]").getByRole("button", { name: /^Allow/ }).click();
 	await win1.waitForSelector("[data-slot=markdown] >> text=badge check done", { timeout: 15_000 });
 	await win2.waitForSelector("[data-slot=markdown] >> text=badge check done", { timeout: 15_000 });
 	await new Promise((r) => setTimeout(r, 200));

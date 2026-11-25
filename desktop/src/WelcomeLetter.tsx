@@ -1,5 +1,5 @@
 import { ArrowUpRightIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item";
 import { Message, MessageContent, MessageHeader } from "@/components/ui/message";
 
@@ -19,15 +19,6 @@ export interface LetterProps {
 	say: (text: string) => void;
 }
 
-/** A link in the letter's text: it does something in the app, never opens an address. */
-function Act({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-	return (
-		<button type="button" className="inline cursor-pointer text-left font-medium wrap-anywhere text-foreground underline decoration-muted-foreground/50 underline-offset-4 hover:decoration-foreground" onClick={onClick}>
-			{children}
-		</button>
-	);
-}
-
 /**
  * pine's welcome, at the top of the main agent's main conversation. pine wrote it, not a model: it
  * is there before any model is, and it is no part of what the model reads. The main agent
@@ -36,7 +27,7 @@ function Act({ onClick, children }: { onClick: () => void; children: ReactNode }
  */
 export function WelcomeLetter({ main, home, here, settings, reveal, say }: LetterProps) {
 	return (
-		<Message data-item="welcome" className="text-base leading-snug">
+		<Message data-item="welcome">
 			<MessageContent className="gap-3 select-text">
 				<MessageHeader className="px-0">
 					Welcome to pine!
@@ -55,7 +46,8 @@ export function WelcomeLetter({ main, home, here, settings, reveal, say }: Lette
 					</ItemActions>
 				</Item>
 				<p>
-					Everything lives in {here ? <Act onClick={reveal}>{home}</Act> : <span className="font-mono text-xs wrap-anywhere">{home}</span>} and <Act onClick={() => settings()}>Settings</Act>, but telling <b>{main}</b> is usually enough.
+					{/* Links in the text do something in the app and never open an address: the stock link button, at the size of the text around it. */}
+					Everything lives in {here ? <Button variant="link" className="h-auto p-0 [font-size:inherit]" onClick={reveal}>{home}</Button> : <span className="font-mono text-xs wrap-anywhere">{home}</span>} and <Button variant="link" className="h-auto p-0 [font-size:inherit]" onClick={() => settings()}>Settings</Button>, but telling <b>{main}</b> is usually enough.
 				</p>
 			</MessageContent>
 		</Message>

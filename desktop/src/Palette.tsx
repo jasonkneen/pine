@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { COMMANDS } from "./commands.ts";
 import { bridge } from "./bridge.ts";
 import { computerWord } from "./machines.ts";
@@ -70,35 +70,32 @@ export function Palette() {
 	const close = () => ((s.palette = false), s.touch());
 	const run = (r: Row) => (close(), r.run());
 	return (
-		<Dialog open onOpenChange={(open) => open || close()}>
-			<DialogContent showCloseButton={false} className="gap-0 p-0 sm:max-w-xl">
-				<DialogTitle className="sr-only">Search everything</DialogTitle>
-				<Command {...line} shouldFilter={false} loop>
-					<CommandInput placeholder="Search conversations (by name or by what was said), commands, agents" value={query} onValueChange={setQuery} />
-					<CommandList className="scroll-fade">
-						{groups.map((g, n) => (
-							<CommandGroup key={`${n}:${g.name}`} heading={g.name}>
-								{g.rows.map((r) => (
-									<CommandItem key={r.id} value={r.id} onSelect={() => run(r)}>
-										<span className="max-w-3/5 flex-none truncate">{r.conv && !s.titleKnown(r.conv.agent, r.conv.session) ? <>{r.conv.agent} · <Skeleton className="inline-block h-3 w-24 align-middle" /></> : r.label}</span>
-										{r.about ? <span className="min-w-0 truncate text-xs text-muted-foreground">{r.about}</span> : null}
-										{r.keys ? <CommandShortcut>{shortcut(r.keys)}</CommandShortcut> : null}
-									</CommandItem>
-								))}
-							</CommandGroup>
-						))}
-						{loading ? (
-							shown.length ? null : (
-								<div aria-busy="true" aria-label="Loading conversations" className="flex flex-col gap-1 p-1">
-									{["w-1/2", "w-2/3", "w-2/5"].map((w) => <div key={w} className="flex h-8 items-center px-2"><Skeleton className={`h-4 ${w}`} /></div>)}
-								</div>
-							)
-						) : (
-							<CommandEmpty>Nothing fits.</CommandEmpty>
-						)}
-					</CommandList>
-				</Command>
-			</DialogContent>
-		</Dialog>
+		<CommandDialog open onOpenChange={(open) => open || close()} title="Search everything" description="Conversations, by name or by what was said, commands, agents and settings" className="sm:max-w-xl">
+			<Command {...line} shouldFilter={false} loop>
+				<CommandInput placeholder="Search conversations (by name or by what was said), commands, agents" value={query} onValueChange={setQuery} />
+				<CommandList className="scroll-fade">
+					{groups.map((g, n) => (
+						<CommandGroup key={`${n}:${g.name}`} heading={g.name}>
+							{g.rows.map((r) => (
+								<CommandItem key={r.id} value={r.id} onSelect={() => run(r)}>
+									<span className="max-w-3/5 flex-none truncate">{r.conv && !s.titleKnown(r.conv.agent, r.conv.session) ? <>{r.conv.agent} · <Skeleton className="inline-block h-3 w-24 align-middle" /></> : r.label}</span>
+									{r.about ? <span className="min-w-0 truncate text-xs text-muted-foreground">{r.about}</span> : null}
+									{r.keys ? <CommandShortcut>{shortcut(r.keys)}</CommandShortcut> : null}
+								</CommandItem>
+							))}
+						</CommandGroup>
+					))}
+					{loading ? (
+						shown.length ? null : (
+							<div aria-busy="true" aria-label="Loading conversations" className="flex flex-col gap-1 p-1">
+								{["w-1/2", "w-2/3", "w-2/5"].map((w) => <div key={w} className="flex h-8 items-center px-2"><Skeleton className={cn("h-4", w)} /></div>)}
+							</div>
+						)
+					) : (
+						<CommandEmpty>Nothing fits.</CommandEmpty>
+					)}
+				</CommandList>
+			</Command>
+		</CommandDialog>
 	);
 }

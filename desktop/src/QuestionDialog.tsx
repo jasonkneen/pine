@@ -2,9 +2,9 @@ import { MessageSquareIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Kbd } from "@/components/ui/kbd";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Approval } from "./api.ts";
@@ -21,28 +21,31 @@ export function QuestionDialog({ req }: { req: Approval }) {
 	const answer = (text: string) => void s.decide(req.id, true, false, { answer: text });
 	return (
 		<Dialog open onOpenChange={(open) => open || s.closeAsking()}>
-			<DialogContent data-tone="accent" showCloseButton={false} initialFocus={field} className="sm:max-w-xl">
+			<DialogContent showCloseButton={false} initialFocus={field} className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2"><MessageSquareIcon className="text-primary" /> {req.agent} asks</DialogTitle>
 				</DialogHeader>
 				<ScrollArea className="-mx-4 max-h-[50vh] min-w-0 wrap-break-word flex min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<div className="flex flex-col gap-3 px-4 select-text">
-					<div className="whitespace-pre-wrap">{req.summary}</div>
+					<DialogDescription className="whitespace-pre-wrap">{req.summary}</DialogDescription>
 					{choices.length ? (
-						<div className="flex flex-col">
+						<ItemGroup>
 							{choices.map((c, i) => (
+								// The line the arrows are at is drawn as the stock muted item: the keys that move it are typed in the answer field below.
 								<Item key={i} size="sm" variant={i === at && !own ? "muted" : "default"} render={<button type="button" />} onMouseMove={() => at !== i && setAt(i)} onClick={() => answer(c)}>
 									<ItemMedia><Kbd>{i + 1}</Kbd></ItemMedia>
 									<ItemContent>
-										<ItemTitle className="line-clamp-none text-left font-normal">{c}</ItemTitle>
+										{/* An answer is read whole, however long: it is not cut to one line. */}
+										<ItemTitle className="line-clamp-none text-left">{c}</ItemTitle>
 									</ItemContent>
 									{i === 0 ? <ItemActions><Badge>recommended</Badge></ItemActions> : null}
 								</Item>
 							))}
-						</div>
+						</ItemGroup>
 					) : null}
 					<Input
 						ref={field}
+						aria-label={choices.length ? "Or answer in your own words" : "Your answer"}
 						placeholder={choices.length ? "Or answer in your own words" : "Your answer"}
 						value={own}
 						onChange={(e) => setOwn(e.target.value)}

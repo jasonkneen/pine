@@ -61,7 +61,7 @@ async function openViaAgent(page: Page, words: string, url: string, done: string
 		await page.keyboard.press("Enter");
 		await page.waitForSelector(`[data-slot=markdown] >> text=${done}`, { timeout: 60_000 });
 	})();
-	const allow = page.locator("[data-slot=dialog-content][data-tone=warn]").getByRole("button", { name: /^Allow/ });
+	const allow = page.locator("role=dialog[name=/^Approval needed/]").getByRole("button", { name: /^Allow/ });
 	await allow.waitFor({ timeout: 30_000 });
 	await allow.click();
 	await turn;

@@ -678,7 +678,7 @@ test("a right click on a tab closes the others, those to its right or all of the
 	await tabs.nth(had).click();
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo tabs" } }] }, { text: "done with tabs" }], "ask and close "));
 	await page.keyboard.press("Enter");
-	await sees("[data-slot=dialog-content][data-tone=warn]");
+	await sees("role=dialog[name=/^Approval needed/]");
 	await page.keyboard.press("Escape");
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	await tabs.nth(had).locator("[data-slot=badge]", { hasText: "!" }).waitFor();
@@ -783,6 +783,8 @@ test("a phone-wide window lays the side bar and the panel over the conversation,
 		await menu("code-agent");
 		await sees("[data-slot=sheet-content] [data-slot=code-panel]");
 		assert.equal(await page.locator("[data-slot=resizable-handle]:has(+ #code-panel)").count(), 0);
+		// The sheet lies over the title bar's drag region: it takes its own clicks, or a click in it would move the window.
+		assert.equal(await page.$eval("[data-slot=sheet-content]", (e: Element) => getComputedStyle(e).getPropertyValue("-webkit-app-region")), "no-drag");
 		await page.keyboard.press("Escape");
 		await page.waitForSelector("[data-slot=code-panel]", { state: "detached" });
 		// The browser's aside is a sheet the same way, and of the two only the one opened last lies over the conversation;

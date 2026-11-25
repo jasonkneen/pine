@@ -2,8 +2,8 @@ import { TriangleAlertIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,10 +22,14 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 	const s = store;
 	const fields = req.inputs ?? [];
 	const [values, setValues] = useState<Record<string, string>>({});
+	// An empty value is marked as missing once the owner tried to allow without it, not before.
+	const [tried, setTried] = useState(false);
+	const missing = (name: string) => tried && !values[name]?.trim();
 	// The first value asked for, where there is one; past what is to be approved, which comes first.
 	const first = useRef<HTMLInputElement>(null);
 	const allow = (always = false) => {
 		if (fields.length) {
+			setTried(true);
 			const empty = fields.find((f) => !values[f.name]?.trim());
 			if (empty) return void document.getElementById(`ap-${empty.name}`)?.focus();
 			return void s.decide(req.id, true, false, Object.fromEntries(fields.map((f) => [f.name, values[f.name].trim()])));
@@ -49,7 +53,7 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 	}, [req.id]);
 	return (
 		<Dialog open onOpenChange={(open) => open || s.closeAsking()}>
-			<DialogContent data-tone="warn" showCloseButton={false} initialFocus={fields.length ? first : true} className="sm:max-w-xl">
+			<DialogContent showCloseButton={false} initialFocus={fields.length ? first : true} className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2"><TriangleAlertIcon className="text-warn" /> {fields.length ? "Approval needed, and something only you have" : "Approval needed"}</DialogTitle>
 				</DialogHeader>
@@ -58,35 +62,40 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 					<div className="flex items-center gap-2 text-muted-foreground">
 						<span>{req.agent}</span>
 						{req.task ? <span className="text-faint">task #{req.task}</span> : null}
-						<Badge variant="secondary" className="font-mono">{req.tool}</Badge>
+						<Badge variant="secondary">{req.tool}</Badge>
 					</div>
 					<Printed sm text={req.summary} />
-					<div className="text-xs text-muted-foreground">
+					{/* Lines of their own inside it: a div, since the stock description is a paragraph. */}
+					<DialogDescription render={<div />}>
 						Why you are asked: {req.why}
 						{req.holds ? <div>“Allow” holds for {req.holds}: you are not asked about it again there.</div> : null}
 						{req.remember ? <div>“Always here” stops asking about {req.remember} in this conversation.</div> : null}
 						{!req.remember && !req.holds && !fields.length ? <div>You are asked about this each time: there is no “always” for it.</div> : null}
-					</div>
-					{fields.map((f, i) => {
-						const [name, about] = labelParts(f.label ?? f.name);
-						return (
-							<Field key={f.name}>
-								<FieldLabel htmlFor={`ap-${f.name}`}>{name}{fields.length > 1 ? <span className="text-faint"> · {i + 1} of {fields.length}</span> : null}</FieldLabel>
-								{about ? <FieldDescription>{about}</FieldDescription> : null}
-								<Input id={`ap-${f.name}`} ref={i === 0 ? first : undefined} className="font-mono" type={f.secret !== false ? "password" : "text"} autoComplete="off" spellCheck={false} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && allow()} />
-							</Field>
-						);
-					})}
-					{fields.length ? <FieldDescription>{fields.some((f) => f.secret !== false) ? "What you type is not shown, goes into pine's .env file, and never reaches the agent or the model." : "Without it, this cannot be allowed."}</FieldDescription> : null}
+					</DialogDescription>
+					{fields.length ? (
+						<FieldGroup>
+							{fields.map((f, i) => {
+								const [name, about] = labelParts(f.label ?? f.name);
+								return (
+									<Field key={f.name} data-invalid={missing(f.name) || undefined}>
+										<FieldLabel htmlFor={`ap-${f.name}`}>{name}{fields.length > 1 ? <span className="text-faint"> · {i + 1} of {fields.length}</span> : null}</FieldLabel>
+										{about ? <FieldDescription>{about}</FieldDescription> : null}
+										<Input id={`ap-${f.name}`} ref={i === 0 ? first : undefined} aria-invalid={missing(f.name) || undefined} type={f.secret !== false ? "password" : "text"} autoComplete="off" spellCheck={false} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && allow()} />
+										{/* What becomes of the values, said once, under the last of them. */}
+										{i === fields.length - 1 ? <FieldDescription>{fields.some((f) => f.secret !== false) ? "What you type is not shown, goes into pine's .env file, and never reaches the agent or the model." : "Without it, this cannot be allowed."}</FieldDescription> : null}
+									</Field>
+								);
+							})}
+						</FieldGroup>
+					) : null}
 				</div>
 				</ScrollArea>
 				<DialogFooter>
 					<Button variant="ghost" onClick={() => s.closeAsking()}>Later <Kbd>esc</Kbd></Button>
 					<span className="min-w-0 flex-1" />
-					{/* A key on a filled button is a darker shade of the button, in the button's own text color. */}
-					<Button variant="destructive" onClick={() => void s.decide(req.id, false)}>Deny{fields.length ? "" : <Kbd className="bg-black/15 text-current">d</Kbd>}</Button>
+					<Button variant="destructive" onClick={() => void s.decide(req.id, false)}>Deny{fields.length ? "" : <Kbd>d</Kbd>}</Button>
 					{req.remember && !fields.length ? <Button variant="outline" onClick={() => allow(true)}>Always here <Kbd>s</Kbd></Button> : null}
-					<Button onClick={() => allow()}>{fields.length ? "Save and allow" : req.holds ? "Allow" : "Allow once"}{fields.length ? "" : <Kbd className="bg-black/15 text-current">a</Kbd>}</Button>
+					<Button onClick={() => allow()}>{fields.length ? "Save and allow" : req.holds ? "Allow" : "Allow once"}{fields.length ? "" : <Kbd>a</Kbd>}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
