@@ -359,6 +359,7 @@ function General() {
 			) : (
 				GROUPS.map((g) => <SettingsGroupSkeleton key={g.prefix} />)
 			)}
+			<FieldSeparator />
 			<p className="text-muted-foreground">Pine {s.versions.app}{s.local ? ` · Electron ${s.versions.electron}` : ""}</p>
 		</Page>
 	);
@@ -2571,6 +2572,7 @@ export function MachineList() {
 					</Button>
 				) : null}
 			</div>
+			{shown.view === "ssh" ? <FieldSeparator /> : null}
 			{shown.view === "ssh" ? <Section title="Add a machine" data-find="add-machine">
 				<FieldGroup>
 					<Field data-invalid={refused ? true : undefined}>
