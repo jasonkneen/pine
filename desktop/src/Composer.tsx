@@ -463,7 +463,7 @@ export function Composer({ tab }: { tab: Tab }) {
 							<TooltipContent>Attach files (or drop them here)</TooltipContent>
 						</HoverTooltip>
 						<HoverTooltip>
-							<TooltipTrigger render={<InputGroupButton size="sm" className="min-w-0 shrink" onClick={() => void store.pickModel(tab)} aria-label={`Model: ${model}`} />}>
+							<TooltipTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0! min-w-0 shrink" onClick={() => void store.pickModel(tab)} aria-label={`Model: ${model}`} />}>
 								<CpuIcon data-icon="inline-start" />
 								<span className="truncate @max-md/bar:hidden">{info?.model?.split("/").pop() ?? "model"}</span>
 							</TooltipTrigger>
@@ -471,7 +471,7 @@ export function Composer({ tab }: { tab: Tab }) {
 						</HoverTooltip>
 						<DropdownMenu>
 							<HoverTooltip>
-								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={`Reasoning: ${thinking}, how much the model thinks before it answers`} />} />}>
+								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0!" aria-label={`Reasoning: ${thinking}, how much the model thinks before it answers`} />} />}>
 									<SparkleIcon data-icon="inline-start" />
 									<span className="@max-md/bar:hidden">{thinking}</span>
 									<ChevronDownIcon data-icon="inline-end" className="@max-md/bar:hidden" />
@@ -495,7 +495,7 @@ export function Composer({ tab }: { tab: Tab }) {
 						</DropdownMenu>
 						<DropdownMenu>
 							<HoverTooltip>
-								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" variant={mode === "bypass" && !paused ? "destructive" : "ghost"} aria-label={`Mode: ${mode}${paused ? " (paused)" : ""}, how much this agent does without asking`} />} />}>
+								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0!" variant={mode === "bypass" && !paused ? "destructive" : "ghost"} aria-label={`Mode: ${mode}${paused ? " (paused)" : ""}, how much this agent does without asking`} />} />}>
 									<ShieldIcon data-icon="inline-start" />
 									<span className="@max-xl/bar:hidden">{mode}{paused ? " (paused)" : ""}</span>
 									<ChevronDownIcon data-icon="inline-end" className="@max-md/bar:hidden" />
@@ -519,7 +519,7 @@ export function Composer({ tab }: { tab: Tab }) {
 							</DropdownMenuContent>
 						</DropdownMenu>
 						<HoverTooltip>
-							<TooltipTrigger render={<InputGroupButton size="sm" className="min-w-0 shrink" onClick={() => void store.pickFolder(tab)} aria-label={tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"} />}>
+							<TooltipTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0! min-w-0 shrink" onClick={() => void store.pickFolder(tab)} aria-label={tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"} />}>
 								<FolderIcon data-icon="inline-start" />
 								<span className="truncate @max-sm/bar:hidden">{tab.folder ? baseName(tab.folder) : "workspace"}</span>
 							</TooltipTrigger>
