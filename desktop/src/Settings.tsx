@@ -2789,7 +2789,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 						<FieldContent className="min-w-0">
 							<FieldTitle>
 								{service ? `pine ${service.version ?? ""}` : "pine"}
-								<Badge variant={s.connected ? "default" : "outline"} className="h-4">{s.connected ? "connected" : "not connected"}</Badge>
+								<span className="flex items-center gap-1.5 font-normal text-muted-foreground"><span className={cn("size-1.5 flex-none rounded-full", s.connected ? "bg-primary" : "bg-destructive")} />{s.connected ? "connected" : "not connected"}</span>
 							</FieldTitle>
 							{overview ? <FieldDescription>{`Main agent: ${overview.main} · ${overview.sandbox ? "sandbox available" : "no sandbox on this system"}`}</FieldDescription> : null}
 							<FieldDescription>{service?.host ? `The pine on ${service.host}, over SSH (see Environments). ${service.started ? "This app started it there; it stops when the app quits." : "It was already running there, and keeps running when this app quits."}` : service ? (service.started ? `Started by this app (${service.mode}), from ${service.from}. It stops when the app quits, unless the switch below is on.` : "Already running when the app started. It keeps running when this app quits.") : "Not running."}</FieldDescription>
