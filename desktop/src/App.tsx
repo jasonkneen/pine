@@ -1,7 +1,7 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsUpDownIcon, EllipsisIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -538,11 +538,11 @@ function Group({ a }: { a: AgentInfo }) {
 					</div>
 				) : (
 					<>
-						{/* Where its buttons show (UNDER_ACTIONS) the line makes room for all three: `!`, since the stock button's room for one action (pr-8) comes later in the stylesheet and would win. */}
+						{/* Where its buttons show (UNDER_ACTIONS) the line makes room for both, More and the plus: `!`, since the stock button's room for one action (pr-8) comes later in the stylesheet and would win. */}
 						{only ? (
 							// The line is its one conversation: a click opens it, and it shows what that conversation's row would (it waits, works, has something new, when it was last used).
 							// Nothing folds, and the avatar stays where the avatars of the groups are.
-							<SidebarMenuButton data-slot="agent-conversation" isActive={Boolean(onlyTab && onlyTab === s.active)} className="group-hover/menu-item:pr-20! group-focus-within/menu-item:pr-20! max-md:pr-20!" onClick={() => (setOpenMobile(false), void s.openTab(a.id, only.session))}>
+							<SidebarMenuButton data-slot="agent-conversation" isActive={Boolean(onlyTab && onlyTab === s.active)} className="group-hover/menu-item:pr-14! group-focus-within/menu-item:pr-14! max-md:pr-14!" onClick={() => (setOpenMobile(false), void s.openTab(a.id, only.session))}>
 								<span aria-hidden className="size-4 flex-none" />
 								<AgentAvatar agent={a} size="sm" />
 								{label}
@@ -550,15 +550,23 @@ function Group({ a }: { a: AgentInfo }) {
 							</SidebarMenuButton>
 						) : (
 							// What folds the group is the agent's line but its buttons.
-							<CollapsibleTrigger render={<SidebarMenuButton className="group-hover/menu-item:pr-20! group-focus-within/menu-item:pr-20! max-md:pr-20!" />}>
+							<CollapsibleTrigger render={<SidebarMenuButton className="group-hover/menu-item:pr-14! group-focus-within/menu-item:pr-14! max-md:pr-14!" />}>
 								{folded ? <ChevronRightIcon className="text-faint" /> : <ChevronDownIcon className="text-faint" />}
 								<AgentAvatar agent={a} size="sm" />
 								{label}
 								{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : unread && folded ? <Badge className="size-2 p-0" /> : null}
 							</CollapsibleTrigger>
 						)}
-						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction showOnHover className="right-13" onClick={() => s.openSettings("agents", a.id)} aria-label={`Settings of ${a.id}`} />}><SettingsIcon /></TooltipTrigger><TooltipContent>{`Settings of ${a.id}`}</TooltipContent></HoverTooltip>
-						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction showOnHover className="right-7" onClick={() => void pickFolder()} aria-label={`Open a folder for a conversation with ${a.id}`} />}><FolderIcon /></TooltipTrigger><TooltipContent>{`Open a folder for a conversation with ${a.id}`}</TooltipContent></HoverTooltip>
+						{/* The agent's other actions, as shadcn's sidebar puts them: a More action that opens a menu. The plus stays one click away. */}
+						<DropdownMenu>
+							<DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="right-7" aria-label={`More for ${a.id}`} />}><EllipsisIcon /></DropdownMenuTrigger>
+							<DropdownMenuContent side="right" align="start" className="min-w-56">
+								<DropdownMenuGroup>
+									<DropdownMenuItem onClick={() => void pickFolder()}><FolderIcon />Open a folder with {a.id}…</DropdownMenuItem>
+									<DropdownMenuItem onClick={() => s.openSettings("agents", a.id)}><SettingsIcon />Agent settings…</DropdownMenuItem>
+								</DropdownMenuGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
 						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction onClick={() => void s.newConversation(a.id)} aria-label={`New conversation with ${a.id}`} />}><PlusIcon /></TooltipTrigger><TooltipContent>{`New conversation with ${a.id}`}</TooltipContent></HoverTooltip>
 					</>
 				)}

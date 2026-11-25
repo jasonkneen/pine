@@ -180,7 +180,7 @@ test("a conversation is opened from the side bar with the keyboard alone, and a 
 	assert.ok((await group.locator("[role=option]").count()) > 0);
 	// The buttons on the agent's line are stops of their own, shown while the keyboard is on the line; its conversations come after the plus:
 	// Tab goes in, the arrows move, Enter opens.
-	for (const label of ["Settings of scout", "Open a folder for a conversation with scout", "New conversation with scout"]) {
+	for (const label of ["More for scout", "New conversation with scout"]) {
 		await page.keyboard.press("Tab");
 		assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), label);
 		assert.equal(await page.evaluate(() => getComputedStyle(document.activeElement!).opacity), "1", `${label} is shown while it has the keyboard`);

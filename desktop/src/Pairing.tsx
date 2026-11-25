@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
@@ -82,8 +82,8 @@ export function PairConfirm({ link, device, onPair, onCancel }: { link: PairLink
  */
 export function NearbyComputers({ found, device, onPick }: { found: NearbyFound; device: "phone" | "browser"; onPick: (computer: NearbyComputer) => void }) {
 	return (
-		<div data-slot="pair-nearby" className="flex flex-col gap-2">
-			<h3 className="text-sm font-medium">On this network</h3>
+		<FieldSet data-slot="pair-nearby">
+			<FieldLegend variant="label">On this network</FieldLegend>
 			{found.denied ? (
 				<Alert data-slot="pair-nearby-denied">
 					<TriangleAlertIcon />
@@ -110,6 +110,6 @@ export function NearbyComputers({ found, device, onPick }: { found: NearbyFound;
 					</EmptyHeader>
 				</Empty>
 			)}
-		</div>
+		</FieldSet>
 	);
 }
