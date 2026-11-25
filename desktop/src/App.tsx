@@ -763,8 +763,9 @@ function EnvironmentPill() {
 			>
 				<span className={cn("size-1.5 flex-none rounded-full", state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} />
 				{icon}
-				<span className="min-w-0 truncate">{label}</span>
-				<ChevronsUpDownIcon data-icon="inline-end" />
+				{/* A phone has no room for the name: the dot and the icon say where, the label names it. */}
+				<span className="min-w-0 truncate max-md:hidden">{label}</span>
+				<ChevronsUpDownIcon data-icon="inline-end" className="max-md:hidden" />
 			</DropdownMenuTrigger>
 			<MachineMenuContent side="bottom" align="end" close={() => setOpen(false)} />
 		</DropdownMenu>
