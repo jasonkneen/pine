@@ -799,7 +799,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 	const elsewhere = store.tabs.find((t) => t !== tab && t.approvals.size > 0);
 	const goal = tab.goal?.status === "active" ? tab.goal : undefined;
 	const swarm = tab.swarm?.status === "active" ? tab.swarm : undefined;
-	// The line keeps its height when it says nothing, so that the input does not move.
+	// Nothing to say, no line: the input sits at the bottom, so the line grows the block upward and the input never moves.
 	const line = (icon: ReactNode, text: string, action?: ReactNode, warn?: boolean) => (
 		<Marker className="min-h-7.5 py-1.5">
 			{/* A grid centers the dot of Pulse, which would otherwise sit on the text's baseline in the icon's box. */}
@@ -814,7 +814,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
 		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} waits for you.`, <Button variant="outline" size="xs" onClick={() => store.activate(elsewhere)}>Go there</Button>, true);
 		if (tab.programs.length) return line(<PlayIcon />, `${plural(tab.programs.length, "program")} still running`, <Button variant="ghost" size="xs" onClick={() => void store.command("code-running")}>Show</Button>);
-		return line(null, "");
+		return null;
 	}
 	const secs = Math.max(0, Math.round((Date.now() - tab.startedAt) / 1000));
 	const steps = tab.steps?.items ?? [];
@@ -1225,7 +1225,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 					</MessageScroller>
 				</MessageScrollerProvider>
 			)}
-			<div className="shrink-0 px-7 pb-4">
+			<div className="shrink-0 px-4 pb-4">
 				<div className="relative mx-auto max-w-3xl">
 					<StatusLine tab={tab} />
 					{chat ? (
