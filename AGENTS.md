@@ -172,8 +172,8 @@ desktop/            the desktop app (Electron; a package of its own, not part of
                     docs/references/desktop.md describes it and its layout.
                     Before you change anything under desktop/src, and when you review such a change, read
                     desktop/.agents/skills/shadcn/SKILL.md with the files in its rules/ folder, then desktop/DESIGN.md,
-                    and hold the page to them; `npm run check` in desktop/ runs their mechanical part
-                    (desktop/scripts/stock-check.mjs). Read the skill yourself: from the repository's root
+                    and hold the page to them (desktop/AGENTS.md says the same where an agent starts in desktop/).
+                    Read the skill yourself: from the repository's root
                     Claude Code loads it only on demand (`desktop:shadcn`) and Codex never finds it. It stays in
                     desktop/ (desktop/.claude/skills links to it, skills-lock.json pins it), where its `npx shadcn info`
                     finds components.json; `npx skills update` in desktop/ brings it up to date

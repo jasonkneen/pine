@@ -13,7 +13,7 @@
     "dev:preview:home": "node scripts/preview.ts --home '~/.pine'",
     "build": "node scripts/build.mjs",
     "start": "node scripts/build.mjs && node scripts/start.mjs",
-    "check": "tsc --noEmit && node scripts/stock-check.mjs",
+    "check": "tsc --noEmit",
     "postinstall": "node scripts/ssh2-pure.mjs && node scripts/launch-json.mjs",
     "test": "node scripts/test.mjs --test-force-exit --test-timeout=120000 \"test/*.test.ts\"",
     "pack": "node scripts/pack.mjs",

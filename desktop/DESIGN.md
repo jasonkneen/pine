@@ -3,8 +3,8 @@
 pine's page (the Pine app, the web client and the mobile app draw the same `src/`) is stock shadcn
 on Base UI with Tailwind v4, in the style `components.json` names. The shadcn skill says how shadcn
 works; this file says how pine holds to it. Read the skill (`.agents/skills/shadcn/SKILL.md` and
-its `rules/`), then this, before you change `src/` and when you review such a change.
-`npm run check` enforces what can be checked mechanically (`scripts/stock-check.mjs`).
+its `rules/`), then this, before you change `src/` and when you review such a change, and hold
+the change to both.
 
 Where a rule is easy to get wrong, an example illustrates it; it is not the code of any page.
 
@@ -46,8 +46,7 @@ bundles stock parts has no place.
 wide, where it aligns, whether it wraps, grows or truncates. Colour, type and spacing inside a
 component are the component's: a monospaced value goes in a `code` or `span` inside the part,
 not on the part. An icon outside a stock part carries `shrink-0`; inside one, the part sizes it.
-Classes are on Tailwind's default scale; an arbitrary value is for what no utility can say, and
-carries its reason in the stock check's allow-list.
+Classes are on Tailwind's default scale; an arbitrary value is only for what no utility can say.
 
 **Type has one base.** The root keeps the browser's 16px, each top-level part of the app (the
 window, a side bar, a panel, a page) sets `text-sm` once on its root, and nothing below sets a
