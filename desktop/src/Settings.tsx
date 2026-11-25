@@ -304,8 +304,8 @@ function SettingRow({ s, models, reload }: { s: Setting; models?: string[]; relo
 					) : (
 						<span className="font-mono">{s.key}</span>
 					)}
-					{s.live ? null : <Badge variant="secondary">after a restart</Badge>}
-					{saved ? <Badge variant="outline">after a restart: {saved}</Badge> : null}
+					{s.live ? null : <Badge variant="secondary" className="h-4">after a restart</Badge>}
+					{saved ? <Badge variant="outline" className="h-4">after a restart: {saved}</Badge> : null}
 				</FieldLabel>
 				<FieldDescription>
 					<About text={s.about} />
@@ -2721,7 +2721,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							<FieldContent>
 								<FieldTitle>
 									Pine {s.versions.app}
-									{update ? <Badge variant="outline">{update.version} is available</Badge> : s.update?.status === "latest" ? <Badge>the latest version</Badge> : null}
+									{update ? <Badge variant="outline" className="h-4">{update.version} is available</Badge> : s.update?.status === "latest" ? <Badge className="h-4">the latest version</Badge> : null}
 								</FieldTitle>
 								<FieldDescription>
 									{update ? UPDATE_TEXT[update.phase](update) : s.selfUpdate ? "The app looks on GitHub for a newer release, downloads it, and installs it when you restart or quit." : "The app does not update itself. It looks on GitHub for a newer release and tells you when there is one."}
@@ -2774,7 +2774,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 						<FieldContent className="min-w-0">
 							<FieldTitle>
 								{service ? `pine ${service.version ?? ""}` : "pine"}
-								<Badge variant={s.connected ? "default" : "outline"}>{s.connected ? "connected" : "not connected"}</Badge>
+								<Badge variant={s.connected ? "default" : "outline"} className="h-4">{s.connected ? "connected" : "not connected"}</Badge>
 							</FieldTitle>
 							{overview ? <FieldDescription>{`Main agent: ${overview.main} · ${overview.sandbox ? "sandbox available" : "no sandbox on this system"}`}</FieldDescription> : null}
 							<FieldDescription>{service?.host ? `The pine on ${service.host}, over SSH (see Environments). ${service.started ? "This app started it there; it stops when the app quits." : "It was already running there, and keeps running when this app quits."}` : service ? (service.started ? `Started by this app (${service.mode}), from ${service.from}. It stops when the app quits, unless the switch below is on.` : "Already running when the app started. It keeps running when this app quits.") : "Not running."}</FieldDescription>
@@ -2801,7 +2801,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							<FieldContent>
 								<FieldTitle>
 									The pine command in a terminal
-									{command.state === "here" ? <Badge>set up</Badge> : null}
+									{command.state === "here" ? <Badge className="h-4">set up</Badge> : null}
 								</FieldTitle>
 								<FieldDescription>{command.text}</FieldDescription>
 							</FieldContent>
@@ -2818,7 +2818,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							<FieldContent>
 								<FieldTitle>
 									Browser for the web tools
-									<Badge variant={s.browser ? "default" : "outline"}>{`${s.browser ? "on" : "not on"} this ${computerWord(s.platform)}`}</Badge>
+									<Badge variant={s.browser ? "default" : "outline"} className="h-4">{`${s.browser ? "on" : "not on"} this ${computerWord(s.platform)}`}</Badge>
 								</FieldTitle>
 								<FieldDescription>{s.browser ? "The browser your agents open web pages with." : "Each version of pine uses one browser build, and the one for this version is not here yet. It is about 600 MB, fetched once. Until then the browser tools do not work; web search and reading a page do."}</FieldDescription>
 								{!s.browser && s.initLines.length ? (
