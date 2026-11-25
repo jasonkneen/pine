@@ -351,7 +351,7 @@ export function Composer({ tab }: { tab: Tab }) {
 				onDragLeave={() => setOver(false)}
 				onDrop={(e) => void onDrop(e)}
 			>
-				<InputGroup>
+				<InputGroup className="has-[[data-slot=input-group-control]:focus-visible]:ring-0">
 					{tab.attachments.length || tab.quotes.length || over ? (
 						<InputGroupAddon align="block-start" className="flex-col items-stretch">
 							{/* The quotes and files, as a stock row of attachments; the reply being written under them. */}
