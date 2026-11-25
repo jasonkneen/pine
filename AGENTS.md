@@ -180,8 +180,11 @@ desktop/            the desktop app (Electron; a package of its own, not part of
                     composition stock cannot express in place, and wraps the stock one. No hand-written stylesheet:
                     utilities on Tailwind's default scale, tokens and one root font-size in src/index.css.
                     docs/references/desktop.md describes it and its layout.
-                    shadcn's agent skill lies in desktop/.agents/skills (desktop/.claude/skills links to it, skills-lock.json pins it):
-                    read it before you change the page; `npx skills update` in desktop/ brings it up to date
+                    Before you change anything under desktop/src, read desktop/.agents/skills/shadcn/SKILL.md and the
+                    files in its rules/ folder, and hold the page to them. Do it yourself: from the repository's root
+                    Claude Code loads that skill only on demand (`desktop:shadcn`) and Codex never finds it. It stays in
+                    desktop/ (desktop/.claude/skills links to it, skills-lock.json pins it), where its `npx shadcn info`
+                    finds components.json; `npx skills update` in desktop/ brings it up to date
 mobile/             the Android and iOS app (Capacitor; a package of its own, not part of what goes to npm): the desktop
                     page on a phone, for the pine of another machine over SSH or of a computer paired with the Pine app,
                     no daemon on the phone. src/ is the
