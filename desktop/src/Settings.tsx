@@ -854,6 +854,7 @@ function Agents() {
 					</SettingsItem>
 				))}
 			</ItemGroup>
+			<FieldSeparator />
 			<SharedInstructions />
 		</Page>
 	);

@@ -25,7 +25,7 @@ import { FieldContent, FieldDescription, FieldGroup, FieldLegend, FieldSet } fro
 
 export function Page({ title, lead, children, actions, back }: { title: ReactNode; lead?: ReactNode; children: ReactNode; actions?: ReactNode; back?: { label: string; onClick: () => void } }) {
 	return (
-		<div data-slot="settings-page" className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 pt-6 pb-16 text-sm select-text @lg/settings:px-9 @lg/settings:pt-8">
+		<div data-slot="settings-page" className="flex w-full max-w-3xl flex-col gap-8 px-4 pt-6 pb-16 text-sm select-text @lg/settings:px-9 @lg/settings:pt-8">
 			<header className="flex flex-col gap-1">
 				{back ? (
 					<Button variant="ghost" size="sm" className="-ml-2.5 self-start" onClick={back.onClick}>
