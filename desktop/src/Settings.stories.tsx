@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, waitFor, within } from "storybook/test";
 import type { AgentDetail, AgentInfo, McpServer, Overview, Route, Schedule, Setting } from "./api.ts";
 import { store } from "./model.ts";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { NewRoute, NewSchedule, Routes, Schedules, Settings, SettingsItem, ThemePicker } from "./Settings.tsx";
 import { THEMES } from "../.storybook/themes.ts";
@@ -426,7 +427,7 @@ export const AccessNotOfferedWithoutBridgeCalls: Story = {
 /** The outline row of the Settings lists: a title with its badges, lines below it, and actions. */
 export const SettingsItemDefault: Story = {
 	args: { section: "general" },
-	render: () => <SettingsItem title="linear" description={["https://mcp.linear.app/mcp", "for main"]} actions={<span>Sign in</span>} />,
+	render: () => <SettingsItem title="linear" description={["https://mcp.linear.app/mcp", "for main"]} actions={<Button variant="outline" size="sm">Sign in</Button>} />,
 };
 
 /** The same row while its list loads: a bar for the title, bars for the lines, a block for the actions. */
@@ -450,7 +451,7 @@ function neverAnswers(section: string, agent?: string): Story {
 		play: async ({ canvasElement }) => {
 			const page = canvasElement.querySelector("[data-slot=settings-page]")!;
 			await expect(page.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
-			await expect(page.querySelectorAll("[data-slot=pulse]")).toHaveLength(0);
+			await expect(page.querySelectorAll("[data-slot=pulse], [data-slot=spinner]")).toHaveLength(0);
 			// A value still to come is a bar, never an element that says only "…".
 			await expect([...page.querySelectorAll("*")].filter((x) => x.textContent?.trim() === "…")).toHaveLength(0);
 		},

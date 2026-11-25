@@ -1328,7 +1328,10 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.waitForSelector("[data-slot=select-content][data-open]", { state: "detached" });
 	const watched = path.join(folder, "scans");
 	fs.mkdirSync(watched, { recursive: true });
-	await page.locator("[data-slot=dialog-content] [data-slot=field]", { has: page.locator("[data-slot=field-label]", { hasText: /^dir/ }) }).locator("input").fill(watched);
+	const dir = page.locator("[data-slot=dialog-content] [data-slot=field]", { has: page.locator("[data-slot=field-label]", { hasText: /^dir/ }) }).locator("input");
+	// An option the type needs is said to be needed, to a screen reader too, not by its star alone.
+	assert.equal(await dir.getAttribute("aria-required"), "true");
+	await dir.fill(watched);
 	await shot("09-settings-new-source");
 	await page.locator("[data-slot=dialog-content]").getByRole("button", { name: "Continue" }).click();
 	await sees("[data-slot=dialog-content] >> text=will:");

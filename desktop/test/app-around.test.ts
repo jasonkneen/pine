@@ -988,9 +988,12 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 	// What is not a host for ssh is refused at once, and nothing is kept.
 	await page.fill(input, "-oProxyCommand=x");
 	await add.click();
-	await sees("[data-slot=settings-page] [data-slot=alert] >> text=is not a host for ssh");
+	// The refusal is the field's own: said under it, the field marked invalid, as long as the host refused is in it.
+	await sees("[data-slot=settings-page] [data-slot=field][data-invalid] [data-slot=field-error] >> text=is not a host for ssh");
+	assert.equal(await page.getAttribute(input, "aria-invalid"), "true");
 	assert.deepEqual((await page.evaluate(() => (window as any).pine.state())).prefs.hosts, []);
 	await page.fill(input, "you@elsewhere");
+	assert.equal(await page.getAttribute(input, "aria-invalid"), null);
 	await add.click();
 	await sees("[data-environment='you@elsewhere'] >> text=you@elsewhere");
 	assert.deepEqual((await page.evaluate(() => (window as any).pine.state())).prefs.hosts, ["you@elsewhere"]);

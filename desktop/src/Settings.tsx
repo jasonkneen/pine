@@ -8,9 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Sidebar as SidebarRoot, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@/components/ui/sidebar";
 import { Pulse } from "@/components/pulse";
@@ -29,7 +29,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -80,7 +80,7 @@ function Access() {
 // Every page is made of stock Item, Field, Badge and Alert, written out where they are used. Some
 // carry a class the desktop tests look for (set-group, item, name, ctl, form, log, tag, notice,
 // good, warn, mono): it carries no style. An Item's description is shown whole and broken anywhere
-// (`line-clamp-none wrap-anywhere`): stock cuts it after two lines, and here it is what explains
+// (`line-clamp-none wrap-anywhere`, which SettingsItem sets on each line, its title wrapping its badges): stock cuts it after two lines, and here it is what explains
 // the thing (a path, an address, a list of models). A Badge's variant follows its tone: default
 // for a state that is good (connected, signed in), outline for warn, destructive for bad, secondary for
 // none. A choice is not a state: a mode is secondary, and only bypass, where nothing asks, is destructive.
@@ -189,8 +189,8 @@ export function SettingsItem(props: SettingsItemProps) {
 		<Item variant="outline" size="sm" {...rest}>
 			{media ? <ItemMedia variant={mediaVariant}>{media}</ItemMedia> : null}
 			<ItemContent className={cn("min-w-0", contentClassName)}>
-				<ItemTitle className={titleClassName}>{title}</ItemTitle>
-				{lines.map((line, i) => <ItemDescription key={i} className={descriptionClassName}>{line}</ItemDescription>)}
+				<ItemTitle className={cn("flex-wrap", titleClassName)}>{title}</ItemTitle>
+				{lines.map((line, i) => <ItemDescription key={i} className={cn("line-clamp-none wrap-anywhere", descriptionClassName)}>{line}</ItemDescription>)}
 				{children}
 			</ItemContent>
 			{actions ? <ItemActions className={actionsClassName} {...actionsProps}>{actions}</ItemActions> : null}
@@ -230,15 +230,7 @@ function SettingsGroupSkeleton() {
 				<Skeleton className="h-4 w-2/3" />
 			</div>
 			<FieldGroup>
-				{[0, 1, 2].map((i) => (
-					<div key={i} className="flex items-center justify-between gap-4">
-						<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-							<Skeleton className="h-4 w-36" />
-							<Skeleton className="h-3.5 w-3/4" />
-						</div>
-						<Skeleton className="h-8 w-40" />
-					</div>
-				))}
+				{[0, 1, 2].map((i) => <FieldSkeleton key={i} />)}
 			</FieldGroup>
 		</section>
 	);
@@ -443,8 +435,8 @@ function AgentHeading({ id, color }: { id: string; color?: string }) {
 			{editing ? (
 				<AgentNameInput id={id} className="max-w-60" onDone={(to) => (setEditing(false), to && void store.renameAgent(id, to))} />
 			) : (
-				<Button variant="ghost" className="-mx-1 h-auto px-1 text-xl font-semibold tracking-tight" title="Rename it" onClick={() => setEditing(true)}>
-					{id}
+				<Button variant="ghost" className="-mx-1 h-auto px-1" title="Rename it" onClick={() => setEditing(true)}>
+					<span className="text-xl font-semibold tracking-tight">{id}</span>
 				</Button>
 			)}
 		</span>
@@ -476,6 +468,25 @@ function FilesSkeleton() {
 			</div>
 			<Skeleton className="h-72 w-full" />
 		</div>
+	);
+}
+
+/**
+ * The bar that keeps a page's unsaved changes in sight at its foot, wherever the change was made: what is
+ * changed, Discard and Save changes. It sticks over the page as it scrolls, so it has the page's own ground
+ * and a shadow, and stays above what scrolls under it.
+ */
+function UnsavedBar({ busy, discard, save, children }: { busy: boolean; discard: () => void; save: () => void; children: ReactNode }) {
+	return (
+		<Item variant="outline" size="sm" data-unsaved="" className="sticky bottom-4 z-10 bg-background shadow-lg">
+			<ItemContent>
+				<ItemTitle>{children}</ItemTitle>
+			</ItemContent>
+			<ItemActions>
+				<Button variant="ghost" disabled={busy} onClick={discard}>Discard</Button>
+				<Button disabled={busy} onClick={save}>{busy ? <><Pulse label="Saving" data-icon="inline-start" />Saving…</> : "Save changes"}</Button>
+			</ItemActions>
+		</Item>
 	);
 }
 
@@ -667,8 +678,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 									key={`${added ? "new" : "had"}:${write}:${p}`}
 									media={added ? <PlusIcon /> : <FolderIcon />}
 									mediaVariant="icon"
-									title={tilde(p)}
-									titleClassName={cn("font-mono", dropped && "line-through")}
+									title={<span className={cn("font-mono", dropped && "line-through")}>{tilde(p)}</span>}
 									actions={<>
 										<Badge variant="secondary">{`${write ? "read and write" : "read only"}${added ? ", not saved yet" : ""}`}</Badge>
 										<HoverTooltip>
@@ -707,7 +717,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 					<Field orientation="responsive">
 						<FieldContent className="min-w-0">
 							<FieldTitle>Workspace</FieldTitle>
-							<FieldDescription className="font-mono wrap-anywhere">{`${tilde(d.workspace)} · ${plural(d.holdings.files, "file")}`}</FieldDescription>
+							<FieldDescription className="wrap-anywhere"><span className="font-mono">{`${tilde(d.workspace)} · ${plural(d.holdings.files, "file")}`}</span></FieldDescription>
 						</FieldContent>
 						{store.remote ? null : (
 							<Control>
@@ -735,13 +745,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 			)}
 
 			{/* While something is changed, the way to keep it stays in sight at the foot of the page, wherever the change was made. */}
-			{dirty ? (
-				<div data-slot="unsaved" className="sticky bottom-4 z-10 flex items-center gap-2 rounded-lg border bg-popover py-2 ps-4 pe-2 text-popover-foreground shadow-lg">
-					<span className="grow">Unsaved changes</span>
-					<Button variant="ghost" disabled={busy} onClick={() => (setChange({}), setTexts({}))}>Discard</Button>
-					<Button disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Button>
-				</div>
-			) : null}
+			{dirty ? <UnsavedBar busy={busy} discard={() => (setChange({}), setTexts({}))} save={() => void save()}>Unsaved changes</UnsavedBar> : null}
 		</Page>
 	);
 }
@@ -836,7 +840,7 @@ function Agents() {
 						description={a.description || "no description"}
 						actions={<ChevronRightIcon />}
 					>
-						<ItemDescription className="truncate font-mono">{[a.model || "no model yet", `reasoning ${a.thinking}`, tilde(a.workspace)].join(" · ")}</ItemDescription>
+						<ItemDescription className="truncate"><span className="font-mono">{[a.model || "no model yet", `reasoning ${a.thinking}`, tilde(a.workspace)].join(" · ")}</span></ItemDescription>
 					</SettingsItem>
 				))}
 			</ItemGroup>
@@ -893,6 +897,7 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 	const send = async (text: string) => {
 		if (!id) return;
 		setAnswer("");
+		setError(undefined);
 		await api.loginAnswer(id, { answer: text }).catch((e) => setError(errText(e)));
 	};
 	const q = state?.question;
@@ -903,13 +908,13 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 			</DialogHeader>
 			<ScrollArea className="-mx-4 flex max-h-[50vh] min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<div className="flex flex-col gap-3 px-4 select-text">
-					{error || state?.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error ?? state?.error}</AlertDescription></Alert> : null}
+					{error || state?.error ? <Alert id={`${field}-error`} variant="destructive"><TriangleAlertIcon /><AlertDescription>{error ?? state?.error}</AlertDescription></Alert> : null}
 					{state?.lines.length ? (
 						<CodeBlock size="sm">
 							<CodeBlockContent wrap className="max-h-60 select-text">{state.lines.join("\n")}</CodeBlockContent>
 						</CodeBlock>
 					) : null}
-					{state?.url && !state.done ? <div className="flex items-center gap-2"><Button variant="outline" onClick={() => void bridge.open(state.url!)}><ExternalLinkIcon data-icon="inline-start" />Open the sign-in page again</Button>{state.code ? <span>Code: <b className="cursor-auto font-mono">{state.code}</b></span> : null}</div> : null}
+					{state?.url && !state.done ? <div className="flex items-center gap-2"><Button variant="outline" onClick={() => void bridge.open(state.url!)}><ExternalLinkIcon data-icon="inline-start" />Open the sign-in page again</Button>{state.code ? <span>Code: <code className="cursor-auto font-semibold">{state.code}</code></span> : null}</div> : null}
 					{q && !state?.done ? (
 						q.options?.length ? (
 							<FieldSet>
@@ -921,12 +926,14 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 								</ItemGroup>
 							</FieldSet>
 						) : (
-							<Field>
+							<Field data-invalid={error ? true : undefined}>
 								<FieldLabel htmlFor={`${field}-answer`}>{q.message}</FieldLabel>
-								<div className="flex items-center gap-2">
-									<Input id={`${field}-answer`} autoFocus className="font-mono" type={q.secret ? "password" : "text"} autoComplete="off" spellCheck={false} value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => e.key === "Enter" && answer.trim() && void send(answer.trim())} />
-									<Button disabled={!answer.trim()} onClick={() => void send(answer.trim())}>Continue</Button>
-								</div>
+								<InputGroup>
+									<InputGroupInput id={`${field}-answer`} autoFocus className="font-mono" type={q.secret ? "password" : "text"} autoComplete="off" spellCheck={false} aria-invalid={error ? true : undefined} aria-describedby={error ? `${field}-error` : undefined} value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => e.key === "Enter" && answer.trim() && void send(answer.trim())} />
+									<InputGroupAddon align="inline-end">
+										<InputGroupButton variant="default" disabled={!answer.trim()} onClick={() => void send(answer.trim())}>Continue</InputGroupButton>
+									</InputGroupAddon>
+								</InputGroup>
 								{q.secret ? <FieldDescription>It is not shown, and is stored in auth.json in pine's home, where agents cannot read it.</FieldDescription> : null}
 							</Field>
 						)
@@ -961,7 +968,6 @@ function ProviderRow({ p, reload }: { p: Provider; reload: () => void }) {
 					{p.signedIn ? <Badge>signed in</Badge> : null}
 				</>}
 			description={about}
-			descriptionClassName="line-clamp-none wrap-anywhere"
 			actions={<>
 				{p.signedIn ? (
 					<AlertDialog>
@@ -1072,8 +1078,7 @@ function ModelServerCard({ server: x, inUse, fallback, reload }: { server: Model
 				media={<ServerIcon />}
 				mediaVariant="icon"
 				title={x.name}
-				description={x.baseUrl}
-				descriptionClassName="font-mono wrap-anywhere"
+				description={<span className="font-mono">{x.baseUrl}</span>}
 				actions={
 					<AlertDialog>
 						<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Remove</AlertDialogTrigger>
@@ -1100,10 +1105,9 @@ function ModelServerCard({ server: x, inUse, fallback, reload }: { server: Model
 						key={m.id}
 						data-model={ref}
 						contentClassName="basis-full @lg/settings:basis-0"
-						titleClassName="font-mono wrap-anywhere"
 						title={<>
-								{m.id}
-								{ref === fallback ? <Badge variant="secondary" className="font-sans">default</Badge> : null}
+								<span className="font-mono wrap-anywhere">{m.id}</span>
+								{ref === fallback ? <Badge variant="secondary">default</Badge> : null}
 							</>}
 						description={[m.contextWindow ? `${Math.round(m.contextWindow / 1000)}k context` : "", m.images ? "sees pictures" : "text only", m.reasoning ? "can reason" : ""].filter(Boolean).join(" · ")}
 						actionsClassName="w-full @lg/settings:w-48 @lg/settings:shrink-0"
@@ -1155,7 +1159,7 @@ function Models() {
 					<FieldGroup>
 						<Field orientation="responsive" data-setting="fallback-model">
 							<FieldContent className="min-w-0">
-								<FieldTitle className="font-mono">{fallback.data}</FieldTitle>
+								<FieldTitle><span className="font-mono">{fallback.data}</span></FieldTitle>
 								<FieldDescription>All agents use this model, unless you pick another one for an agent on the agent's page, or in the bar under a conversation.</FieldDescription>
 							</FieldContent>
 							<Control>
@@ -1350,8 +1354,7 @@ function Mcp() {
 												{x.taints ? <Badge variant="outline">brings in outside content</Badge> : null}
 												{x.approve !== "never" ? <Badge variant="secondary">asks first: {x.approve}</Badge> : null}
 											</>}
-										description={x.target}
-										descriptionClassName="line-clamp-none font-mono wrap-anywhere"
+										description={<span className="font-mono">{x.target}</span>}
 										actions={<>
 											{x.remote ? <Button variant="outline" size="sm" disabled={busy === x.name} onClick={() => void login(x.name, agent)}>{busy === x.name ? <><Pulse label="Loading" data-icon="inline-start" />In your browser…</> : "Sign in"}</Button> : null}
 											{x.target.startsWith("bundled:") ? null : <AlertDialog>
@@ -1469,7 +1472,6 @@ function Skills() {
 											{x.managed ? null : <Badge variant="secondary">from your own folder</Badge>}
 										</>}
 									description={short(x.description, 220)}
-									descriptionClassName="line-clamp-none wrap-anywhere"
 									actions={<>
 										<Button variant="outline" size="sm" onClick={() => setEdit({ name: x.name, description: x.description, instructions: x.instructions ?? "", agent: x.agent ?? "", isNew: false, managed })}>{managed ? "Edit" : "Read"}</Button>
 										{x.managed ? <AlertDialog>
@@ -1523,7 +1525,7 @@ function OptionField({ name, schema, required, value, onChange }: { name: string
 			<Field>
 				<FieldLabel htmlFor={id}>{label}</FieldLabel>
 				<Select items={items} value={String(value ?? "")} onValueChange={(v) => onChange(v || undefined)}>
-					<SelectTrigger id={id}>
+					<SelectTrigger id={id} aria-required={required || undefined}>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
@@ -1544,7 +1546,7 @@ function OptionField({ name, schema, required, value, onChange }: { name: string
 		return (
 			<Field>
 				<FieldLabel htmlFor={id}>{label}</FieldLabel>
-				<Input id={id} className="font-mono" value={value === undefined ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} inputMode="decimal" />
+				<Input id={id} aria-required={required || undefined} className="font-mono" value={value === undefined ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} inputMode="decimal" />
 				{hint ? <FieldDescription>{hint}</FieldDescription> : null}
 			</Field>
 		);
@@ -1552,7 +1554,7 @@ function OptionField({ name, schema, required, value, onChange }: { name: string
 		return (
 			<Field className="col-span-full">
 				<FieldLabel htmlFor={id}>{label}</FieldLabel>
-				<Input id={id} className="font-mono" value={Array.isArray(value) ? value.join(", ") : ""} onChange={(e) => onChange(e.target.value.trim() ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : undefined)} />
+				<Input id={id} aria-required={required || undefined} className="font-mono" value={Array.isArray(value) ? value.join(", ") : ""} onChange={(e) => onChange(e.target.value.trim() ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : undefined)} />
 				<FieldDescription>{`${hint ?? ""} Several: separate them with commas.`.trim()}</FieldDescription>
 			</Field>
 		);
@@ -1560,14 +1562,14 @@ function OptionField({ name, schema, required, value, onChange }: { name: string
 		return (
 			<Field className="col-span-full">
 				<FieldLabel htmlFor={id}>{label}</FieldLabel>
-				<Input id={id} className="font-mono" value={typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />
+				<Input id={id} aria-required={required || undefined} className="font-mono" value={typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />
 				<FieldDescription>{`${hint ?? ""} As JSON.`.trim()}</FieldDescription>
 			</Field>
 		);
 	return (
 		<Field className={String(hint ?? "").length > 90 ? "col-span-full" : undefined}>
 			<FieldLabel htmlFor={id}>{label}</FieldLabel>
-			<Input id={id} className="font-mono" value={String(value ?? "")} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />
+			<Input id={id} aria-required={required || undefined} className="font-mono" value={String(value ?? "")} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />
 			{hint ? <FieldDescription>{hint}</FieldDescription> : null}
 		</Field>
 	);
@@ -1747,7 +1749,7 @@ function Sources() {
 			actions={
 				<Dialog actionsRef={adding}>
 					<DialogTrigger render={<Button variant="outline" disabled={!types.data} />}><PlusIcon data-icon="inline-start" />New source</DialogTrigger>
-					<DialogContent showCloseButton={false} className="sm:max-w-2xl">{types.data ? <NewSource types={types.data} made={() => (adding.current?.close(), sources.reload())} /> : null}</DialogContent>
+					<DialogContent showCloseButton={false} className="sm:max-w-2xl">{types.data ? <NewSource types={types.data} made={() => (adding.current?.close(), sources.reload())} /> : <DialogHeader><DialogTitle>A new event source</DialogTitle></DialogHeader>}</DialogContent>
 				</Dialog>
 			}
 		>
@@ -1771,7 +1773,6 @@ function Sources() {
 										{x.description ? <>{x.description}<br /></> : null}
 										{x.error ? `not running: ${x.error}` : x.running ? (x.status ?? "running") : "idle, nobody is subscribed"} · {x.last ? `last event ${ago(x.last.ts)}, ${x.events} since start` : "no events since start"}
 									</>}
-								descriptionClassName="line-clamp-none wrap-anywhere"
 								actions={
 									<AlertDialog>
 										<AlertDialogTrigger render={<Button variant="ghost" size="sm" aria-label="Remove this source" />}>Remove</AlertDialogTrigger>
@@ -1969,7 +1970,6 @@ export function Schedules() {
 									<><span className="font-medium text-foreground">When</span> {x.when}</>,
 									<><span className="font-medium text-foreground">Then</span> {x.task ? `wake ${wakes(x.scope, x.session)}: “${short(x.task, 160)}”` : `publish ${x.topic}`}</>,
 								]}
-								descriptionClassName="line-clamp-none wrap-anywhere"
 								actions={
 									<AlertDialog>
 										<AlertDialogTrigger render={<Button variant="ghost" size="sm" aria-label="Remove this schedule" />}>Remove</AlertDialogTrigger>
@@ -2199,7 +2199,6 @@ export function Routes() {
 										<><span className="font-medium text-foreground">When</span> {said.when}</>,
 										<><span className="font-medium text-foreground">Then</span> {said.then}</>,
 									]}
-									descriptionClassName="line-clamp-none wrap-anywhere"
 									actions={
 										<AlertDialog>
 											<AlertDialogTrigger render={<Button variant="ghost" size="sm" aria-label="Remove this route" />}>Remove</AlertDialogTrigger>
@@ -2278,13 +2277,7 @@ function SharedInstructions() {
 			) : (
 				<FilesSkeleton />
 			)}
-			{changed.length ? (
-				<div data-slot="unsaved" className="sticky bottom-4 z-10 flex items-center gap-2 rounded-lg border bg-popover py-2 ps-4 pe-2 text-popover-foreground shadow-lg">
-					<span className="grow">Unsaved changes in {changed.map((f) => f.name).join(", ")}</span>
-					<Button variant="ghost" disabled={busy} onClick={() => setTexts({})}>Discard</Button>
-					<Button disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Button>
-				</div>
-			) : null}
+			{changed.length ? <UnsavedBar busy={busy} discard={() => setTexts({})} save={() => void save()}>Unsaved changes in {changed.map((f) => f.name).join(", ")}</UnsavedBar> : null}
 		</Section>
 	);
 }
@@ -2331,16 +2324,18 @@ export function ThemePicker() {
 							{(["dark", "light"] as const).map((kind, i) => {
 								const of = usable.filter((t) => t.kind === kind);
 								return of.length ? (
-									<SelectGroup key={kind}>
+									<Fragment key={kind}>
 										{i && usable.some((t) => t.kind === "dark") ? <SelectSeparator /> : null}
-										<SelectLabel>{kind === "dark" ? "Dark" : "Light"}</SelectLabel>
-										{of.map((t) => (
-											<SelectItem key={t.id} value={t.id}>
-												<Swatch colors={t.colors} />
-												{t.name}
-											</SelectItem>
-										))}
-									</SelectGroup>
+										<SelectGroup>
+											<SelectLabel>{kind === "dark" ? "Dark" : "Light"}</SelectLabel>
+											{of.map((t) => (
+												<SelectItem key={t.id} value={t.id}>
+													<Swatch colors={t.colors} />
+													{t.name}
+												</SelectItem>
+											))}
+										</SelectGroup>
+									</Fragment>
 								) : null;
 							})}
 						</SelectContent>
@@ -2386,7 +2381,7 @@ function DeviceKey() {
 				<Button variant="outline" size="sm" onClick={() => void store.attempt(() => key.share())}>Share</Button>
 			</>}
 		>
-			<ItemDescription className="line-clamp-none font-mono text-xs wrap-anywhere select-text">{key.key}</ItemDescription>
+			<ItemDescription className="line-clamp-none wrap-anywhere select-text"><code className="text-xs">{key.key}</code></ItemDescription>
 			<ItemDescription className="line-clamp-none">Add it as a line of ~/.ssh/authorized_keys of the user you sign in as on each machine.</ItemDescription>
 		</SettingsItem>
 	);
@@ -2409,6 +2404,8 @@ export function MachineList() {
 	const s = useModel(store);
 	const [host, setHost] = useState("");
 	const [error, setError] = useState<string>();
+	// What was said of the host typed into the field, while it is still the one typed.
+	const [refused, setRefused] = useState<string>();
 	const [forgetting, setForgetting] = useState<{ host: string; count: number }>();
 	const field = useId();
 	const state = s.service;
@@ -2450,13 +2447,13 @@ export function MachineList() {
 		}
 	};
 	const add = async () => {
-		setError(undefined);
+		setRefused(undefined);
 		try {
 			s.prefs = await bridge.addHost(host);
 			setHost("");
 			s.touch();
 		} catch (e) {
-			setError(errText(e));
+			setRefused(errText(e));
 		}
 	};
 	// A paired computer is asked about first: forgetting it here leaves its access open (`forgetMachine`).
@@ -2495,7 +2492,6 @@ export function MachineList() {
 					{h && s.otherWindowsOn(h) > 0 ? <Badge variant="outline" data-slot="in-another-window">in another window</Badge> : null}
 				</>}
 			description={state.host === h && state.status === "error" ? state.message : h?.startsWith("wsl:") ? `The pine in ${h.slice(4)}, a Linux of WSL on this computer, where pine has its sandbox.` : h ? about(h) : "The pine on this computer: the one that runs, or one this app starts."}
-			descriptionClassName="line-clamp-none wrap-anywhere"
 			actions={<>
 				{key && key.host === h ? <Button size="sm" data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
 				{h?.startsWith("wsl:") && state.host === h && state.status === "error" && /is not installed in/.test(state.message ?? "") && bridge.wslInstall ? (
@@ -2513,7 +2509,7 @@ export function MachineList() {
 			</>}
 		>
 				{h && reachedThrough(h, s.serviceHost) ? <ItemDescription className="line-clamp-none wrap-anywhere" data-slot="reached-through">{reachedThrough(h, s.serviceHost)}</ItemDescription> : null}
-				{key && key.host === h ? <ItemDescription className="line-clamp-none font-mono text-xs break-all select-text" data-slot="host-key-fingerprint">{key.fingerprint}</ItemDescription> : null}
+				{key && key.host === h ? <ItemDescription className="line-clamp-none break-all select-text" data-slot="host-key-fingerprint"><code className="text-xs">{key.fingerprint}</code></ItemDescription> : null}
 		</SettingsItem>
 	);
 	return (
@@ -2557,20 +2553,23 @@ export function MachineList() {
 				{/* The pairing view has no user@host to add, nor a key for one. */}
 				{shown.view === "pair" ? <PairHowTo /> : s.local ? null : <DeviceKey />}
 				{shown.toSsh ? (
-					<Button variant="link" size="sm" className="self-start px-0" data-slot="ssh-instead" onClick={() => s.showMachines("ssh")}>
+					<Button variant="link" size="sm" className="self-start" data-slot="ssh-instead" onClick={() => s.showMachines("ssh")}>
 						Or connect to a server over SSH
 					</Button>
 				) : null}
 			</div>
 			{shown.view === "ssh" ? <Section title="Add a machine" data-find="add-machine">
 				<FieldGroup>
-					<Field>
+					<Field data-invalid={refused ? true : undefined}>
 						<FieldLabel htmlFor={`${field}-host`}>Host</FieldLabel>
-						<div className="flex items-center gap-2">
-							<Input id={`${field}-host`} className="font-mono" placeholder="you@server" value={host} onChange={(e) => setHost(e.target.value)} onKeyDown={(e) => e.key === "Enter" && host.trim() && void add()} />
-							<Button variant="outline" disabled={!host.trim()} onClick={() => void add()}><PlusIcon data-icon="inline-start" />Add</Button>
-						</div>
+						<InputGroup>
+							<InputGroupInput id={`${field}-host`} className="font-mono" placeholder="you@server" aria-invalid={refused ? true : undefined} value={host} onChange={(e) => (setHost(e.target.value), setRefused(undefined))} onKeyDown={(e) => e.key === "Enter" && host.trim() && void add()} />
+							<InputGroupAddon align="inline-end">
+								<InputGroupButton disabled={!host.trim()} onClick={() => void add()}><PlusIcon data-icon="inline-start" />Add</InputGroupButton>
+							</InputGroupAddon>
+						</InputGroup>
 						<FieldDescription>{s.local ? "As you would write it after ssh: host, user@host, or a name from ~/.ssh/config. It is connected to when you pick it." : "As you would write it after ssh: user@host, or user@host:port. It is connected to when you pick it."}</FieldDescription>
+						{refused ? <FieldError>{refused}</FieldError> : null}
 					</Field>
 					{error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error}</AlertDescription></Alert> : null}
 					{/* Where a relay is in play (the web client), it is said plainly, so that nobody forgets it. */}
@@ -2582,13 +2581,13 @@ export function MachineList() {
 					<AlertDialogContent>
 						<AlertDialogHeader>
 							<AlertDialogTitle>Forget {s.nameOf(forgetting.host)}?</AlertDialogTitle>
+							<AlertDialogDescription>
+								{s.nameOf(forgetting.host)} is currently open in {forgetting.count === 1 ? "another window" : `${forgetting.count} other windows`}. Forgetting it closes {forgetting.count === 1 ? "that window" : "those windows"}, ends its connection, and removes it from your list of environments.
+							</AlertDialogDescription>
 						</AlertDialogHeader>
-						<p className="text-sm text-muted-foreground">
-							{s.nameOf(forgetting.host)} is currently open in {forgetting.count === 1 ? "another window" : `${forgetting.count} other windows`}. Forgetting it closes {forgetting.count === 1 ? "that window" : "those windows"}, ends its connection, and removes it from your list of environments.
-						</p>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<Button
+							<AlertDialogAction
 								variant="destructive"
 								onClick={() => {
 									const target = forgetting.host;
@@ -2597,7 +2596,7 @@ export function MachineList() {
 								}}
 							>
 								{forgetting.count === 1 ? "Close its window and forget" : `Close its ${forgetting.count} windows and forget`}
-							</Button>
+							</AlertDialogAction>
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>
@@ -2922,7 +2921,7 @@ function Found({ query, list, pick, back }: { query: string; list: Entry[]; pick
 							onClick={() => pick(e)}
 							title={e.title}
 							description={[e.path.join(" › "), e.about].filter(Boolean).join(" · ")}
-							descriptionClassName="truncate"
+							descriptionClassName="line-clamp-1"
 							actions={<ChevronRightIcon />}
 						/>
 					))}
@@ -2977,15 +2976,14 @@ export function Settings() {
 	};
 	// The sections are a column beside the page where there is room, and a row above it where there is not
 	// (a narrow window, or a wide panel beside): measured on the settings themselves, not on the window.
-	// An item's title wraps (its badges go under its name where the row is narrow): set once here for every row.
 	// What the search picked is outlined for a moment (`data-found`).
 	return (
-		<div ref={root} className="@container/settings flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border bg-background text-sm **:data-[slot=item-title]:flex-wrap **:data-found:rounded-md **:data-found:outline-2 **:data-found:outline-offset-4 **:data-found:outline-ring">
+		<div ref={root} className="@container/settings flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border bg-background text-sm **:data-found:rounded-md **:data-found:outline-2 **:data-found:outline-offset-4 **:data-found:outline-ring">
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col @3xl/settings:flex-row">
 				{/* A provider of its own, as in shadcn's sidebar in a dialog: the page needs one where no app side bar is around it (Storybook).
 				    Its ⌘B listener changes nothing here (open is fixed and the side bar cannot collapse); the app's provider still gets the key. */}
 				<SidebarProvider open className="min-h-0 w-full flex-none @3xl/settings:w-auto">
-					<SidebarRoot collapsible="none" className="w-full border-b border-line-soft bg-transparent @3xl/settings:w-50 @3xl/settings:border-r @3xl/settings:border-b-0">
+					<SidebarRoot collapsible="none" className="w-full border-b @3xl/settings:w-50 @3xl/settings:border-r @3xl/settings:border-b-0">
 						<SidebarHeader className="px-2 pt-2 pb-0 @3xl/settings:pt-4">
 							<InputGroup>
 								<InputGroupAddon>
