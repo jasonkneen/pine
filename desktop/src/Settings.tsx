@@ -1,10 +1,11 @@
 // Settings: everything about pine that is otherwise a command in a shell or a sentence to the
 // main agent. Each page asks the daemon what there is and tells it what to change; the daemon
 // checks every change as it checks the main agent's, and nothing here writes a file itself.
-import { ArrowLeftIcon, AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
+import { AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -2385,19 +2386,21 @@ function DeviceKey() {
 	if (key === undefined) return <SettingsItem skeleton data-slot="device-key-skeleton" />;
 	if (!key) return null;
 	return (
-		<SettingsItem
-			data-slot="device-key"
-			// The key takes the whole line, and the buttons go under it: beside it they would squeeze it into a column.
-			contentClassName="basis-full"
-			title="This device's key"
-			actions={<>
+		// A stock Card: what it is for under its title, the key on one line (cut short on screen, whole in the page
+		// and in what Copy and Share give), and its two buttons in the footer.
+		<Card size="sm" data-slot="device-key">
+			<CardHeader>
+				<CardTitle>This device's key</CardTitle>
+				<CardDescription>Add it as a line of ~/.ssh/authorized_keys of the user you sign in as on each machine.</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<code className="block truncate text-xs select-text" title={key.key}>{key.key}</code>
+			</CardContent>
+			<CardFooter className="gap-2">
 				<Button variant="outline" size="sm" onClick={() => void key.copy().then(() => store.flash("The key is on the clipboard.", "good", 3000), (e: unknown) => store.flash(errText(e), "bad"))}>Copy</Button>
 				<Button variant="outline" size="sm" onClick={() => void store.attempt(() => key.share())}>Share</Button>
-			</>}
-		>
-			<ItemDescription className="line-clamp-none wrap-anywhere select-text"><code className="text-xs">{key.key}</code></ItemDescription>
-			<ItemDescription className="line-clamp-none">Add it as a line of ~/.ssh/authorized_keys of the user you sign in as on each machine.</ItemDescription>
-		</SettingsItem>
+			</CardFooter>
+		</Card>
 	);
 }
 
@@ -2526,71 +2529,65 @@ export function MachineList() {
 				{key && key.host === h ? <ItemDescription className="line-clamp-none break-all select-text" data-slot="host-key-fingerprint"><code className="text-xs">{key.fingerprint}</code></ItemDescription> : null}
 		</SettingsItem>
 	);
+	// Each part is a block of the column it is drawn in, a FieldGroup (Settings > Environments, the Gate): one gap
+	// between any two, which that FieldGroup says. A part with nothing to show is not drawn, so it takes no gap.
+	const rows = [...(s.local ? [undefined] : []), ...s.prefs.hosts];
+	const wsl = distros.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`));
 	return (
 		<>
-			<div className="flex flex-col gap-3">
-				{shown.back ? (
-					<Button variant="ghost" size="icon-sm" className="self-start" data-slot="back-to-pairing" aria-label="Back to pairing" onClick={() => s.showMachines("pair")}>
-						<ArrowLeftIcon />
-					</Button>
-				) : null}
-				<ItemGroup>
-					{s.local ? row(undefined) : null}
-					{s.prefs.hosts.map(row)}
-				</ItemGroup>
-				{installed ? (
-					<Alert data-slot="wsl-installed">
-						<InfoIcon />
-						<AlertDescription>
-							<p>pine is in {installed.distro}, with a home. Its sandbox needs bubblewrap there, which takes the password of your user in {installed.distro}: run this once in a terminal of Windows, and answer its question.</p>
-							<p className="font-mono text-xs select-text">{installed.sandbox}</p>
-						</AlertDescription>
-					</Alert>
-				) : null}
-				{distros.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`)).length ? (
-					<FieldSet data-slot="wsl-distros">
-						<FieldLegend>WSL on this computer</FieldLegend>
-						<FieldDescription>A Linux of WSL runs pine with its sandbox, which pine on Windows itself does not have yet.</FieldDescription>
-						<ItemGroup>
-							{distros
-								.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`))
-								.map((d) => (
-									<Item key={d} variant="outline" data-environment={`wsl:${d}`}>
-										<ItemMedia variant="icon"><TerminalSquareIcon /></ItemMedia>
-										<ItemContent><ItemTitle>{d}</ItemTitle></ItemContent>
-										<ItemActions><Button variant="outline" size="sm" onClick={() => void addWsl(d)}><PlusIcon data-icon="inline-start" />Add</Button></ItemActions>
-									</Item>
-								))}
-						</ItemGroup>
-					</FieldSet>
-				) : null}
-				{/* The pairing view has no user@host to add, nor a key for one. */}
-				{shown.view === "pair" ? <PairHowTo /> : s.local ? null : <DeviceKey />}
-				{shown.toSsh ? (
-					<Button variant="link" size="sm" className="self-start" data-slot="ssh-instead" onClick={() => s.showMachines("ssh")}>
-						Or connect to a server over SSH
-					</Button>
-				) : null}
-			</div>
+			{rows.length ? <ItemGroup>{rows.map(row)}</ItemGroup> : null}
+			{installed ? (
+				<Alert data-slot="wsl-installed">
+					<InfoIcon />
+					<AlertDescription>
+						<p>pine is in {installed.distro}, with a home. Its sandbox needs bubblewrap there, which takes the password of your user in {installed.distro}: run this once in a terminal of Windows, and answer its question.</p>
+						<p className="font-mono text-xs select-text">{installed.sandbox}</p>
+					</AlertDescription>
+				</Alert>
+			) : null}
+			{wsl.length ? (
+				<FieldSet data-slot="wsl-distros">
+					<FieldLegend>WSL on this computer</FieldLegend>
+					<FieldDescription>A Linux of WSL runs pine with its sandbox, which pine on Windows itself does not have yet.</FieldDescription>
+					<ItemGroup>
+						{wsl.map((d) => (
+							<Item key={d} variant="outline" data-environment={`wsl:${d}`}>
+								<ItemMedia variant="icon"><TerminalSquareIcon /></ItemMedia>
+								<ItemContent><ItemTitle>{d}</ItemTitle></ItemContent>
+								<ItemActions><Button variant="outline" size="sm" onClick={() => void addWsl(d)}><PlusIcon data-icon="inline-start" />Add</Button></ItemActions>
+							</Item>
+						))}
+					</ItemGroup>
+				</FieldSet>
+			) : null}
+			{/* The pairing view has no user@host to add, nor a key for one. */}
+			{shown.view === "pair" ? <PairHowTo /> : s.local ? null : <DeviceKey />}
+			{/* The way to the other view closes the column: under the Gate's centred header it is centred too. */}
+			{shown.toSsh ? (
+				<Button variant="link" size="sm" className="self-start in-data-[slot=gate-machines]:self-center" data-slot="ssh-instead" onClick={() => s.showMachines("ssh")}>
+					Or connect to a server over SSH
+				</Button>
+			) : null}
 			{shown.view === "ssh" ? <FieldSeparator /> : null}
-			{shown.view === "ssh" ? <Section title="Add a machine" data-find="add-machine">
-				<FieldGroup>
-					<Field data-invalid={refused ? true : undefined}>
-						<FieldLabel htmlFor={`${field}-host`}>Host</FieldLabel>
-						<InputGroup>
-							<InputGroupInput id={`${field}-host`} className="font-mono" placeholder="you@server" aria-invalid={refused ? true : undefined} value={host} onChange={(e) => (setHost(e.target.value), setRefused(undefined))} onKeyDown={(e) => e.key === "Enter" && host.trim() && void add()} />
-							<InputGroupAddon align="inline-end">
-								<InputGroupButton disabled={!host.trim()} onClick={() => void add()}><PlusIcon data-icon="inline-start" />Add</InputGroupButton>
-							</InputGroupAddon>
-						</InputGroup>
-						<FieldDescription>{s.local ? "As you would write it after ssh: host, user@host, or a name from ~/.ssh/config. It is connected to when you pick it." : "As you would write it after ssh: user@host, or user@host:port. It is connected to when you pick it."}</FieldDescription>
-						{refused ? <FieldError>{refused}</FieldError> : null}
-					</Field>
-					{error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error}</AlertDescription></Alert> : null}
-					{/* Where a relay is in play (the web client), it is said plainly, so that nobody forgets it. */}
-					{s.serviceHost ? <FieldDescription data-slot="relay-line">{relayLine(s.serviceHost)}</FieldDescription> : null}
-				</FieldGroup>
-			</Section> : null}
+			{shown.view === "ssh" ? (
+				// Where a relay is in play (the web client), it is said under the section's title, plainly, so that nobody forgets it.
+				<Section title="Add a machine" about={s.serviceHost ? <span data-slot="relay-line">{relayLine(s.serviceHost)}</span> : undefined} data-find="add-machine">
+					<FieldGroup>
+						<Field data-invalid={refused ? true : undefined}>
+							<FieldLabel htmlFor={`${field}-host`}>Host</FieldLabel>
+							<InputGroup>
+								<InputGroupInput id={`${field}-host`} className="font-mono" placeholder="you@server" aria-invalid={refused ? true : undefined} value={host} onChange={(e) => (setHost(e.target.value), setRefused(undefined))} onKeyDown={(e) => e.key === "Enter" && host.trim() && void add()} />
+								<InputGroupAddon align="inline-end">
+									<InputGroupButton disabled={!host.trim()} onClick={() => void add()}><PlusIcon data-icon="inline-start" />Add</InputGroupButton>
+								</InputGroupAddon>
+							</InputGroup>
+							<FieldDescription>{s.local ? "As you would write it after ssh: host, user@host, or a name from ~/.ssh/config. It is connected to when you pick it." : "As you would write it after ssh: user@host, or user@host:port. It is connected to when you pick it."}</FieldDescription>
+							{refused ? <FieldError>{refused}</FieldError> : null}
+						</Field>
+						{error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error}</AlertDescription></Alert> : null}
+					</FieldGroup>
+				</Section>
+			) : null}
 			{forgetting ? (
 				<AlertDialog open onOpenChange={(open) => open || setForgetting(undefined)}>
 					<AlertDialogContent>
@@ -2640,24 +2637,32 @@ function PairHowTo() {
 		<>
 			{s.canFindNearby ? <PairNearby /> : null}
 			{s.canOpenApp ? (
-				<div className="flex flex-col items-start gap-1" data-slot="open-app">
+				// The button and what it does, as one stock Field: the button as wide as the column, its line under it.
+				<Field data-slot="open-app">
 					<Button data-slot="open-pine-here" onClick={() => void store.attempt(() => bridge.openApp!())}><ExternalLinkIcon data-icon="inline-start" />Open Pine on this computer</Button>
-					<p className="text-sm text-muted-foreground">Where Pine runs on this computer with Browser access on, it opens a pairing and sends its link to this browser.</p>
-				</div>
+					<FieldDescription>Where Pine runs on this computer with Browser access on, it opens a pairing and sends its link to this browser.</FieldDescription>
+				</Field>
 			) : null}
-		<SettingsItem
-			data-slot="pair-how-to"
-			contentClassName="basis-full"
-			title={s.canFindNearby ? "Or pair with a code" : "Pair with your computer"}
-			actions={<Button variant="outline" size="sm" data-slot="get-the-app" onClick={() => void store.attempt(() => bridge.open(APP_DOWNLOAD))}><ExternalLinkIcon data-icon="inline-start" />Get the Pine app</Button>}
-		>
-				<ol className="list-decimal ps-5 text-sm text-muted-foreground">
-					<li>On your computer: Pine &gt; Add a device.</li>
-					<li>{s.canPasteLink ? "Scan the code with this phone's camera and open it in Pine, or paste the link it gives below." : "Scan the code with this device's camera, or open the link it gives in this browser."}</li>
-				</ol>
-				{s.canPasteLink ? <PairLinkField onLink={(text) => s.askToPair(text)} /> : null}
-				{s.serviceHost ? <ItemDescription className="line-clamp-none wrap-anywhere" data-slot="meeting-line">{meetingLine(s.serviceHost)}</ItemDescription> : null}
-		</SettingsItem>
+			{/* A stock Card, as the device's key in the SSH view: where the pairing is found under its title, the steps, the app in the footer. */}
+			<Card size="sm" data-slot="pair-how-to">
+				<CardHeader>
+					<CardTitle>{s.canFindNearby ? "Or pair with a code" : "Pair with your computer"}</CardTitle>
+					{/* A long service host breaks anywhere rather than spill out of the card. */}
+					{s.serviceHost ? <CardDescription className="wrap-anywhere"><span data-slot="meeting-line">{meetingLine(s.serviceHost)}</span></CardDescription> : null}
+				</CardHeader>
+				<CardContent>
+					<FieldGroup>
+						<ol className="flex list-decimal flex-col gap-1 ps-5 text-muted-foreground">
+							<li>On your computer: Pine &gt; Add a device.</li>
+							<li>{s.canPasteLink ? "Scan the code with this phone's camera and open it in Pine, or paste the link it gives below." : "Scan the code with this device's camera, or open the link it gives in this browser."}</li>
+						</ol>
+						{s.canPasteLink ? <PairLinkField onLink={(text) => s.askToPair(text)} /> : null}
+					</FieldGroup>
+				</CardContent>
+				<CardFooter>
+					<Button variant="outline" size="sm" data-slot="get-the-app" onClick={() => void store.attempt(() => bridge.open(APP_DOWNLOAD))}><ExternalLinkIcon data-icon="inline-start" />Get the Pine app</Button>
+				</CardFooter>
+			</Card>
 		</>
 	);
 }
@@ -2679,7 +2684,7 @@ function Environments() {
 				<>The first time, the app shows the machine's host key fingerprint. Compare it with what the machine shows, then trust it.</>,
 			];
 	return (
-		<Page title="Environments" lead={s.local ? "Where the pine this app uses runs: on this computer, or on another machine that you reach over SSH. Switch between them at the bottom of the side bar." : pairing ? `The pine this ${s.device} uses: the Pine app's pine on a computer paired with it. Switch between them at the bottom of the side bar.` : "The pine this app uses, on a machine that you reach over SSH. Switch between them at the bottom of the side bar."}>
+		<Page title="Environments" back={s.machinesShown.back ? { label: "Back to pairing", onClick: () => s.showMachines("pair") } : undefined} lead={s.local ? "Where the pine this app uses runs: on this computer, or on another machine that you reach over SSH. Switch between them at the bottom of the side bar." : pairing ? `The pine this ${s.device} uses: the Pine app's pine on a computer paired with it. Switch between them at the bottom of the side bar.` : "The pine this app uses, on a machine that you reach over SSH. Switch between them at the bottom of the side bar."}>
 			<MachineList />
 			{/* In the pairing view, the list's how-to is all there is to say. */}
 			{!pairing ? (

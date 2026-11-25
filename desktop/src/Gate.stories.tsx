@@ -31,7 +31,7 @@ function Before({ state, hosts, loadError, names, canAddHost = true, canPair = f
 	store.serviceHost = serviceHost;
 	store.pairFailed = pairFailed;
 	return (
-		<div className="flex h-200 w-full">
+		<div className="flex h-dvh w-full">
 			<Gate />
 		</div>
 	);

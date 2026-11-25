@@ -50,7 +50,7 @@ export function Page({ title, lead, children, actions, back }: { title: ReactNod
  * A part of a page: a stock FieldSet with its FieldLegend and FieldDescription, its buttons on the right, then
  * what it holds. A page puts a stock FieldSeparator between two sections that follow each other.
  */
-export function Section({ title, about, actions, children, ...rest }: { title?: ReactNode; about?: ReactNode; actions?: ReactNode; children: ReactNode } & Omit<ComponentProps<"fieldset">, "title">) {
+export function Section({ title, about, actions, children, ...rest }: { title?: ReactNode; about?: ReactNode; actions?: ReactNode; children: ReactNode } & Omit<ComponentProps<"fieldset">, "title" | "about">) {
 	const legend = useId();
 	if (!actions)
 		return (

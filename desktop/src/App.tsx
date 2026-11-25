@@ -1,12 +1,13 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FieldGroup } from "@/components/ui/field";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { type Layout, usePanelRef } from "react-resizable-panels";
@@ -87,11 +88,21 @@ export function Gate() {
 	const key = s.keyToTrust;
 	// With no local machine the machines are the only way to a pine: added, chosen or forgotten here,
 	// also while one is being reached (that can take a minute), to switch to another.
+	// One column of blocks (a list, a card, a section), the stock FieldGroup's gap between any two, as on a Settings page;
+	// its text wraps as text does, not balanced like the centred header's.
 	const machines = s.local ? null : (
-		<div className="flex w-full flex-col gap-4 text-start" data-slot="gate-machines">
+		<FieldGroup className="text-start text-pretty" data-slot="gate-machines">
 			<MachineList />
-		</div>
+		</FieldGroup>
 	);
+	// The way back from the SSH view to pairing, above the header it changes, as a Settings page has its way back above its title:
+	// at the start of the column, on the edge the cards below start on.
+	const back = !s.local && s.machinesShown.back ? (
+		<Button variant="ghost" size="sm" className="self-start" data-slot="back-to-pairing" onClick={() => s.showMachines("pair")}>
+			<ChevronLeftIcon data-icon="inline-start" />
+			Back to pairing
+		</Button>
+	) : null;
 	type Screen = [React.ReactNode, React.ReactNode, React.ReactNode];
 	// A machine by the name the owner sees: a paired computer by its name, never its id; user@host as written, in mono.
 	const paired = host ? isPaired(host) : false;
@@ -147,12 +158,15 @@ export function Gate() {
 							<div key="b" className="flex w-full flex-col items-center gap-4">
 								{/* A host key met for the first time: its fingerprint, and the owner's yes to exactly that one. */}
 								{key ? <span className="font-mono text-xs break-all select-text" data-slot="host-key-fingerprint">{key.fingerprint}</span> : null}
-								<div className="flex items-center gap-2">
-									{key ? <Button data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
-									{host || s.local ? <Button variant={key ? "outline" : "default"} onClick={() => void bridge.retry()}>Try again</Button> : null}
-									{state.kind === "no-node" ? <Button variant="outline" onClick={() => void bridge.open("https://nodejs.org")}>nodejs.org</Button> : null}
-									{host && s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>{useHere}</Button> : null}
-								</div>
+								{/* Only a row with a button in it: an empty one would still take a gap above the machines. */}
+								{key || host || s.local || state.kind === "no-node" ? (
+									<div className="flex items-center gap-2">
+										{key ? <Button data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
+										{host || s.local ? <Button variant={key ? "outline" : "default"} onClick={() => void bridge.retry()}>Try again</Button> : null}
+										{state.kind === "no-node" ? <Button variant="outline" onClick={() => void bridge.open("https://nodejs.org")}>nodejs.org</Button> : null}
+										{host && s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>{useHere}</Button> : null}
+									</div>
+								) : null}
 								{machines}
 							</div>,
 						]
@@ -177,7 +191,9 @@ export function Gate() {
 	return (
 		<ScrollArea className="m-1.5 min-h-0 min-w-0 flex-1 rounded-xl border bg-background text-sm [-webkit-app-region:drag] *:data-[slot=scroll-area-viewport]:scroll-fade">
 			<Empty className="min-h-full [-webkit-app-region:no-drag]">
-				<EmptyHeader>
+				{/* As wide as the column under it (both stop at the stock max-w-sm), so that its way back starts where the cards do. */}
+				<EmptyHeader className="w-full">
+					{back}
 					<EmptyMedia>
 						<Logo className="size-9" />
 					</EmptyMedia>
