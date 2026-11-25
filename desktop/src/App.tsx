@@ -822,7 +822,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					nativeButton={false}
 					render={<div />}
 					data-slot="tab"
-					className={cn("group/tab max-w-55 min-w-28 flex-initial justify-start gap-2 pr-0.5 pl-1 [-webkit-app-region:no-drag]", drop && "before:absolute before:inset-y-1 before:w-0.5 before:rounded-full before:bg-primary", drop && (drop === "after" ? "before:-right-0.5" : "before:-left-0.5"))}
+					className={cn("group/tab max-w-55 min-w-28 flex-initial justify-start gap-2 px-1 [-webkit-app-region:no-drag]", drop && "before:absolute before:inset-y-1 before:w-0.5 before:rounded-full before:bg-primary", drop && (drop === "after" ? "before:-right-0.5" : "before:-left-0.5"))}
 					draggable
 					onDragStart={(e) => {
 						const origin = tabDragOrigin();
@@ -857,15 +857,15 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					onAuxClick={(e) => e.button === 1 && s.closeTab(tab)}
 					title={tab.kind === "chat" ? `${tab.agent} · ${tab.session}${tab.folder ? ` · ${tab.folder}` : ""}` : tab.kind === "task" ? `task #${tab.task}` : tab.kind}
 				>
-					<span className="grid min-w-3.5 flex-none place-items-center">
+					<span className="grid size-5 flex-none place-items-center">
 						{tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
 					</span>
-					<span data-slot="tab-name" className="truncate">
+					<span data-slot="tab-name" className="flex-1 truncate">
 						{tab.kind === "events" ? "Events" : tab.kind === "settings" ? "Settings" : tab.kind === "task" ? <>{tab.agent} #{tab.task}</> : tab.session === "main" ? tab.agent : <>{tab.agent} · <Title agent={tab.agent} session={tab.session} /></>}
 					</span>
 					{kept && tab.session !== "main" ? <StarIcon className="text-warn" /> : null}
 					{/* No stop of its own: the tab row is one stop, and ⌘W closes the tab in front. */}
-					<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Close this tab" className={cn(!on && "opacity-0 group-hover/tab:opacity-100")} onClick={(e) => (e.stopPropagation(), s.closeTab(tab))}><XIcon /></Button>
+					<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Close this tab" className={cn("size-5", !on && "opacity-0 group-hover/tab:opacity-100")} onClick={(e) => (e.stopPropagation(), s.closeTab(tab))}><XIcon /></Button>
 				</TabsTrigger>
 			}
 		/>
