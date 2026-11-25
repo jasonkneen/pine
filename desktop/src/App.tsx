@@ -866,7 +866,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					</span>
 					{kept && tab.session !== "main" ? <StarIcon className="text-warn" /> : null}
 					{/* No stop of its own: the tab row is one stop, and ⌘W closes the tab in front. */}
-					<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Close this tab" className={cn("size-5", !on && "opacity-0 group-hover/tab:opacity-100")} onClick={(e) => (e.stopPropagation(), s.closeTab(tab))}><XIcon /></Button>
+					<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Close this tab" className={cn("size-5", !on && "opacity-0 group-hover/tab:opacity-100")} onClick={(e) => (e.stopPropagation(), s.closeTab(tab))}><XIcon className="size-3" /></Button>
 				</TabsTrigger>
 			}
 		/>
