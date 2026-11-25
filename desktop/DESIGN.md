@@ -12,7 +12,7 @@ Where a rule is easy to get wrong, an example illustrates it; it is not the code
 
 **Compose before you write.** Every part is stock components, composed the way shadcn's docs and
 examples compose them, with their own variants, sizes and gaps. A page of a kind (settings, a
-list, an empty state, a framed block, a conversation) is the stock composition of that kind: find
+list, an empty state as `Empty`, a framed block as `Card`, a conversation) is the stock composition of that kind: find
 shadcn's example for it and follow it. A good page reads like a shadcn example with pine's words
 in it. Each part keeps its meaning: `Field` and `FieldSet` hold what is filled in, while what is
 only read is an `Item` or plain HTML (`dl`, `section`); a dialog's words are its `Description`; a
@@ -40,7 +40,9 @@ confirmation's yes is `AlertDialogAction`, with the variant the action calls for
 **The registry owns `components/ui`.** Its files are what the shadcn CLI writes for
 `components.json`, and change only through the CLI. What stock cannot say in place is a
 composition in `src/components/` that wraps the stock part; a wrapper that only renames or
-bundles stock parts has no place.
+bundles stock parts has no place. The chat components come from shadcn's registry too: AI Elements
+is shadcn's pages of patterns, to compose in pine's own files, never the `@ai-elements` registry,
+which is written on Radix.
 
 **`className` places, the component styles.** A class says what the component cannot know: how
 wide, where it aligns, whether it wraps, grows or truncates. Colour, type and spacing inside a
@@ -50,12 +52,12 @@ Classes are on Tailwind's default scale; an arbitrary value is only for what no 
 
 **Type has one base.** The root keeps the browser's 16px, each top-level part of the app (the
 window, a side bar, a panel, a page) sets `text-sm` once on its root, and nothing below sets a
-base size of its own: the stock parts carry their sizes.
+base size of its own: the stock parts carry their sizes. The one other base is the reading part's
+(see "Reading comes first").
 
-**Colour is a role.** Every colour is a semantic token, so that every theme reaches it; a raw
-colour reaches none. Where shadcn has a name for the role, use shadcn's (`bg-muted`, `bg-accent`);
-where it has none, pine adds the role to the theme (`src/index.css`), never a colour to the
-markup.
+**Colour is a role.** Where shadcn has a token for the role, use shadcn's (`bg-muted`, `bg-accent`);
+where it has none, add the role to the theme (`src/index.css`), never a colour to the markup, so
+that every theme reaches it.
 
 **Space comes from containers, and makes one rhythm.** Vertical rhythm is the stock containers'
 own gaps, nested as shadcn nests them: the deeper a level, the tighter its gap, and things at the
@@ -130,16 +132,19 @@ like a palette.
 
 **Reading comes first.** Text the owner reads at length is at the body's size; the controls
 around it stay stock. A stock behaviour that serves the reader is kept even when it looks like
-something to fix (fields at 16px on small screens, so iOS does not zoom on focus).
+something to fix: fields at 16px on small screens, so that iOS does not zoom on focus; a
+conversation that fades at the bottom only, where the newest text arrives.
 
 ```tsx
-// Do: what is read grows to the body's size; the controls around it stay stock.
-<MessageContent className="text-base leading-snug">…</MessageContent>
-<Button variant="ghost" size="sm">Copy</Button>
+// Do: the reading part sets the body's size once, on its root; the controls in it stay stock.
+<section className="text-base leading-snug">
+  <Message>…</Message>
+  <Button variant="ghost" size="sm">Copy</Button>
+</section>
 
 // Don't: the controls grown to match the text, or the text shrunk to match the controls.
 <Button variant="ghost" size="sm" className="text-base">Copy</Button>
-<MessageContent className="text-xs">…</MessageContent>
+<Message className="text-xs">…</Message>
 ```
 
 **Shapes stay put.** A part keeps its shape and its line when its state or its room changes: a
@@ -147,7 +152,7 @@ badge does not raise the line it sits on, a button that loses its label stays a 
 text keeps the form's font, items in a row stay apart enough to read as several.
 
 **Quiet over busy.** Nothing draws attention it has not earned: no focus ring where focus is
-always, no fade where nothing hides, and what runs all the time costs nearly nothing to draw
+always, and what runs all the time costs nearly nothing to draw
 (a stepped fade rather than a shimmer that repaints every frame: measure it).
 
 **Content is not chrome.** The theme colours the app, not what the app shows: a QR code, a web

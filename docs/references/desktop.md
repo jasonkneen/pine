@@ -1240,7 +1240,8 @@ desktop/
 
 The page is React with Tailwind v4 (through its Vite plugin) and shadcn's components on Base UI.
 There is no hand-written stylesheet: everything is utilities in the components, and `index.css`
-holds only tokens and base rules.
+holds only tokens and base rules. `desktop/DESIGN.md` holds the guidelines that keep it stock, for
+whoever changes the page.
 
 A button's look says what it does, the same on every page:
 
@@ -1273,7 +1274,8 @@ text color. Settings keeps to this; other parts of the page are brought to it as
   renames or bundles stock components. `src/components/` holds only a composition stock cannot
   express in place, and wraps the stock one; add one or a style override only for what stock
   cannot do.
-- Sizes and spacing are Tailwind's default scale and shadcn's defaults, never arbitrary values.
+- Sizes and spacing are Tailwind's default scale and shadcn's defaults; an arbitrary value only
+  for what no utility can say.
   The root is the browser's stock 16px and the text scale is Tailwind's own: the app's text is
   `text-sm`, set on the root of each of its parts (the window, the side bar, a conversation,
   Settings, the panels), small labels `text-xs`, and a conversation's answers, your messages and
