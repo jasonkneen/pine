@@ -111,13 +111,10 @@ shows focus with the stock ring, never one of its own. What appears on hover als
 keyboard focus, and is always shown where there is no hover (a narrow, touch screen).
 
 ```tsx
-// Do: a stock trigger, its actions shown on hover and on focus.
-<div className="group/row flex items-center">
-  <CollapsibleTrigger render={<Button variant="ghost" />}>Details</CollapsibleTrigger>
-  <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 max-md:opacity-100" aria-label="Remove"><XIcon /></Button>
-</div>
+// Do: a stock part, which brings the keyboard and the focus ring with it.
+<CollapsibleTrigger render={<Button variant="ghost" />}>Details</CollapsibleTrigger>
 
-// Don't: a clickable div, a focus outline of its own, an action only a mouse can find.
+// Don't: something only a mouse can use, with a focus of its own.
 <div onClick={toggle} className="cursor-pointer focus:outline-2">Details</div>
 ```
 
@@ -137,11 +134,13 @@ around it stay stock. A stock behaviour that serves the reader is kept even when
 something to fix (fields at 16px on small screens, so iOS does not zoom on focus).
 
 ```tsx
-// Do: long text at the body's size, the controls left as they are.
+// Do: what is read grows to the body's size; the controls around it stay stock.
 <MessageContent className="text-base leading-snug">…</MessageContent>
+<Button variant="ghost" size="sm">Copy</Button>
 
-// Don't: "fix" stock's text-base md:text-sm on a field.
-<Input className="text-sm" />
+// Don't: the controls grown to match the text, or the text shrunk to match the controls.
+<Button variant="ghost" size="sm" className="text-base">Copy</Button>
+<MessageContent className="text-xs">…</MessageContent>
 ```
 
 **Shapes stay put.** A part keeps its shape and its line when its state or its room changes: a
