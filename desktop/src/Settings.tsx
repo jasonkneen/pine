@@ -97,7 +97,7 @@ function About({ text }: { text: string }) {
 		<>
 			<span className="block">{first}</span>
 			{values.length === rest.length && values.length ? (
-				<span className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+				<span className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
 					{values.map((m) => (
 						<Fragment key={m[1]}>
 							<span className="font-medium text-foreground">{m[1]}</span>
