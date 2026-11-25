@@ -133,7 +133,8 @@ test("the side bar is the agents: one made elsewhere appears, a group folds away
 	await menu("events");
 	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=Events");
 	await menu("new");
-	await sees("[data-slot=dialog-title] >> text=New conversation with");
+	await sees("[cmdk-group-heading] >> text=New conversation with");
+	assert.ok(((await page.locator("[data-slot=dialog-content] [data-slot=command-input]").boundingBox())?.width ?? 0) > 100, "a short list has its field in sight too");
 	assert.deepEqual(await page.$$eval("[data-slot=command-item] > :first-child", (els: Element[]) => els.map((e) => e.textContent)), ["main", "scout", "test"]);
 	await page.keyboard.press("Escape");
 	await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
@@ -240,7 +241,7 @@ test("a right click on an agent renames it in place, colors it, and offers to re
 	assert.deepEqual(await shown("spare-hands", "remove"), ["Open", "Open in New Window", "Move to Group…", "Start over…", "New conversation with spare-hands", "Open a folder with spare-hands…", "New Group…", "Rename…", "Color…", "Agent settings…", "Remove spare-hands…"]);
 	// It asks first, and how: nothing is removed by the menu alone.
 	// It is an alert dialog: it does not go away with a stray click beside it.
-	await sees("[role=alertdialog] [data-slot=alert-dialog-title] >> text=Remove the agent spare-hands?");
+	await sees("[role=alertdialog] [cmdk-group-heading] >> text=Remove the agent spare-hands?");
 	await page.mouse.click(5, 5);
 	await sees("[role=alertdialog]");
 	assert.ok(fs.existsSync(path.join(home, "agents", "spare-hands", "agent.json")));
@@ -351,7 +352,7 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 
 	// Removing the group asks first, and takes its conversations with it.
 	await choose(group("Okapi 2026").locator("[data-slot=group-label]"), "remove");
-	await sees("[role=alertdialog] [data-slot=alert-dialog-title] >> text=Remove the group Okapi 2026 and the 3 conversations in it for good?");
+	await sees("[role=alertdialog] [cmdk-group-heading] >> text=Remove the group Okapi 2026 and the 3 conversations in it for good?");
 	await page.click("[data-slot=command-item]:has-text('Remove them for good')");
 	await sees("[data-slot=toast] >> text=Removed the group Okapi 2026 with 3 conversations.");
 	await group("Okapi 2026").waitFor({ state: "detached" });
@@ -509,10 +510,10 @@ test("a conversation moves into a worktree of its folder: the chip names the bra
 	// The folder has a change that is not committed (the setup made it).
 	const uncommitted = fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8");
 	await app.evaluate(({ BrowserWindow }: any, dir: string) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", `folder:${dir}`), folder);
-	await confirm(":is([data-slot=dialog-title], [data-slot=alert-dialog-title]) >> text=Which agent works in");
+	await confirm("[cmdk-group-heading] >> text=Which agent works in");
 	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=pine-desktop-folder");
 	await menu("worktree");
-	await confirm(":is([data-slot=dialog-title], [data-slot=alert-dialog-title]) >> text=Work in a worktree?");
+	await confirm("[cmdk-group-heading] >> text=Work in a worktree?");
 	await sees("[data-slot=conversation-head] [data-worktree] >> text=pine/");
 	const branch = (await page.textContent("[data-slot=conversation-head] [data-worktree]"))!.trim();
 	const tree = path.join(folder, ".pine", "worktrees", branch.slice(5));
@@ -534,14 +535,14 @@ test("a conversation moves into a worktree of its folder: the chip names the bra
 	await sees("[data-slot=code-panel] >> text=1 ahead of");
 	await shot("16-worktree");
 	await page.locator("[data-slot=code-panel]").getByRole("button", { name: "Merge…" }).click();
-	await confirm(":is([data-slot=dialog-title], [data-slot=alert-dialog-title]) >> text=1 commit ahead of");
+	await confirm("[cmdk-group-heading] >> text=1 commit ahead of");
 	await sees("[data-slot=toast] >> text=merged into");
 	assert.equal(fs.readFileSync(path.join(folder, "WORKTREE.md"), "utf8"), "made apart\n");
 	assert.equal(fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8"), uncommitted, "what was not committed in the folder stayed");
 
 	// Discarded once merged: the folder's chip is back.
 	await menu("worktree");
-	await confirm(":is([data-slot=dialog-title], [data-slot=alert-dialog-title]) >> text=ahead of");
+	await confirm("[cmdk-group-heading] >> text=ahead of");
 	await sees("[data-slot=conversation-head] [data-folder] >> text=pine-desktop-folder");
 	assert.ok(!fs.existsSync(tree));
 
@@ -864,7 +865,7 @@ test("what was typed in a file and not saved stays when the panel becomes a shee
 	try {
 		// The folder's conversation from before is in a worktree by now: a new one in the folder itself.
 		await menu(`folder:${folder}`);
-		await confirm(":is([data-slot=dialog-title], [data-slot=alert-dialog-title]) >> text=Which agent works in");
+		await confirm("[cmdk-group-heading] >> text=Which agent works in");
 		await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=pine-desktop-folder");
 		await menu("code-files");
 		await sees("[data-slot=code-panel]");

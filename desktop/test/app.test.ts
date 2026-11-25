@@ -365,6 +365,9 @@ test("a model is chosen from its picker with the keyboard alone, and focus goes 
 	await page.keyboard.press("Enter");
 	await sees("[data-slot=dialog-content] [role=listbox] [role=option]");
 	await named(/mock\/m/);
+	// Its title shows above its models, and its field is there to be seen, however short the list.
+	await sees("[data-slot=dialog-content] [cmdk-group-heading] >> text=Model for main");
+	assert.ok(((await page.locator("[data-slot=dialog-content] [data-slot=command-input]").boundingBox())?.width ?? 0) > 100, "the field is seen");
 	// It is announced by its title.
 	assert.match(await announced("[data-slot=dialog-content]"), /^Model for main/);
 	// Its models are options in a list, the one in use marked active, and Tab stays inside.
@@ -923,7 +926,7 @@ test("a folder is opened for a conversation: changes, and a file edited and save
 	// As the system does it when a folder is dropped on the app's icon.
 	await app.evaluate(({ BrowserWindow }: any, dir: string) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", `folder:${dir}`), folder);
 	// With several agents the app asks whose folder it is; the one in front is offered first.
-	await confirm("[data-slot=dialog-title] >> text=Which agent works in");
+	await confirm("[cmdk-group-heading] >> text=Which agent works in");
 	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=pine-desktop-folder");
 	await page.click(CODE_TOGGLE);
 	// The panel opens on the files; its Agent view says who the agent is and what it runs on.
@@ -1223,7 +1226,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	assert.match(fs.readFileSync(path.join(home, "auth.json"), "utf8"), /opencode/);
 	// A sign-in changes no agent's model, so the dialog offers the new ones for all agents.
 	await page.locator("[data-slot=dialog-content]").getByRole("button", { name: "Choose the model your agents run on" }).click();
-	await sees("[data-slot=dialog-title] >> text=Model for all agents without a model of their own");
+	await sees("[cmdk-group-heading] >> text=Model for all agents without a model of their own");
 	const offered = await page.$$eval("[data-slot=command-item] > :first-child", (els: Element[]) => els.map((e) => e.textContent ?? ""));
 	assert.ok(offered.length > 0 && offered.every((m) => m.startsWith("opencode/")), JSON.stringify(offered.slice(0, 5)));
 	await page.click("[data-slot=command-item] >> nth=0");
@@ -1244,7 +1247,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await sees("[data-slot=settings-page] h1 >> text=Models");
 	// "Change" offers every model that can be used now.
 	await page.locator("[data-setting=fallback-model]").getByRole("button", { name: "Change" }).click();
-	await sees("[data-slot=dialog-title] >> text=Model for all agents without a model of their own");
+	await sees("[cmdk-group-heading] >> text=Model for all agents without a model of their own");
 	await page.getByRole("option", { name: "mock/m" }).click();
 	await sees("[data-slot=toast] >> text=Your agents now run on mock/m");
 	await page.waitForSelector("[data-slot=settings-page] [data-slot=model-notice]", { state: "detached" });

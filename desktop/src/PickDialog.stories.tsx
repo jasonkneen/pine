@@ -23,15 +23,18 @@ export const PickDialog: Story = {
 	},
 };
 
-/** Opened at once while what it lists is asked for: skeleton lines. */
+/** Opened at once while what it lists is asked for: skeleton lines under its title. */
 export const PickDialogLoading: Story = { args: { p: { title: "Model for main", loading: true, items: [], done: () => {} } } };
 
-/** A long list gets a field that narrows it. */
-export const PickDialogTyped: Story = {
+/** A longer list, narrowed by the field every picker has. */
+export const PickDialogLong: Story = {
 	args: { p: { title: "New conversation with", done: () => {}, items: ["main", "scout", "books", "home", "mail", "notes", "news", "garden"].map((id) => ({ value: id, label: id, about: `the agent ${id}` })) } },
 };
 
-/** A choice that cannot be taken back makes it an alert dialog. */
+/** A name of the owner's own, taken with Enter: no list under the title. */
+export const PickDialogFree: Story = { args: { p: { title: "Rename the conversation", placeholder: "The new name", free: true, items: [], done: () => {} } } };
+
+/** A choice that cannot be taken back makes it an alert dialog, drawn like the others. */
 export const PickDialogRemoving: Story = {
 	args: {
 		p: {
