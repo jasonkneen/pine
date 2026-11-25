@@ -80,6 +80,14 @@ test("the Board tab appears with a conversation's board and shows who has what; 
 	assert.match(await note.innerText(), /The reference is tokens\.css <b>not bold<\/b>/);
 	assert.equal(await note.locator("b").count(), 0);
 	await shot("board-blocked");
+	// A task opens by the keyboard too: its text is a button that says whether it is open, and opened it shows its result.
+	const title = page.locator(`${panel} [data-task="1"]`).getByRole("button", { name: /check folder a/ });
+	assert.equal(await title.getAttribute("aria-expanded"), "false");
+	assert.doesNotMatch(await page.locator(`${panel} [data-task="1"]`).innerText(), /a is consistent/);
+	await title.focus();
+	await page.keyboard.press("Enter");
+	await sees(`${panel} [data-task="1"] [aria-expanded=true]`);
+	assert.match(await page.locator(`${panel} [data-task="1"]`).innerText(), /a is consistent/);
 
 	// The owner answers the task that waits for them: it is open again, with the answer as a note on it.
 	await page.fill(`${panel} input[aria-label="Answer task 2"]`, "teal");
@@ -100,6 +108,15 @@ test("the Board tab appears with a conversation's board and shows who has what; 
 	await page.getByRole("menuitem", { name: "Remove" }).click();
 	await added.waitFor({ state: "detached" });
 	assert.deepEqual((await call("GET", "/boards/1")).data.tasks.map((t: any) => [t.id, t.state]), [[1, "done"], [2, "open"]]);
+
+	// Clear asks first; its Remove takes the board away and closes the question.
+	await page.locator(`${panel} [data-slot=board-bar]`).getByRole("button", { name: "Clear" }).click();
+	const question = page.locator("[data-slot=alert-dialog-content]", { hasText: "Remove this board?" });
+	await question.getByRole("button", { name: "Remove" }).click();
+	await question.waitFor({ state: "detached" });
+	await sees(`${panel} >> text=No board yet`);
+	const left = (await call("GET", "/boards")).data;
+	assert.deepEqual((Array.isArray(left) ? left : left.boards).map((b: any) => b.id), []);
 });
 
 test("/swarm in the input starts a swarm: the conversation says what pine does about it, its work is on the Board tab, and one that is paused shows above the input", async () => {

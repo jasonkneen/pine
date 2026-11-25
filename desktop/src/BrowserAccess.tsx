@@ -7,12 +7,13 @@ import { LaptopIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useInterval } from "usehooks-ts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -61,6 +62,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 	const [service, setService] = useState(state.service);
 	const [serviceError, setServiceError] = useState<string>();
 	const [turningOn, setTurningOn] = useState(false);
+	const [removing, setRemoving] = useState<string>();
 	const [login, setLogin] = useState(true);
 	const [error, setError] = useState<string>();
 	useEffect(() => setService(state.service), [state.service]);
@@ -142,10 +144,12 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					</Field>
 					<Field data-setting="access-service" data-invalid={serviceError ? true : undefined}>
 						<FieldLabel htmlFor={`${field}-service`}>Service address</FieldLabel>
-						<div className="flex items-center gap-2">
-							<Input id={`${field}-service`} className="font-mono" placeholder="https://" value={service} aria-invalid={serviceError ? true : undefined} onChange={(e) => setService(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void saveService()} />
-							<Button variant="outline" disabled={service.trim() === state.service} onClick={() => void saveService()}>Save</Button>
-						</div>
+						<InputGroup>
+							<InputGroupInput id={`${field}-service`} className="font-mono" placeholder="https://" value={service} aria-invalid={serviceError ? true : undefined} onChange={(e) => setService(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void saveService()} />
+							<InputGroupAddon align="inline-end">
+								<InputGroupButton variant="outline" disabled={service.trim() === state.service} onClick={() => void saveService()}>Save</InputGroupButton>
+							</InputGroupAddon>
+						</InputGroup>
 						<FieldDescription>Where browsers open the web client and find this {computer}. Changing it makes the paired browsers that use the old address pair again.</FieldDescription>
 						{serviceError ? <FieldError>{serviceError}</FieldError> : null}
 					</Field>
@@ -167,7 +171,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 									<ItemDescription className="line-clamp-none">{deviceLine(d, now)}</ItemDescription>
 								</ItemContent>
 								<ItemActions>
-									<AlertDialog>
+									<AlertDialog open={removing === d.id} onOpenChange={(open) => setRemoving(open ? d.id : undefined)}>
 										<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Remove</AlertDialogTrigger>
 										<AlertDialogContent>
 											<AlertDialogHeader>
@@ -176,7 +180,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 											</AlertDialogHeader>
 											<AlertDialogFooter>
 												<AlertDialogCancel>Cancel</AlertDialogCancel>
-												<AlertDialogCancel variant="destructive" onClick={() => actions.remove(d.id)}>Remove</AlertDialogCancel>
+												<AlertDialogAction variant="destructive" onClick={() => (setRemoving(undefined), actions.remove(d.id))}>Remove</AlertDialogAction>
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
@@ -190,9 +194,9 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 			</Section>
 
 			{/* A set of its own: inside the group of This Mac, its fields were drawn with no height once the try's line appeared. */}
-			<Section title="Relay server (TURN)" about="Used when no direct connection can be made, for example from some mobile networks. Leave it empty if you have none." data-setting="access-relay" data-invalid={relayError ? true : undefined}>
+			<Section title="Relay server (TURN)" about="Used when no direct connection can be made, for example from some mobile networks. Leave it empty if you have none." data-setting="access-relay">
 				<FieldGroup>
-					<Field>
+					<Field data-invalid={relayError ? true : undefined}>
 						<FieldLabel htmlFor={`${field}-relay`}>Address</FieldLabel>
 						<Input id={`${field}-relay`} data-slot="relay-address" className="font-mono" placeholder="turn:relay.example.com:3478" autoComplete="off" spellCheck={false} value={relay.address} aria-invalid={relayError ? true : undefined} onChange={(e) => setRelay({ ...relay, address: e.target.value })} />
 					</Field>
@@ -204,10 +208,11 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						<FieldLabel htmlFor={`${field}-relay-password`}>Password</FieldLabel>
 						<Input id={`${field}-relay-password`} data-slot="relay-password" type="password" autoComplete="new-password" placeholder={passwordHint} value={relay.password} onChange={(e) => setRelay({ ...relay, password: e.target.value })} onKeyDown={(e) => e.key === "Enter" && relayChanged && void saveRelay()} />
 					</Field>
-					<div>
+					{/* Save, and beside it how the relay was tried: a failed try is said as an error, like a refused save. */}
+					<Field orientation="horizontal">
 						<Button variant="outline" disabled={!relayChanged} onClick={() => void saveRelay()}>Save</Button>
-					</div>
-					{relayError ? <FieldError>{relayError}</FieldError> : check ? <FieldDescription data-slot="relay-check" data-result={check.result} className="data-[result=failed]:text-destructive">{check.message}</FieldDescription> : null}
+						{relayError ? <FieldError>{relayError}</FieldError> : check?.result === "failed" ? <FieldError data-slot="relay-check" data-result={check.result}>{check.message}</FieldError> : check ? <FieldDescription data-slot="relay-check" data-result={check.result}>{check.message}</FieldDescription> : null}
+					</Field>
 				</FieldGroup>
 			</Section>
 
@@ -225,7 +230,8 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						</Field>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogCancel variant="default" onClick={() => change({ enabled: true, openAtLogin: login })}>Turn on</AlertDialogCancel>
+							{/* (Base UI's action does not close the dialog by itself.) */}
+							<AlertDialogAction onClick={() => (setTurningOn(false), change({ enabled: true, openAtLogin: login }))}>Turn on</AlertDialogAction>
 						</AlertDialogFooter>
 					</div>
 				</AlertDialogContent>

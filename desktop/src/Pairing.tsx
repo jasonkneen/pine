@@ -103,7 +103,7 @@ export function NearbyComputers({ found, device, onPick }: { found: NearbyFound;
 					))}
 				</ItemGroup>
 			) : (
-				<Empty data-slot="pair-nearby-empty" className="border p-4 md:p-4">
+				<Empty data-slot="pair-nearby-empty" className="border">
 					<EmptyHeader>
 						<EmptyMedia><Spinner /></EmptyMedia>
 						<EmptyDescription>No computer found on this network yet. Pine must be open, with Browser access on.</EmptyDescription>

@@ -3,11 +3,12 @@
 // has which task and what was found, adds a task, takes one back, answers one that waits for them.
 // Everything is read and changed through the control API. What is on a board was written by agents
 // (and can repeat outside content): it is drawn as plain text, never as markup.
-import { CircleCheckIcon, CircleDotIcon, CircleHelpIcon, CircleIcon, CircleXIcon, ClipboardListIcon, EllipsisIcon, HourglassIcon, PlusIcon, SendIcon, StickyNoteIcon } from "lucide-react";
+import { CircleCheckIcon, CircleHelpIcon, CircleIcon, CircleXIcon, ClipboardListIcon, EllipsisIcon, HourglassIcon, PlusIcon, SendIcon, StickyNoteIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
@@ -33,7 +34,7 @@ export function taskLine(t: BoardItem): string {
 }
 
 function TaskIcon({ task }: { task: BoardItem }) {
-	if (task.state === "taken") return <CircleDotIcon className="animate-pulse text-primary" />;
+	if (task.state === "taken") return <Pulse label="In progress" className="bg-primary" />;
 	if (task.state === "done") return <CircleCheckIcon className="text-primary" />;
 	if (task.state === "failed") return <CircleXIcon className="text-destructive" />;
 	if (task.state === "blocked") return <CircleHelpIcon className="text-warn" />;
@@ -89,8 +90,8 @@ function Fields({ data }: { data?: Record<string, unknown> }) {
 	return (
 		<span className="flex flex-wrap gap-1">
 			{fields.map(([k, v]) => (
-				<Badge variant="outline" key={k} className="max-w-full font-mono">
-					<span className="truncate">{fieldText(k, v)}</span>
+				<Badge variant="outline" key={k} className="max-w-full">
+					<span className="truncate font-mono">{fieldText(k, v)}</span>
 				</Badge>
 			))}
 		</span>
@@ -116,28 +117,33 @@ export function BoardList({ view, actions }: { view: BoardView; actions: BoardAc
 						{view.tasks.map((t) => {
 							const shown = open.has(t.id) || t.state === "blocked";
 							const about = notesOf(t.id);
+							const result = t.result ? <p className="text-xs whitespace-pre-wrap text-muted-foreground select-text">{t.result}</p> : null;
 							return (
 								<Item size="sm" key={t.id} data-task={t.id} data-state={t.state}>
 									<ItemMedia variant="icon">
 										<TaskIcon task={t} />
 									</ItemMedia>
-									<ItemContent>
-										<ItemTitle className="w-full cursor-default select-text" onClick={() => toggle(t.id)}>
+									{/* The task's text opens the rest of it, by a click or the keyboard. A task that waits for the owner stays open. */}
+									<Collapsible open={shown} onOpenChange={() => t.state !== "blocked" && toggle(t.id)} render={<ItemContent />}>
+										<CollapsibleTrigger nativeButton={false} render={<ItemTitle className="w-full cursor-default rounded-sm text-left outline-none select-text focus-visible:ring-3 focus-visible:ring-ring/50" />}>
 											<span className={shown ? "whitespace-pre-wrap" : "line-clamp-2"}>
 												<span className="text-faint">#{t.id}</span> {t.text}
 											</span>
-										</ItemTitle>
+										</CollapsibleTrigger>
 										<ItemDescription>
 											{taskLine(t)}
 											{t.by === "owner" ? " · yours" : null}
 											{about.length ? ` · ${plural(about.length, "note")}` : null}
 										</ItemDescription>
 										{t.outside ? <Badge variant="outline">from outside content</Badge> : null}
-										{shown ? <Fields data={t.data} /> : null}
-										{t.result && (shown || t.state === "failed") ? <p className="text-xs whitespace-pre-wrap text-muted-foreground select-text">{t.result}</p> : null}
-										{shown ? about.map((n) => <Note note={n} key={n.id} />) : null}
+										<CollapsibleContent className="flex flex-col gap-1">
+											<Fields data={t.data} />
+											{result}
+											{about.map((n) => <Note note={n} key={n.id} />)}
+										</CollapsibleContent>
+										{!shown && t.state === "failed" ? result : null}
 										{t.state === "blocked" ? <Entry label={`Answer task ${t.id}`} placeholder="Your answer" icon={SendIcon} send={(text) => actions.act(t.id, "answer", text)} /> : null}
-									</ItemContent>
+									</Collapsible>
 									<ItemActions>
 										<DropdownMenu>
 											<DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`What to do with task ${t.id}`} />}>
@@ -211,6 +217,7 @@ function countsLine(b: BoardBrief): string {
 export function BoardTab({ tab }: { tab: Tab }) {
 	useModel(tab);
 	const [picked, setPicked] = useState<number>();
+	const [clearing, setClearing] = useState(false);
 	useEffect(() => setPicked(undefined), [tab.key]);
 	const board = tab.boards.find((b) => b.id === picked) ?? tab.boards[0];
 	const view = useLoad(async () => (board ? await api.board(board.id) : undefined), [tab.key, board?.id, tab.boardTick]);
@@ -264,7 +271,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 					<span className="text-foreground">{boardLabel(board)}</span>
 				)}
 				<span className="min-w-0 flex-1 truncate">{countsLine(board)}</span>
-				<AlertDialog>
+				<AlertDialog open={clearing} onOpenChange={setClearing}>
 					<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Clear</AlertDialogTrigger>
 					<AlertDialogContent>
 						<AlertDialogHeader>
@@ -273,9 +280,10 @@ export function BoardTab({ tab }: { tab: Tab }) {
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.boardRemove(board.id)).then(done)}>
+							{/* (Base UI's action does not close the dialog by itself.) */}
+							<AlertDialogAction variant="destructive" onClick={() => (setClearing(false), void store.attempt(() => api.boardRemove(board.id)).then(done))}>
 								Remove
-							</AlertDialogCancel>
+							</AlertDialogAction>
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>

@@ -175,6 +175,7 @@ test("Settings > Browser access through the window: turned on with open at login
 	await page.locator(`${section} [data-slot=access-switch]`).click();
 	await sees("[data-slot=access-turn-on] [data-slot=checkbox][data-checked]");
 	await page.locator("[data-slot=access-turn-on]").getByRole("button", { name: "Turn on" }).click();
+	await page.waitForSelector("[data-slot=access-turn-on]", { state: "detached" });
 	await sees(`${section} [data-slot=access-status] >> text=waiting`);
 	assert.equal((await bridge("access")).openAtLogin, true);
 	assert.deepEqual((await noted()).login.at(-1), { openAtLogin: true });
@@ -203,6 +204,7 @@ test("Settings > Browser access through the window: turned on with open at login
 	// Remove asks once, then the device is gone.
 	await page.locator(`${section} [data-slot=access-device]`).getByRole("button", { name: "Remove" }).click();
 	await page.locator("[data-slot=alert-dialog-content]").getByRole("button", { name: "Remove" }).click();
+	await page.waitForSelector("[data-slot=alert-dialog-content]", { state: "detached" });
 	await page.waitForSelector(`${section} [data-slot=access-device]`, { state: "detached" });
 	assert.deepEqual((await bridge("access")).devices, []);
 

@@ -195,6 +195,11 @@ test("the agent's browser is shown in an aside of its own as a picture, and what
 		assert.equal(ops().filter((o) => o.do === "text").map((o) => o.text).join(""), "okapi");
 		assert.ok(ops().filter((o) => o.do === "text").length < 5, "letters are not sent one by one");
 		assert.deepEqual(ops().filter((o) => o.do === "key").map((o) => o.key), ["Enter", "ControlOrMeta+KeyA"]);
+		// Reached by the keyboard from the address, the picture shows that keys go to it.
+		await page.focus("[data-slot=browser] input[aria-label=Address]");
+		await page.keyboard.press("Tab");
+		assert.equal(await page.evaluate(() => document.activeElement?.tagName), "CANVAS");
+		assert.notEqual(await page.$eval("[data-slot=browser] canvas", (c: Element) => getComputedStyle(c).boxShadow), "none", "the picture shows no focus");
 		// The wheel adds up, a tab is chosen by a click, back is a button.
 		await page.mouse.wheel(0, 120);
 		await page.mouse.wheel(0, 120);

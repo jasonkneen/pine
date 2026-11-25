@@ -287,12 +287,13 @@ export function BrowserView({ tab }: { tab: Tab }) {
 				<HostedPage room={inApp} index={state?.current ?? 0} title={front?.title} refused={() => setNoPage(true)} />
 			) : open ? (
 				<ScrollArea ref={room} className="flex min-h-0 flex-1 flex-col bg-accent *:data-[slot=scroll-area-viewport]:scroll-fade">
-					{/* The page keeps its shape: as wide as the panel, and scrolled down to when it is taller than the room. */}
+					{/* The page keeps its shape: as wide as the panel, and scrolled down to when it is taller than the room. White under
+					    it, as a web page is where it says no color of its own. Reached by the keyboard, it shows the stock focus ring. */}
 					<canvas
 						ref={canvas}
 						tabIndex={0}
 						data-drawn={drawn || undefined}
-						className={cn("block h-auto w-full cursor-default bg-white outline-none", !drawn && "invisible")}
+						className={cn("block h-auto w-full cursor-default bg-white ring-ring/50 ring-inset outline-none focus-visible:ring-3", !drawn && "invisible")}
 						title={front?.title}
 						onMouseDown={(e) => {
 							e.currentTarget.focus();
@@ -342,7 +343,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 							<EmptyDescription>Running in this conversation</EmptyDescription>
 							{running.map((r) => (
 								<HoverTooltip key={r.port}>
-									<TooltipTrigger render={<Button variant="link" size="xs" className="max-w-full font-mono" disabled={busy} onClick={() => void go(`http://localhost:${r.port}`)} />}><span className="truncate">localhost:{r.port}</span></TooltipTrigger>
+									<TooltipTrigger render={<Button variant="link" size="xs" className="max-w-full" disabled={busy} onClick={() => void go(`http://localhost:${r.port}`)} />}><span className="truncate font-mono">localhost:{r.port}</span></TooltipTrigger>
 									<TooltipContent>{r.command}</TooltipContent>
 								</HoverTooltip>
 							))}
@@ -354,7 +355,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 							{/* (An address is text an agent chose: drawn as text, whole in the tooltip, and opened only by this click.) */}
 							{visited.map((url) => (
 								<HoverTooltip key={url}>
-									<TooltipTrigger render={<Button variant="link" size="xs" className="max-w-full font-mono" disabled={busy} onClick={() => void go(url)} />}><span className="truncate">{url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span></TooltipTrigger>
+									<TooltipTrigger render={<Button variant="link" size="xs" className="max-w-full" disabled={busy} onClick={() => void go(url)} />}><span className="truncate font-mono">{url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span></TooltipTrigger>
 									<TooltipContent>{url}</TooltipContent>
 								</HoverTooltip>
 							))}
@@ -362,7 +363,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					) : null}
 				</Empty>
 			)}
-			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-line-soft px-2.5 py-1 text-xs text-faint"><ShieldIcon size={11} /><span className="truncate">The agent's browser, behind pine's guard. What you do here, the agent sees when it next looks.</span></div> : null}
+			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-line-soft px-2.5 py-1 text-xs text-faint"><ShieldIcon className="size-3 shrink-0" /><span className="truncate">The agent's browser, behind pine's guard. What you do here, the agent sees when it next looks.</span></div> : null}
 		</div>
 	);
 }

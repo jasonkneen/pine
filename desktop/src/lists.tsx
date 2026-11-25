@@ -5,6 +5,7 @@
 // the palette and of the pick dialog are cmdk's (shadcn's Command): `useNamedLine` names their chosen line.
 
 import { useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 
 /** The props every keyboard list shares: Enter or a click opens a row, and no row stays selected (what is open is the app's state, shown by `rowClass`). */
 export const LISTBOX = { activation: "manual", value: null } as const;
@@ -25,7 +26,8 @@ export const TREE_ITEM = "outline-none";
  * the row that has the keyboard shows it, also where the focus is on the tree's item around it (`TREE_ITEM`).
  */
 export function rowClass(on?: boolean) {
-	return `flex h-7 flex-none items-center gap-2 whitespace-nowrap px-2.5 text-xs outline-primary/60 -outline-offset-2 focus-visible:outline-2 [[data-slot=tree-item]:focus-visible>&]:outline-2 ${on ? "bg-accent font-medium" : "hover:bg-accent"}`;
+	// The focus is drawn as stock controls draw it: a ring, inside the row so that the next row does not cover it.
+	return cn("flex h-7 flex-none items-center gap-2 px-2.5 text-xs whitespace-nowrap ring-ring/50 outline-none ring-inset focus-visible:ring-3 [[data-slot=tree-item]:focus-visible>&]:ring-3", on ? "bg-accent font-medium" : "hover:bg-accent");
 }
 
 /** A value no line has: the list starts with no line chosen, until useNamedLine chooses one. */

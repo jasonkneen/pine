@@ -12,7 +12,6 @@ import { useLoad } from "./use-load.ts";
 import { Pulse } from "@/components/pulse";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FieldLegend, FieldSet } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Printed } from "@/components/printed";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -22,8 +21,8 @@ import type { ReactNode } from "react";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 
 const NONE = "px-3.5 py-0.5 text-faint wrap-anywhere";
-/** A section's title over its rows: stock FieldSet and FieldLegend, as the settings sections are. */
-const SECTION = "min-w-0 gap-0";
+/** A section: its title over its rows. A heading, not a FieldSet: the rows are read, there is nothing in them to fill in. */
+const SECTION = "flex min-w-0 flex-col";
 const TITLE = "mt-1.5 mb-1 flex min-h-6 w-full items-center gap-2 pr-2 pl-3.5 text-xs font-semibold text-faint";
 
 /**
@@ -33,12 +32,12 @@ const TITLE = "mt-1.5 mb-1 flex min-h-6 w-full items-center gap-2 pr-2 pl-3.5 te
  */
 export function AgentSection({ title, count, action, skeleton = false, error, children }: { title: ReactNode; count?: number; action?: ReactNode; skeleton?: boolean; error?: string; children?: ReactNode }) {
 	return (
-		<FieldSet className={SECTION} data-slot="agent-section">
-			<FieldLegend className={TITLE}>
+		<section className={SECTION} data-slot="agent-section">
+			<h3 className={TITLE}>
 				{title}
 				{skeleton ? <Skeleton className="h-4 w-5" /> : count !== undefined && !error ? <Badge variant="secondary">{count}</Badge> : null}
 				{action ? <><span className="min-w-0 flex-1" />{action}</> : null}
-			</FieldLegend>
+			</h3>
 			{skeleton ? (
 				<div className="flex flex-col gap-2 px-3.5 py-1">
 					<Skeleton className="h-4 w-2/3" />
@@ -47,7 +46,7 @@ export function AgentSection({ title, count, action, skeleton = false, error, ch
 			) : error ? (
 				<Alert variant="destructive" className="mx-3.5 w-auto"><TriangleAlertIcon /><AlertDescription className="wrap-anywhere">{error}</AlertDescription></Alert>
 			) : children}
-		</FieldSet>
+		</section>
 	);
 }
 
@@ -99,10 +98,10 @@ export function AgentView({ tab }: { tab: Tab }) {
 			</div>
 
 			{tab.busy || helpers.length || elsewhere.length ? (
-				<FieldSet className={SECTION}>
+				<section className={SECTION}>
 					{/* Each ItemMedia here is an icon's box (size-4): ItemMedia puts its content at the top beside a title with a
 					   description, and a dot smaller than an icon would sit above the middle of the title's line. */}
-					<FieldLegend className={TITLE}>At work</FieldLegend>
+					<h3 className={TITLE}>At work</h3>
 					{tab.busy ? (
 						<Item size="xs">
 							<ItemMedia className="size-4"><Pulse /></ItemMedia>
@@ -132,7 +131,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 							<ItemActions><Badge variant="secondary">open</Badge></ItemActions>
 						</Item>
 					))}
-				</FieldSet>
+				</section>
 			) : null}
 
 			{
