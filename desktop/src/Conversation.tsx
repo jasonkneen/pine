@@ -1109,7 +1109,7 @@ function BookmarkJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | n
  * work, the notes and the requests keep. The stock Message and Bubble Content set their own size, so it is
  * said to them by their slot.
  */
-const TRANSCRIPT = "mx-auto max-w-3xl px-7 pt-7 pb-4 [&_[data-slot=bubble-content]]:text-base [&_[data-slot=bubble-content]]:leading-snug [&_[data-slot=message]]:text-base [&_[data-slot=message]]:leading-snug";
+const TRANSCRIPT = "mx-auto max-w-3xl px-7 pt-7 pb-6 [&_[data-slot=bubble-content]]:text-base [&_[data-slot=bubble-content]]:leading-snug [&_[data-slot=message]]:text-base [&_[data-slot=message]]:leading-snug";
 
 export function Conversation({ tab }: { tab: Tab }) {
 	useModel(tab);
