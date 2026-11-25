@@ -312,6 +312,15 @@ test("a message is answered, with the turn's work folded into a line", async () 
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "data-href"), "https://example.com/docs");
 	assert.match(await page.textContent("[data-slot=markdown] [data-href] + [data-target]"), /example\.com\/docs/);
 	assert.equal(await page.$$eval("[data-slot=markdown] a[href]", (els: Element[]) => els.length), 0);
+	// It is a link from the keyboard too: it takes the focus, and Enter opens it in the browser.
+	await page.focus("[data-slot=markdown] [data-href]");
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-href")), "https://example.com/docs");
+	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "role"), "link");
+	await page.keyboard.press("Enter");
+	await app.evaluate(async () => {
+		for (let i = 0; i < 100 && !((globalThis as any).opened ?? []).includes("https://example.com/docs"); i++) await new Promise((r) => setTimeout(r, 20));
+	});
+	assert.ok((await app.evaluate(() => ((globalThis as any).opened ?? []) as string[])).includes("https://example.com/docs"));
 	// A folded part is there and closed.
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-details] [data-slot=collapsible-trigger]", "aria-expanded"), "false");
 	// Code is colored on the page, with its language and a copy button, and nothing to download.
@@ -534,6 +543,15 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 		window.getSelection()!.removeAllRanges();
 		window.getSelection()!.addRange(range);
 	});
+	// The bar is a popover over the words it is about: above them, across them, and it leaves the focus where it was.
+	await sees("[data-slot=popover-content] [data-slot=selection-toolbar]");
+	const focused = await page.evaluate(() => document.activeElement?.tagName);
+	await page.waitForFunction(() => {
+		const bar = document.querySelector("[data-slot=popover-content]:has([data-slot=selection-toolbar])")?.getBoundingClientRect();
+		const words = window.getSelection()!.getRangeAt(0).getClientRects()[0];
+		return Boolean(bar && words && bar.bottom <= words.top && bar.bottom > words.top - 24 && bar.left < words.right && bar.right > words.left);
+	});
+	assert.equal(await page.evaluate(() => document.activeElement?.tagName), focused);
 	await page.locator("[data-slot=selection-toolbar]").getByRole("button", { name: "Quote" }).click();
 	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
 	assert.equal(await page.$("[data-slot=selection-toolbar]"), null);
@@ -733,6 +751,17 @@ test("a shell block of an answer runs in the conversation's terminal with its bu
 	await shot("02c-terminal");
 	await menu("code");
 	await page.waitForSelector("[data-slot=code-panel]", { state: "detached" });
+});
+
+test("while the model thinks, its thinking is open and shows its end; once done, it folds", async () => {
+	const reasoning = Array.from({ length: 60 }, (_, i) => `thinking line ${i + 1}`).join("\n");
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ reasoning, reasoningHoldMs: 1500, text: "THOUGHT-DONE" }], "think "));
+	await page.keyboard.press("Enter");
+	const box = "[data-part=thought] [aria-label=Thinking]";
+	await sees(`${box} >> text=thinking line 60`);
+	await page.waitForFunction((s: string) => { const el = document.querySelector(s); return Boolean(el && el.scrollHeight > el.clientHeight + 100 && el.scrollHeight - el.scrollTop - el.clientHeight < 2); }, box);
+	await sees("[data-slot=markdown] >> text=THOUGHT-DONE");
+	await page.waitForSelector(box, { state: "detached" });
 });
 
 test("a folded part that was opened stays open while the answer goes on", async () => {

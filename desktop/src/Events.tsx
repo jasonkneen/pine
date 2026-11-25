@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
+import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Printed } from "@/components/printed";
@@ -14,6 +14,7 @@ import { store, type Tab, useModel } from "./model.ts";
 import { short } from "./text.ts";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 /** "agent/#" fits every topic under agent; "+" fits one level; a word without either is looked for anywhere. */
 function fits(pattern: string, e: PineEvent): boolean {
@@ -49,7 +50,7 @@ export function Events({ tab }: { tab: Tab }) {
 					</InputGroupAddon>
 					<InputGroupInput aria-label="Filter the events" placeholder="Filter by word or topic (agent/#)" value={filter} onChange={(e) => setFilter(e.target.value)} spellCheck={false} />
 				</InputGroup>
-				<span className="whitespace-nowrap text-faint">{shown.length} shown · text deltas are left out</span>
+				<span className="truncate text-faint">{shown.length} shown · text deltas are left out</span>
 				<span className="min-w-0 flex-1" />
 				<Button variant="outline" size="xs" onClick={() => (setFrozen([...tab.log]), setPaused(!paused))}>{paused ? <PlayIcon data-icon="inline-start" /> : <SquareIcon data-icon="inline-start" />}{paused ? "Follow" : "Pause"}</Button>
 				<Button variant="outline" size="xs" onClick={() => store.setPublishing(true)}><ZapIcon data-icon="inline-start" />Publish…</Button>
@@ -58,34 +59,43 @@ export function Events({ tab }: { tab: Tab }) {
 					<TooltipContent>Clear the view</TooltipContent>
 				</HoverTooltip>
 			</div>
-			{/* The log follows its end while it is scrolled to there, and holds still while a line is open. */}
+			{/* The log follows its end while it is scrolled to there, and holds still while a line is open. Each line
+			    is an item of the scroller, held at a line's height (not a message's) while it is out of sight. */}
 			<MessageScrollerProvider autoScroll={open === undefined} defaultScrollPosition="end">
-				<MessageScroller className="flex-1 cursor-auto font-mono text-xs select-text">
+				<MessageScroller className="flex-1">
 					<MessageScrollerViewport aria-label="Events">
-						<MessageScrollerContent className="gap-0 py-1.5">
-				{shown.length ? (
-					shown.map((e, i) => (
-						<Collapsible key={`${e.id}:${e.ts}:${i}`} open={open === i} onOpenChange={(now) => setOpen(now ? i : undefined)}>
-							<CollapsibleTrigger className="flex w-full items-center gap-3 px-4 py-0.5 text-start whitespace-nowrap hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary/60 data-panel-open:bg-accent">
-								<span className="flex-none text-faint">{new Date(e.ts).toLocaleTimeString("sv-SE")}</span>
-								<Badge variant={e.trust === "owner" ? "default" : "outline"} className="w-14">{e.trust === "owner" ? "owner" : "other"}</Badge>
-								<span className="flex-none font-semibold">{e.topic}</span>
-								<span className="truncate text-muted-foreground">{short(JSON.stringify(e.payload ?? null), 220)}</span>
-							</CollapsibleTrigger>
-							<CollapsibleContent>
-								<Printed sm text={`#${e.id} · from ${e.source}\n${JSON.stringify(e.payload ?? null, null, 2)}`} className="mr-4 mb-1.5 ml-20" />
-							</CollapsibleContent>
-						</Collapsible>
-					))
-				) : tab.logLoading && !tab.log.length ? (
-					<EventLines skeleton />
-				) : tab.logError && !tab.log.length ? (
-					<Empty><EmptyHeader><EmptyMedia variant="icon"><CircleAlertIcon /></EmptyMedia><EmptyTitle>Could not load the events</EmptyTitle><EmptyDescription>{tab.logError}</EmptyDescription></EmptyHeader><EmptyContent><Button variant="outline" size="xs" onClick={() => void store.fillEvents(tab)}>Try again</Button></EmptyContent></Empty>
-				) : (
-					<Empty><EmptyHeader><EmptyMedia variant="icon"><AudioLinesIcon /></EmptyMedia><EmptyTitle>{tab.log.length ? "No event fits the filter" : "No events yet"}</EmptyTitle><EmptyDescription>Messages, tool calls, sources, schedules and approvals all pass through here.</EmptyDescription></EmptyHeader></Empty>
-				)}
+						<MessageScrollerContent className="cursor-auto gap-0 py-1.5 font-mono text-xs select-text">
+							{shown.length ? (
+								shown.map((e, i) => (
+									<MessageScrollerItem key={`${e.id}:${e.ts}:${i}`} className="[contain-intrinsic-size:auto_1.5rem]">
+										<Collapsible open={open === i} onOpenChange={(now) => setOpen(now ? i : undefined)}>
+											<CollapsibleTrigger className="flex w-full items-center gap-3 px-4 py-0.5 text-start whitespace-nowrap outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset data-panel-open:bg-accent">
+												<span className="flex-none text-faint">{new Date(e.ts).toLocaleTimeString("sv-SE")}</span>
+												<Badge variant={e.trust === "owner" ? "default" : "outline"} className="w-14">{e.trust === "owner" ? "owner" : "other"}</Badge>
+												<span className="flex-none font-semibold">{e.topic}</span>
+												<span className="truncate text-muted-foreground">{short(JSON.stringify(e.payload ?? null), 220)}</span>
+											</CollapsibleTrigger>
+											<CollapsibleContent>
+												<Printed sm text={`#${e.id} · from ${e.source}\n${JSON.stringify(e.payload ?? null, null, 2)}`} className="mr-4 mb-1.5 ml-20" />
+											</CollapsibleContent>
+										</Collapsible>
+									</MessageScrollerItem>
+								))
+							) : (
+								// Nothing to list: the skeleton at the top, an empty state over the whole log.
+								<MessageScrollerItem className={cn(!(tab.logLoading && !tab.log.length) && "flex flex-1 flex-col")}>
+									{tab.logLoading && !tab.log.length ? (
+										<EventLines skeleton />
+									) : tab.logError && !tab.log.length ? (
+										<Empty><EmptyHeader><EmptyMedia variant="icon"><CircleAlertIcon /></EmptyMedia><EmptyTitle>Could not load the events</EmptyTitle><EmptyDescription>{tab.logError}</EmptyDescription></EmptyHeader><EmptyContent><Button variant="outline" size="xs" onClick={() => void store.fillEvents(tab)}>Try again</Button></EmptyContent></Empty>
+									) : (
+										<Empty><EmptyHeader><EmptyMedia variant="icon"><AudioLinesIcon /></EmptyMedia><EmptyTitle>{tab.log.length ? "No event fits the filter" : "No events yet"}</EmptyTitle><EmptyDescription>Messages, tool calls, sources, schedules and approvals all pass through here.</EmptyDescription></EmptyHeader></Empty>
+									)}
+								</MessageScrollerItem>
+							)}
 						</MessageScrollerContent>
 					</MessageScrollerViewport>
+					<MessageScrollerButton />
 				</MessageScroller>
 			</MessageScrollerProvider>
 		</div>
@@ -102,7 +112,7 @@ export function EventLines(_: { skeleton: true }) {
 					<Skeleton className="h-3 w-14 flex-none" />
 					<Skeleton className="h-4 w-14 flex-none rounded-full" />
 					<Skeleton className="h-3 w-28 flex-none" />
-					<Skeleton className={`h-3 ${w}`} />
+					<Skeleton className={cn("h-3", w)} />
 				</div>
 			))}
 		</div>

@@ -426,6 +426,35 @@ test("an event is published from the event log with a form: a topic, and a paylo
 	assert.deepEqual(events.map((e) => [e.payload, e.trust]), [[{ value: "away" }, "owner"]]);
 });
 
+test("the event log follows its end while new events come, holds still once scrolled up, and its button goes back to the latest", async () => {
+	const port = /http listening on 127\.0\.0\.1:(\d+)/.exec(fs.readFileSync(path.join(home, "data", "pine.log"), "utf8"))![1];
+	const token = fs.readFileSync(path.join(home, "data", "http-token"), "utf8").trim();
+	const publish = async (from: number, n: number) => {
+		for (let i = from; i < from + n; i++) await fetch(`http://127.0.0.1:${port}/events`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ topic: `test/follow-${i}`, payload: i }) });
+	};
+	const log = "[aria-label=Events]";
+	const button = `[data-slot=message-scroller]:has(${log}) [data-slot=message-scroller-button]`;
+	const fromEnd = () => page.$eval(log, (el: Element) => el.scrollHeight - el.scrollTop - el.clientHeight);
+	await publish(0, 60);
+	await sees(`${log} [data-slot=collapsible-trigger] >> text=test/follow-59`);
+	await page.waitForFunction((s: string) => { const el = document.querySelector(s)!; return el.scrollHeight - el.scrollTop - el.clientHeight < 2; }, log);
+	// Each line is an item of the scroller: it measures them all.
+	assert.equal(await page.$$eval(`${log} [data-slot=message-scroller-content] > [data-slot=collapsible]`, (els: Element[]) => els.length), 0);
+	// Scrolled up by the reader: new events come and the view holds still, with the way back to the latest.
+	await page.hover(log);
+	await page.mouse.wheel(0, -400);
+	await page.waitForFunction((s: string) => document.querySelector(s)?.getAttribute("data-active") === "true", button);
+	const held = await page.$eval(log, (el: Element) => el.scrollTop);
+	await publish(60, 10);
+	await sees(`${log} [data-slot=collapsible-trigger] >> text=test/follow-69`);
+	await new Promise((r) => setTimeout(r, 200));
+	assert.equal(await page.$eval(log, (el: Element) => el.scrollTop), held);
+	assert.ok((await fromEnd()) > 100);
+	await page.click(button);
+	await page.waitForFunction((s: string) => { const el = document.querySelector(s)!; return el.scrollHeight - el.scrollTop - el.clientHeight < 2; }, log);
+	await page.waitForFunction((s: string) => document.querySelector(s)?.getAttribute("data-active") === "false", button);
+});
+
 test("a sub-agent's work opens in a tab of its own", async () => {
 	await page.click("[data-slot=tab] >> nth=0");
 	mock.state.scripts.child = [{ text: "hi from the child" }];

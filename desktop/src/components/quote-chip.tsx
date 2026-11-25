@@ -2,9 +2,9 @@ import { CheckIcon, QuoteIcon, ReplyIcon, XIcon } from "lucide-react";
 import type { KeyboardEvent, MouseEvent, Ref } from "react";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { Attachment, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentMedia, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
-import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
-import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +20,7 @@ export function QuoteChip({ text, reply, replying, onOpen, onReply, onRemove, cl
 			<HoverTooltip>
 				<TooltipTrigger render={<AttachmentTrigger onClick={onOpen} aria-label={`Go to where you quoted: ${opening(text)}`} />} />
 				<TooltipContent className="max-w-sm">
-					<div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words">{text}</div>
+					<QuoteText text={text} />
 				</TooltipContent>
 			</HoverTooltip>
 			<AttachmentMedia><QuoteIcon /></AttachmentMedia>
@@ -68,26 +68,27 @@ export function QuoteReply({ text, value, onChange, onDone, inputRef, autoFocus,
 		}
 	};
 	return (
-		<div data-slot="quote-reply" onClick={(e) => e.stopPropagation()} className={cn("flex w-full min-w-0 cursor-auto flex-col gap-1 rounded-lg border bg-card px-2.5 py-2 font-normal text-card-foreground select-text", className)}>
-			<div className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
-				<QuoteIcon className="size-3.5 shrink-0" />
+		// The stock prompt shape (Input Group): what is quoted in the addon above, the reply in the textarea under it.
+		<InputGroup data-quote-reply="" onClick={(e) => e.stopPropagation()} className={cn("cursor-auto font-normal select-text", className)}>
+			<InputGroupAddon align="block-start" className="min-w-0 text-xs">
+				<QuoteIcon />
 				<HoverTooltip>
-					<TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>{opening(text, 120)}</TooltipTrigger>
+					<TooltipTrigger render={<span className="min-w-0 flex-1 truncate text-start font-normal" />}>{opening(text, 120)}</TooltipTrigger>
 					<TooltipContent className="max-w-sm">
-						<div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words">{text}</div>
+						<QuoteText text={text} />
 					</TooltipContent>
 				</HoverTooltip>
 				<HoverTooltip>
-					<TooltipTrigger render={<Button variant="ghost" size="icon-xs" className="-my-1 -mr-1 shrink-0" onClick={onDone} aria-label="Done with this reply" />}><CheckIcon /></TooltipTrigger>
+					<TooltipTrigger render={<InputGroupButton size="icon-xs" onClick={onDone} aria-label="Done with this reply" />}><CheckIcon /></TooltipTrigger>
 					<TooltipContent>
 						Done with this reply
 						<Kbd>↩</Kbd>
 					</TooltipContent>
 				</HoverTooltip>
-			</div>
-			<Textarea
+			</InputGroupAddon>
+			<InputGroupTextarea
 				ref={inputRef}
-				data-slot="quote-reply-input"
+				data-quote-reply-input=""
 				rows={1}
 				autoFocus={autoFocus}
 				value={value}
@@ -95,8 +96,17 @@ export function QuoteReply({ text, value, onChange, onDone, inputRef, autoFocus,
 				onKeyDown={onKey}
 				placeholder="Reply to this quote"
 				aria-label={`Your reply to: ${opening(text)}`}
-				className="max-h-40 min-h-0 resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-snug shadow-none focus-visible:ring-0 dark:bg-transparent md:text-sm"
+				className="max-h-40 min-h-0"
 			/>
-		</div>
+		</InputGroup>
+	);
+}
+
+/** The whole of a quote, in its tooltip: up to a height, past which the rest is cut where the box ends. */
+function QuoteText({ text }: { text: string }) {
+	return (
+		<ScrollArea className="flex max-h-60 min-h-0 flex-col">
+			<div className="whitespace-pre-wrap break-words">{text}</div>
+		</ScrollArea>
 	);
 }

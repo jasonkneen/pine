@@ -3,10 +3,10 @@
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
 import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
+import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentGroup, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Combobox, ComboboxContent, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
+import { Combobox, ComboboxContent, ComboboxGroup, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
@@ -353,7 +353,9 @@ export function Composer({ tab }: { tab: Tab }) {
 			>
 				<InputGroup>
 					{tab.attachments.length || tab.quotes.length || over ? (
-						<InputGroupAddon align="block-start" className="flex-wrap">
+						<InputGroupAddon align="block-start" className="flex-col items-stretch">
+							{/* The quotes and files, as a stock row of attachments; the reply being written under them. */}
+							<AttachmentGroup className="empty:hidden">
 							{tab.quotes.map((q, i) => (
 								<QuoteChip
 									key={`quote:${q.id}`}
@@ -394,6 +396,7 @@ export function Composer({ tab }: { tab: Tab }) {
 									</AttachmentContent>
 								</Chip>
 							) : null}
+							</AttachmentGroup>
 							{replying ? (
 								<QuoteReply
 									key={`reply:${replying.id}`}
@@ -441,12 +444,14 @@ export function Composer({ tab }: { tab: Tab }) {
 						/>
 						<ComboboxContent side="top">
 							<ComboboxList>
-								{(s: Suggestion) => (
-									<ComboboxItem key={s.value} value={s}>
-										<span data-part="label" className="shrink-0 font-mono">{s.label}</span>
-										{s.about ? <span className="truncate text-muted-foreground">{s.about}</span> : null}
-									</ComboboxItem>
-								)}
+								<ComboboxGroup>
+									{items.map((s, i) => (
+										<ComboboxItem key={s.value} value={s} index={i}>
+											<span data-part="label" className="shrink-0 font-mono">{s.label}</span>
+											{s.about ? <span className="truncate text-muted-foreground">{s.about}</span> : null}
+										</ComboboxItem>
+									))}
+								</ComboboxGroup>
 							</ComboboxList>
 						</ComboboxContent>
 					</Combobox>
@@ -459,7 +464,7 @@ export function Composer({ tab }: { tab: Tab }) {
 						</HoverTooltip>
 						<HoverTooltip>
 							<TooltipTrigger render={<InputGroupButton size="sm" className="min-w-0 shrink" onClick={() => void store.pickModel(tab)} aria-label={`Model: ${model}`} />}>
-								<CpuIcon />
+								<CpuIcon data-icon="inline-start" />
 								<span className="truncate @max-md/bar:hidden">{info?.model?.split("/").pop() ?? "model"}</span>
 							</TooltipTrigger>
 							<TooltipContent>Model: {model}</TooltipContent>
@@ -467,9 +472,9 @@ export function Composer({ tab }: { tab: Tab }) {
 						<DropdownMenu>
 							<HoverTooltip>
 								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={`Reasoning: ${thinking}, how much the model thinks before it answers`} />} />}>
-									<SparkleIcon />
+									<SparkleIcon data-icon="inline-start" />
 									<span className="@max-md/bar:hidden">{thinking}</span>
-									<ChevronDownIcon className="@max-md/bar:hidden" />
+									<ChevronDownIcon data-icon="inline-end" className="@max-md/bar:hidden" />
 								</TooltipTrigger>
 								<TooltipContent>Reasoning: {thinking}, how much the model thinks before it answers</TooltipContent>
 							</HoverTooltip>
@@ -491,9 +496,9 @@ export function Composer({ tab }: { tab: Tab }) {
 						<DropdownMenu>
 							<HoverTooltip>
 								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" variant={mode === "bypass" && !paused ? "destructive" : "ghost"} aria-label={`Mode: ${mode}${paused ? " (paused)" : ""}, how much this agent does without asking`} />} />}>
-									<ShieldIcon />
+									<ShieldIcon data-icon="inline-start" />
 									<span className="@max-xl/bar:hidden">{mode}{paused ? " (paused)" : ""}</span>
-									<ChevronDownIcon className="@max-md/bar:hidden" />
+									<ChevronDownIcon data-icon="inline-end" className="@max-md/bar:hidden" />
 								</TooltipTrigger>
 								<TooltipContent>Mode: {mode}{paused ? " (paused)" : ""}, how much this agent does without asking</TooltipContent>
 							</HoverTooltip>
@@ -515,7 +520,7 @@ export function Composer({ tab }: { tab: Tab }) {
 						</DropdownMenu>
 						<HoverTooltip>
 							<TooltipTrigger render={<InputGroupButton size="sm" className="min-w-0 shrink" onClick={() => void store.pickFolder(tab)} aria-label={tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"} />}>
-								<FolderIcon />
+								<FolderIcon data-icon="inline-start" />
 								<span className="truncate @max-sm/bar:hidden">{tab.folder ? baseName(tab.folder) : "workspace"}</span>
 							</TooltipTrigger>
 							<TooltipContent>{tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"}</TooltipContent>

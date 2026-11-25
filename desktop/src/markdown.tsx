@@ -32,7 +32,9 @@ import { CodeBlock, CodeBlockCopyButton, defaultComponents, Streamdown, useIsCod
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Pulse } from "@/components/pulse";
 import { type Heard, Sound } from "@/components/sound";
+import { cn } from "@/lib/utils";
 import { api, bytesOf, media } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { mediaKind, store } from "./model.ts";
@@ -87,10 +89,24 @@ const textOf = (node: Node | { type: string; value?: string; children?: unknown[
 	return ((node as { children?: Node[] }).children ?? []).map(textOf).join("");
 };
 
-const open = (url: string) => (e: React.MouseEvent) => {
-	e.preventDefault();
-	void bridge.open(url);
-};
+/**
+ * What makes a link without an href one all the same: a click opens it in the owner's browser, and so
+ * does Enter once it has the focus, which it takes in the order of the page, with the stock focus ring.
+ */
+const opens = (url: string) => ({
+	role: "link",
+	tabIndex: 0,
+	onClick: (e: React.MouseEvent) => {
+		e.preventDefault();
+		void bridge.open(url);
+	},
+	onKeyDown: (e: React.KeyboardEvent) => {
+		if (e.key !== "Enter") return;
+		e.preventDefault();
+		void bridge.open(url);
+	},
+});
+const FOCUS = "rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 
 function Link({ href, children, node }: React.ComponentProps<"a"> & ExtraProps) {
 	const url = typeof href === "string" ? href : "";
@@ -99,13 +115,13 @@ function Link({ href, children, node }: React.ComponentProps<"a"> & ExtraProps) 
 	const plain = shown === url || shown === url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 	return (
 		<>
-			<a data-href={url} title={url} className="cursor-pointer text-primary underline decoration-primary/40 underline-offset-2" onClick={open(url)}>
+			<a data-href={url} title={url} className={cn("cursor-pointer text-primary underline decoration-primary/40 underline-offset-2", FOCUS)} {...opens(url)}>
 				{children}
 			</a>
 			{/* Beside the link, not inside it: it is the address in plain letters, not more of the link's words.
 			    It flows with the sentence: a line of its own would cut the link off from where it leads. */}
 			{plain ? null : (
-				<span data-target="" className="ml-1 inline cursor-pointer font-mono text-xs text-faint wrap-anywhere" title={url} onClick={open(url)}>
+				<span data-target="" className={cn("ml-1 inline cursor-pointer font-mono text-xs text-faint wrap-anywhere", FOCUS)} title={url} {...opens(url)}>
 					<ArrowRightIcon className="mr-1 inline size-3" aria-hidden />
 					{short(url.replace(/^https?:\/\//, ""), 72)}
 				</span>
@@ -124,9 +140,9 @@ export const MEDIA = {
 
 function Player({ kind, src, alt, sound }: { kind: "image" | "video" | "audio"; src: string; alt: string; sound?: { id?: string; name: string; bytes: () => Promise<ArrayBuffer>; auto?: Heard } }) {
 	// A sound says its name in its own line.
-	if (kind === "audio") return <span className={`my-2.5 ${MEDIA.box.audio}`}><Sound src={src} name={alt || sound?.name || "sound"} id={sound?.id} bytes={sound?.bytes} auto={sound?.auto} /></span>;
+	if (kind === "audio") return <span className={cn("my-2.5", MEDIA.box.audio)}><Sound src={src} name={alt || sound?.name || "sound"} id={sound?.id} bytes={sound?.bytes} auto={sound?.auto} /></span>;
 	return (
-		<span className={`my-2.5 ${MEDIA.box[kind]}`}>
+		<span className={cn("my-2.5", MEDIA.box[kind])}>
 			{kind === "image" ? (
 				// Larger over the page with a click or, focused, with Enter; a click on it, beside it, or Escape closes it.
 				<Dialog>
@@ -161,9 +177,11 @@ function Remote({ url, alt }: { url: string; alt: string }) {
 			setState({ error: errText(err) });
 		}
 	};
-	const label = state.loading ? `Loading · ${short(url, 90)}` : state.error ? `Could not load ${short(url, 70)}: ${state.error}` : `Load ${kind === "image" ? "picture" : kind} · ${short(url, 90)}`;
+	const label = state.loading ? `Loading ${short(url, 90)}` : state.error ? `Could not load ${short(url, 70)}: ${state.error}` : `Load ${kind === "image" ? "picture" : kind} · ${short(url, 90)}`;
 	return (
-		<Button variant="outline" size="xs" data-remote={url} title={state.error ? `${url}: ${state.error}` : url} className="max-w-full" onClick={() => void load()}>
+		<Button variant="outline" size="xs" data-remote={url} title={state.error ? `${url}: ${state.error}` : url} className="max-w-full" disabled={state.loading} onClick={() => void load()}>
+			{/* Loading, the stock way: an indicator as the button's icon, and the button disabled. */}
+			{state.loading ? <Pulse label="Loading" data-icon="inline-start" /> : null}
 			<span className="truncate">{label}</span>
 		</Button>
 	);
@@ -206,7 +224,7 @@ function Details({ open, children }: React.ComponentProps<"details"> & ExtraProp
 
 function Summary({ children }: React.ComponentProps<"summary"> & ExtraProps) {
 	return (
-		<CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1 py-2 text-left font-medium text-muted-foreground select-none hover:text-foreground">
+		<CollapsibleTrigger className={cn("group flex w-full cursor-pointer items-center gap-1 py-2 text-left font-medium text-muted-foreground select-none hover:text-foreground", FOCUS)}>
 			<ChevronRightIcon className="size-4 shrink-0 transition-transform group-data-panel-open:rotate-90" aria-hidden />
 			{children}
 		</CollapsibleTrigger>

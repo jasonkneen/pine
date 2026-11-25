@@ -1,15 +1,15 @@
-import { type ComponentProps, type ComponentType, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ComponentProps, type ComponentType, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export type Selected = { text: string; rect: DOMRect };
 
-const GAP = 8;
-const MARGIN = 8;
+/** What a press on the bar is: not one that ends the selection. */
+const BAR = "[data-selection-toolbar]";
 
 const FIELD = "input, textarea, [contenteditable=''], [contenteditable='true']";
 
@@ -51,7 +51,7 @@ export function useTextSelection(root: RefObject<HTMLElement | null>): [Selected
 			}, wait);
 		};
 		const down = (e: MouseEvent) => {
-			if (e.button !== 0 || (e.target instanceof Element && e.target.closest("[data-slot=selection-toolbar]"))) return;
+			if (e.button !== 0 || (e.target instanceof Element && e.target.closest(BAR))) return;
 			pressing.current = true;
 			setSelected(undefined);
 		};
@@ -92,49 +92,30 @@ export function useTextSelection(root: RefObject<HTMLElement | null>): [Selected
 	return [selected, hide];
 }
 
-type Place = { top: number; left: number; below: boolean };
-
-function place(rect: DOMRect, size: { width: number; height: number }, bounds?: DOMRect): Place {
-	const area = bounds ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-	const half = size.width / 2;
-	const center = rect.left + rect.width / 2;
-	const left = Math.min(Math.max(center, area.left + half + MARGIN), Math.max(area.left + half + MARGIN, area.right - half - MARGIN));
-	const below = rect.top - GAP - size.height < area.top + MARGIN;
-	const top = below ? Math.min(rect.bottom + GAP, area.bottom - size.height - MARGIN) : rect.top - GAP - size.height;
-	return { top, left: left - half, below };
-}
-
-export function SelectionToolbar({ rect, bounds, className, style, children, ...props }: ComponentProps<"div"> & { rect?: DOMRect; bounds?: RefObject<HTMLElement | null> }) {
-	const ref = useRef<HTMLDivElement>(null);
-	const [at, setAt] = useState<Place>();
-	useLayoutEffect(() => {
-		const el = ref.current;
-		if (!rect || !el) return setAt(undefined);
-		setAt(place(rect, { width: el.offsetWidth, height: el.offsetHeight }, bounds?.current?.getBoundingClientRect()));
-	}, [rect, bounds]);
-	const bar = (
-		<ButtonGroup
-			ref={ref}
-			role="toolbar"
-			aria-orientation="horizontal"
-			aria-label="Selected text"
-			data-slot="selection-toolbar"
-			data-side={at?.below ? "bottom" : "top"}
-			onMouseDown={(e) => e.preventDefault()}
-			className={cn("z-50 gap-0.5 rounded-lg border bg-popover p-0.5 text-popover-foreground shadow-md select-none", rect && "fixed animate-in fade-in-0 zoom-in-95", rect && !at && "invisible", className)}
-			style={rect ? { top: at?.top ?? 0, left: at?.left ?? 0, ...style } : style}
-			{...props}
-		>
-			{children}
-		</ButtonGroup>
+/**
+ * A bar of actions over the selected text: the stock Popover, open while it is drawn, anchored to the
+ * selection. Its anchor is a box laid over the selection's first line, in the page's own layer (where a
+ * fixed box is where the selection is, whatever the conversation's frame does), that nothing can press
+ * or reach by the keyboard; the popover places itself above it, or below where there is no room, and
+ * neither takes the focus from the text nor gives it to the anchor when it goes.
+ */
+export function SelectionToolbar({ rect, className, children, ...props }: ComponentProps<"div"> & { rect: DOMRect }) {
+	return (
+		<Popover open modal={false}>
+			{createPortal(<PopoverTrigger nativeButton={false} tabIndex={-1} aria-hidden render={<span data-slot="selection-anchor" className="pointer-events-none invisible fixed" style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }} />} />, document.body)}
+			<PopoverContent data-selection-toolbar="" side="top" sideOffset={8} initialFocus={false} finalFocus={false} className="w-auto p-0.5 select-none" onMouseDown={(e) => e.preventDefault()}>
+				<div role="toolbar" aria-orientation="horizontal" aria-label="Selected text" data-slot="selection-toolbar" className={cn("flex gap-0.5", className)} {...props}>
+					{children}
+				</div>
+			</PopoverContent>
+		</Popover>
 	);
-	return rect ? createPortal(bar, document.body) : bar;
 }
 
 export function SelectionToolbarButton({ icon: Icon, label, hint, ...props }: ComponentProps<typeof Button> & { icon: ComponentType; label: string; hint?: string }) {
 	return (
 		<HoverTooltip>
-			<TooltipTrigger render={<Button variant="ghost" size="sm" className="rounded-md!" {...props} />}>
+			<TooltipTrigger render={<Button variant="ghost" size="sm" {...props} />}>
 				<Icon data-icon="inline-start" />
 				{label}
 			</TooltipTrigger>

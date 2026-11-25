@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
 import type { Approval } from "./api.ts";
 import { ConversationSkeleton as ConversationSkeletonView, OwnerTurn, Row, Welcome } from "./Conversation.tsx";
 import { type Item, Tab } from "./model.ts";
@@ -12,8 +13,21 @@ function Items({ items, running }: { items: Made[]; /** Tasks at work in the con
 	for (const id of running ?? []) tab.running.add(id);
 	for (const item of items) tab.add(item as never);
 	return (
-		<div className="flex w-full max-w-160 flex-col gap-3.5">
-			{tab.items.map((item) => <Row key={item.id} item={item} v={item.v} tab={tab} />)}
+		<div className="flex h-[40rem] w-full max-w-160 flex-col">
+			<MessageScrollerProvider defaultScrollPosition="start">
+				<MessageScroller>
+					<MessageScrollerViewport>
+						<MessageScrollerContent className="gap-3.5">
+							{tab.items.map((item) => (
+								<MessageScrollerItem key={item.id} messageId={String(item.id)}>
+									<Row item={item} v={item.v} tab={tab} />
+								</MessageScrollerItem>
+							))}
+						</MessageScrollerContent>
+					</MessageScrollerViewport>
+					<MessageScrollerButton />
+				</MessageScroller>
+			</MessageScrollerProvider>
 		</div>
 	);
 }
