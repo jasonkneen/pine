@@ -1163,7 +1163,7 @@ desktop/
     components/    only what stock components cannot express when composed in place (printed.tsx:
                    what a tool or a program printed, a Code Block that follows its end; sound.tsx:
                    a sound's line, its player and its bars, measured with src/tui/levels.ts), and pine's
-                   own small parts (logo.tsx: the logo; empty-view.tsx: a view with nothing in it;
+                   own small parts (logo.tsx: the logo;
                    agent-avatar.tsx: an agent's initial on the stock avatar, in its own color; pine's mark for the main agent;
                    page-menu.tsx: a right click's menu, the system's through the bridge where it has one,
                    else stock Dropdown Menu at the pointer);
@@ -1387,7 +1387,7 @@ The side bar's colors are the `--sidebar*` tokens in `index.css`, set from pine'
 muted, the one in front pressed, and its background is left to the window behind it (the system's
 material on a Mac). A story sits beside the file of what it shows: `src/<File>.stories.tsx`
 for a file of `src/`, `src/components/<name>.stories.tsx` for a composition there (titled
-`Components/<Name>`: `Components/Logo`, `Components/EmptyView`). One story per part and state,
+`Components/<Name>`: `Components/Logo`, `Components/Printed`). One story per part and state,
 named after it (`PickDialogRemoving`); a dialog or a whole view is in its own
 (`src/PickDialog.stories.tsx`, `src/Composer.stories.tsx`).
 None needs Electron or a daemon. A view that calls `api.ts` or the bridge is drawn on

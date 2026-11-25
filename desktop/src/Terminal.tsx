@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { EmptyView } from "@/components/empty-view";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { bridge } from "./bridge.ts";
 import { SUB } from "./CodePanel.tsx";
@@ -171,7 +171,7 @@ export function TerminalView({ tab }: { tab: Tab }) {
 				</HoverTooltip>
 			</div>
 			{state.error ? (
-				<EmptyView icon={SquareTerminalIcon} title="The terminal did not start">{state.error}</EmptyView>
+				<Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>The terminal did not start</EmptyTitle><EmptyDescription>{state.error}</EmptyDescription></EmptyHeader></Empty>
 			) : (
 				<div className="relative flex min-h-0 flex-1 flex-col bg-background p-1.5" onClick={() => term.current?.focus()}>
 					<div ref={host} data-slot="terminal" className={cn("min-h-0 flex-1", !state.cwd && "opacity-0")} />

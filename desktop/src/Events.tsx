@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import type { PineEvent } from "./api.ts";
 import { store, type Tab, useModel } from "./model.ts";
 import { short } from "./text.ts";
-import { EmptyView } from "@/components/empty-view";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** "agent/#" fits every topic under agent; "+" fits one level; a word without either is looked for anywhere. */
@@ -80,9 +80,9 @@ export function Events({ tab }: { tab: Tab }) {
 				) : tab.logLoading && !tab.log.length ? (
 					<EventLines skeleton />
 				) : tab.logError && !tab.log.length ? (
-					<EmptyView icon={CircleAlertIcon} title="Could not load the events">{tab.logError}<div className="mt-3"><Button variant="outline" size="xs" onClick={() => void store.fillEvents(tab)}>Try again</Button></div></EmptyView>
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><CircleAlertIcon /></EmptyMedia><EmptyTitle>Could not load the events</EmptyTitle><EmptyDescription>{tab.logError}</EmptyDescription></EmptyHeader><EmptyContent><Button variant="outline" size="xs" onClick={() => void store.fillEvents(tab)}>Try again</Button></EmptyContent></Empty>
 				) : (
-					<EmptyView icon={AudioLinesIcon} title={tab.log.length ? "No event fits the filter" : "No events yet"}>Messages, tool calls, sources, schedules and approvals all pass through here.</EmptyView>
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><AudioLinesIcon /></EmptyMedia><EmptyTitle>{tab.log.length ? "No event fits the filter" : "No events yet"}</EmptyTitle><EmptyDescription>Messages, tool calls, sources, schedules and approvals all pass through here.</EmptyDescription></EmptyHeader></Empty>
 				)}
 						</MessageScrollerContent>
 					</MessageScrollerViewport>

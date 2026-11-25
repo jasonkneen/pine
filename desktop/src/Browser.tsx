@@ -18,7 +18,6 @@ import { ROOM, store, type Tab, useModel } from "./model.ts";
 import { errText, macKeys, shortcut } from "./text.ts";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { HoverTooltip } from "@/components/hover-tooltip";
-import { EmptyView } from "@/components/empty-view";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Pulse } from "@/components/pulse";
@@ -327,7 +326,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					{drawn ? null : <BrowserSkeleton className="absolute inset-0" />}
 				</ScrollArea>
 			) : !state ? (
-				lookError ? <EmptyView icon={EyeIcon} title="The browser cannot be reached">{lookError}</EmptyView> : <BrowserSkeleton className="min-h-0 flex-1" />
+				lookError ? <Empty><EmptyHeader><EmptyMedia variant="icon"><EyeIcon /></EmptyMedia><EmptyTitle>The browser cannot be reached</EmptyTitle><EmptyDescription>{lookError}</EmptyDescription></EmptyHeader></Empty> : <BrowserSkeleton className="min-h-0 flex-1" />
 			) : (
 				<Empty>
 					<EmptyHeader>

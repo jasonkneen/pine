@@ -32,7 +32,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { EmptyView } from "@/components/empty-view";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useLoad } from "./use-load.ts";
 import { APP_DOWNLOAD, computerWord, isPaired, meetingLine, type NearbyFound, reachedThrough, relayLine } from "./machines.ts";
 import { Textarea } from "@/components/ui/textarea";
@@ -681,7 +681,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 						})}
 					</ItemGroup>
 				) : (
-					<EmptyView icon={FolderIcon} title="No other folders">The agent works in the agent's own workspace only.</EmptyView>
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><FolderIcon /></EmptyMedia><EmptyTitle>No other folders</EmptyTitle><EmptyDescription>The agent works in the agent's own workspace only.</EmptyDescription></EmptyHeader></Empty>
 				)}
 			</Section>
 
@@ -1173,15 +1173,19 @@ function Models() {
 					</InputGroupAddon>
 					<InputGroupInput aria-label="Search providers" placeholder={`Search ${hosted.length || ""} providers: Gemini, Mistral, OpenRouter…`} value={query} onChange={(e) => setQuery(e.target.value)} />
 				</InputGroup>
-				<ItemGroup>
-					{providers.data ? (
-						listed.length ? listed.map((p) => <ProviderRow key={p.id} p={p} reload={reload} />) : <EmptyView icon={SearchIcon} title="No provider by that name">Try another word, or connect a model of your own below.</EmptyView>
-					) : providers.error ? (
-						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{providers.error}</AlertDescription></Alert>
-					) : (
-						<SettingsItemsSkeleton />
-					)}
-				</ItemGroup>
+				{providers.data && !listed.length ? (
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><SearchIcon /></EmptyMedia><EmptyTitle>No provider by that name</EmptyTitle><EmptyDescription>Try another word, or connect a model of your own below.</EmptyDescription></EmptyHeader></Empty>
+				) : (
+					<ItemGroup>
+						{providers.data ? (
+							listed.map((p) => <ProviderRow key={p.id} p={p} reload={reload} />)
+						) : providers.error ? (
+							<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{providers.error}</AlertDescription></Alert>
+						) : (
+							<SettingsItemsSkeleton />
+						)}
+					</ItemGroup>
+				)}
 				{providers.data && !q && more > 0 ? <p className="text-muted-foreground">{plural(more, "more provider")} with an API key or an account. Search to find one.</p> : null}
 			</Section>
 
@@ -1326,9 +1330,11 @@ function Mcp() {
 			}
 		>
 			<Section>
-				<ItemGroup>
-					{servers.data ? (
-						servers.data.length ? (
+				{servers.data && !servers.data.length ? (
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><PlugIcon /></EmptyMedia><EmptyTitle>No MCP servers yet</EmptyTitle><EmptyDescription>Add one with its address or command, or ask an agent to add one for you.</EmptyDescription></EmptyHeader></Empty>
+				) : (
+					<ItemGroup>
+						{servers.data ? (
 							servers.data.map((x) => {
 								const state = !x.enabled ? "turned off" : (states.data?.[x.name] ?? (states.loading ? undefined : x.remote ? "unknown" : "local"));
 								const agent = x.scope === "global" ? undefined : x.scope;
@@ -1364,15 +1370,13 @@ function Mcp() {
 									/>
 								);
 							})
+						) : servers.error ? (
+							<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
 						) : (
-							<EmptyView icon={PlugIcon} title="No MCP servers yet">Add one with its address or command, or ask an agent to add one for you.</EmptyView>
-						)
-					) : servers.error ? (
-						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
-					) : (
-						<SettingsItemsSkeleton />
-					)}
-				</ItemGroup>
+							<SettingsItemsSkeleton />
+						)}
+					</ItemGroup>
+				)}
 				{out ? (
 					<CodeBlock size="sm">
 						<CodeBlockContent wrap className="max-h-60 select-text">{out}</CodeBlockContent>
@@ -1448,9 +1452,11 @@ function Skills() {
 		);
 	return (
 		<Page title="Skills" lead="Ways of doing things that your agents can reuse. An agent writes one when you ask it to (“make a skill for this”). Here you can read, change and add them." actions={<Button variant="outline" onClick={() => setEdit({ name: "", description: "", instructions: "", agent: "", isNew: true, managed: true })}><PlusIcon data-icon="inline-start" />New skill</Button>}>
-			<ItemGroup>
-				{skills.data ? (
-					skills.data.length ? (
+			{skills.data && !skills.data.length ? (
+				<Empty><EmptyHeader><EmptyMedia variant="icon"><BookIcon /></EmptyMedia><EmptyTitle>No skills yet</EmptyTitle><EmptyDescription>An agent writes one when you ask it to, or add one here.</EmptyDescription></EmptyHeader></Empty>
+			) : (
+				<ItemGroup>
+					{skills.data ? (
 						skills.data.map((x) => {
 							const managed = x.managed && x.scope !== "local";
 							return (
@@ -1482,15 +1488,13 @@ function Skills() {
 								/>
 							);
 						})
+					) : skills.error ? (
+						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{skills.error}</AlertDescription></Alert>
 					) : (
-						<EmptyView icon={BookIcon} title="No skills yet">An agent writes one when you ask it to, or add one here.</EmptyView>
-					)
-				) : skills.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{skills.error}</AlertDescription></Alert>
-				) : (
-					<SettingsItemsSkeleton />
-				)}
-			</ItemGroup>
+						<SettingsItemsSkeleton />
+					)}
+				</ItemGroup>
+			)}
 		</Page>
 	);
 }
@@ -1747,9 +1751,11 @@ function Sources() {
 				</Dialog>
 			}
 		>
-			<ItemGroup>
-				{sources.data ? (
-					sources.data.length ? (
+			{sources.data && !sources.data.length ? (
+				<Empty><EmptyHeader><EmptyMedia variant="icon"><ZapIcon /></EmptyMedia><EmptyTitle>No event sources yet</EmptyTitle><EmptyDescription>Add one, or ask an agent: “watch ~/Scans”, “tell me when the price drops”.</EmptyDescription></EmptyHeader></Empty>
+			) : (
+				<ItemGroup>
+					{sources.data ? (
 						sources.data.map((x) => (
 							<SettingsItem
 								key={`${x.scope}:${x.name}`}
@@ -1792,15 +1798,13 @@ function Sources() {
 									</div>
 							</SettingsItem>
 						))
+					) : sources.error ? (
+						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{sources.error}</AlertDescription></Alert>
 					) : (
-						<EmptyView icon={ZapIcon} title="No event sources yet">Add one, or ask an agent: “watch ~/Scans”, “tell me when the price drops”.</EmptyView>
-					)
-				) : sources.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{sources.error}</AlertDescription></Alert>
-				) : (
-					<SettingsItemsSkeleton />
-				)}
-			</ItemGroup>
+						<SettingsItemsSkeleton />
+					)}
+				</ItemGroup>
+			)}
 		</Section>
 	);
 }
@@ -1948,9 +1952,11 @@ export function Schedules() {
 				</Dialog>
 			}
 		>
-			<ItemGroup>
-				{list.data ? (
-					list.data.length ? (
+			{list.data && !list.data.length ? (
+				<Empty><EmptyHeader><EmptyMedia variant="icon"><ClockIcon /></EmptyMedia><EmptyTitle>Nothing is scheduled</EmptyTitle><EmptyDescription>An agent schedules something when you ask it to, or add one here.</EmptyDescription></EmptyHeader></Empty>
+			) : (
+				<ItemGroup>
+					{list.data ? (
 						list.data.map((x) => (
 							<SettingsItem
 								key={`${x.scope}:${x.name}`}
@@ -1980,15 +1986,13 @@ export function Schedules() {
 								}
 							/>
 						))
+					) : list.error ? (
+						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
 					) : (
-						<EmptyView icon={ClockIcon} title="Nothing is scheduled">An agent schedules something when you ask it to, or add one here.</EmptyView>
-					)
-				) : list.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
-				) : (
-					<SettingsItemsSkeleton />
-				)}
-			</ItemGroup>
+						<SettingsItemsSkeleton />
+					)}
+				</ItemGroup>
+			)}
 		</Section>
 	);
 }
@@ -2176,9 +2180,11 @@ export function Routes() {
 				</Dialog>
 			}
 		>
-			<ItemGroup>
-				{list.data ? (
-					list.data.length ? (
+			{list.data && !list.data.length ? (
+				<Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>No routes</EmptyTitle><EmptyDescription>You don’t need any to start.</EmptyDescription></EmptyHeader></Empty>
+			) : (
+				<ItemGroup>
+					{list.data ? (
 						list.data.map((r) => {
 							const said = routeSaid(r);
 							return (
@@ -2211,15 +2217,13 @@ export function Routes() {
 								/>
 							);
 						})
+					) : list.error ? (
+						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
 					) : (
-						<EmptyView icon={GitBranchIcon} title="No routes">You don’t need any to start.</EmptyView>
-					)
-				) : list.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
-				) : (
-					<SettingsItemsSkeleton />
-				)}
-			</ItemGroup>
+						<SettingsItemsSkeleton />
+					)}
+				</ItemGroup>
+			)}
 		</Section>
 	);
 }
@@ -2924,7 +2928,7 @@ function Found({ query, list, pick, back }: { query: string; list: Entry[]; pick
 					))}
 				</ItemGroup>
 			) : (
-				<EmptyView icon={SearchIcon} title="Nothing in Settings fits">Try another word, or fewer of them. You can also ask the main agent: it knows every setting.</EmptyView>
+				<Empty><EmptyHeader><EmptyMedia variant="icon"><SearchIcon /></EmptyMedia><EmptyTitle>Nothing in Settings fits</EmptyTitle><EmptyDescription>Try another word, or fewer of them. You can also ask the main agent: it knows every setting.</EmptyDescription></EmptyHeader></Empty>
 			)}
 		</Page>
 	);

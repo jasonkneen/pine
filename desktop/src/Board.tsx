@@ -13,7 +13,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyView } from "@/components/empty-view";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Pulse } from "@/components/pulse";
 import { api, type BoardBrief, type BoardItem, type BoardView } from "./api.ts";
 import { store, type Tab, useModel } from "./model.ts";
@@ -174,7 +174,7 @@ export function BoardList({ view, actions }: { view: BoardView; actions: BoardAc
 						))}
 					</div>
 				) : null}
-				{!view.tasks.length && !loose.length ? <EmptyView icon={ClipboardListIcon} title="Nothing on this board yet">Add a task below, or ask the agent to split a job among sub-agents.</EmptyView> : null}
+				{!view.tasks.length && !loose.length ? <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardListIcon /></EmptyMedia><EmptyTitle>Nothing on this board yet</EmptyTitle><EmptyDescription>Add a task below, or ask the agent to split a job among sub-agents.</EmptyDescription></EmptyHeader></Empty> : null}
 			</div>
 		</ScrollArea>
 	);
@@ -227,9 +227,17 @@ export function BoardTab({ tab }: { tab: Tab }) {
 	if (!board)
 		return (
 			<>
-				<EmptyView icon={ClipboardListIcon} title="No board yet">
-					A board holds the tasks of a job that several work on, who has each, and what they found. The agent starts one when it splits a job among sub-agents, or you add the first task here.
-				</EmptyView>
+				<Empty>
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<ClipboardListIcon />
+						</EmptyMedia>
+						<EmptyTitle>No board yet</EmptyTitle>
+						<EmptyDescription>
+							A board holds the tasks of a job that several work on, who has each, and what they found. The agent starts one when it splits a job among sub-agents, or you add the first task here.
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 				{add}
 			</>
 		);
@@ -272,7 +280,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 					</AlertDialogContent>
 				</AlertDialog>
 			</div>
-			{view.data ? <BoardList view={view.data} actions={actions} /> : view.error ? <EmptyView icon={ClipboardListIcon} title="The board cannot be read">{view.error}</EmptyView> : <Pulse label="Loading" className="m-auto" />}
+			{view.data ? <BoardList view={view.data} actions={actions} /> : view.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardListIcon /></EmptyMedia><EmptyTitle>The board cannot be read</EmptyTitle><EmptyDescription>{view.error}</EmptyDescription></EmptyHeader></Empty> : <Pulse label="Loading" className="m-auto" />}
 			{add}
 		</>
 	);

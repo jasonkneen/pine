@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { EmptyView } from "@/components/empty-view";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useAccessState } from "./access-state.ts";
 import { type AccessChange, type AccessDevice, type AccessState, bridge } from "./bridge.ts";
 import { computerWord } from "./machines.ts";
@@ -185,7 +185,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						))}
 					</ItemGroup>
 				) : (
-					<EmptyView icon={LaptopIcon} title="No device is paired">Add one by scanning a code with the device's camera, or with a link you open in the device's browser.</EmptyView>
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><LaptopIcon /></EmptyMedia><EmptyTitle>No device is paired</EmptyTitle><EmptyDescription>Add one by scanning a code with the device's camera, or with a link you open in the device's browser.</EmptyDescription></EmptyHeader></Empty>
 				)}
 			</Section>
 
