@@ -50,7 +50,7 @@ text keeps the form's font, items in a row stay apart enough to read as several.
 
 **Quiet over busy.** Nothing draws attention it has not earned: no focus ring where focus is
 always, no fade where nothing hides, and what runs all the time costs nearly nothing to draw
-(a stepped fade, never a shimmer that repaints every frame; `test/view-perf.test.ts` measures it).
+(a stepped fade rather than a shimmer that repaints every frame: measure it).
 
 **Content is not chrome.** The theme colours the app, not what the app shows: a QR code, a web
 page or a picture keeps its own colours.
