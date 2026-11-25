@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
@@ -47,7 +48,8 @@ import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item";
+import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 /** What a file's place is shown in, by the name the system gives its file manager. */
@@ -201,12 +203,12 @@ function PathCrumbs({ path, children }: { path: string; children?: React.ReactNo
 	const last = parts.length - 1;
 	return (
 		<Breadcrumb className="min-w-0 flex-1" title={path}>
-			<BreadcrumbList className="flex-nowrap font-mono">
+			<BreadcrumbList className="flex-nowrap">
 				{parts.map((part, i) => (
 					<Fragment key={i}>
 						{i ? <BreadcrumbSeparator /> : null}
 						<BreadcrumbItem className={i === last ? "min-w-0" : undefined}>
-							{i === last ? <BreadcrumbPage className="truncate">{part}{children}</BreadcrumbPage> : part}
+							{i === last ? <BreadcrumbPage className="truncate"><span className="font-mono">{part}</span>{children}</BreadcrumbPage> : <span className="font-mono">{part}</span>}
 						</BreadcrumbItem>
 					</Fragment>
 				))}
@@ -218,7 +220,7 @@ function PathCrumbs({ path, children }: { path: string; children?: React.ReactNo
 function ChangeRowSkeleton() {
 	return (
 		<div data-slot="change-row-skeleton" className={rowClass()} aria-hidden>
-			<Skeleton className="h-3.5 w-3.5 flex-none" />
+			<Skeleton className="size-3.5 flex-none" />
 			<Skeleton className="h-3.5 w-24" />
 			<Skeleton className="h-3.5 min-w-0 flex-1" />
 			<Skeleton className="h-3.5 w-8" />
@@ -266,7 +268,7 @@ export function ChangeRow(props: { c: Change; skeleton?: false } | { c?: undefin
 	const at = c.path.lastIndexOf("/");
 	return (
 		<ListboxItem value={c.path} label={c.path.slice(at + 1)} className={rowClass()} title={c.path}>
-			<span className={`w-3.5 flex-none text-center font-mono font-semibold ${STATUS[c.status] ?? ""}`}>{c.status === "?" ? "U" : c.status}</span>
+			<span className={cn("w-3.5 flex-none text-center font-mono font-semibold", STATUS[c.status])}>{c.status === "?" ? "U" : c.status}</span>
 			<span className="truncate">{c.path.slice(at + 1)}</span>
 			<span className="min-w-0 flex-1 truncate text-faint">{at > 0 ? c.path.slice(0, at) : ""}</span>
 			{c.added ? <span className="font-mono text-add">+{c.added}</span> : null}
@@ -553,14 +555,17 @@ function Running({ tab }: { tab: Tab }) {
 	if (!tab.programs.length) return <Empty><EmptyHeader><EmptyMedia variant="icon"><PlayIcon /></EmptyMedia><EmptyTitle>Nothing is running</EmptyTitle><EmptyDescription>A dev server or a watcher the agent starts keeps running after the agent is done. It is listed here, and stopped from here.</EmptyDescription></EmptyHeader></Empty>;
 	return (
 		<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
-			{tab.programs.map((p) => (
-				<div className="flex flex-col gap-1 border-b border-line-soft p-2" key={p.id}>
+			<ItemGroup className="p-2">
+			{tab.programs.map((p, i) => (
+				<Fragment key={p.id}>
+				{i ? <ItemSeparator /> : null}
+				<div role="listitem" className="flex flex-col gap-1">
 					<Item size="sm">
 						<ItemMedia>
 							<span className="size-2 rounded-full bg-primary" />
 						</ItemMedia>
 						<ItemContent>
-							<ItemTitle className="font-mono">{p.command}</ItemTitle>
+							<ItemTitle><code className="font-mono">{p.command}</code></ItemTitle>
 							<ItemDescription>
 								running for {clock(p.seconds)} · {plural(p.processes, "process", "processes")}
 								{p.background ? " · in the background" : null}
@@ -573,24 +578,38 @@ function Running({ tab }: { tab: Tab }) {
 									<TooltipContent>Opens in the browser beside this conversation</TooltipContent>
 								</HoverTooltip>
 							))}
-							<AlertDialog>
-								<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Stop</AlertDialogTrigger>
-								<AlertDialogContent>
-									<AlertDialogHeader>
-										<AlertDialogTitle>Stop {short(p.command, 80)}?</AlertDialogTitle>
-									</AlertDialogHeader>
-									<AlertDialogFooter>
-										<AlertDialogCancel>Cancel</AlertDialogCancel>
-										<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.stopProgram(tab.agent, tab.session, p.id)).then(() => store.flash("Stopping…"))}>Stop</AlertDialogCancel>
-									</AlertDialogFooter>
-								</AlertDialogContent>
-							</AlertDialog>
+							<StopProgram tab={tab} id={p.id} command={p.command} />
 						</ItemActions>
 					</Item>
 					{p.output ? <Printed text={p.output} sm /> : null}
 				</div>
+				</Fragment>
 			))}
+			</ItemGroup>
 		</div></ScrollArea>
+	);
+}
+
+/** Stop, asked first. AlertDialogAction does not close the dialog by itself in Base UI: Stop closes it, then stops. */
+function StopProgram({ tab, id, command }: { tab: Tab; id: number; command: string }) {
+	const [open, setOpen] = useState(false);
+	const stop = () => {
+		setOpen(false);
+		void store.attempt(() => api.stopProgram(tab.agent, tab.session, id)).then(() => store.flash("Stopping…"));
+	};
+	return (
+		<AlertDialog open={open} onOpenChange={setOpen}>
+			<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Stop</AlertDialogTrigger>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Stop {short(command, 80)}?</AlertDialogTitle>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction variant="destructive" onClick={stop}>Stop</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }
 
@@ -667,12 +686,10 @@ export function CodePanel({ tab }: { tab: Tab }) {
 				<>
 					{/* Which changes: all that git knows of in the folder, or what the owner's last message changed. */}
 					<div className={SUB}>
-						<Tabs value={view} onValueChange={(v) => setView(v as CodeView)}>
-							<TabsList activateOnFocus aria-label="Which changes">
-								<TabsTrigger value="changes">All changes</TabsTrigger>
-								<TabsTrigger value="turn">Last turn</TabsTrigger>
-							</TabsList>
-						</Tabs>
+						<ToggleGroup aria-label="Which changes" variant="outline" size="sm" value={[view]} onValueChange={(v) => v[0] && setView(v[0] as CodeView)}>
+							<ToggleGroupItem value="changes">All changes</ToggleGroupItem>
+							<ToggleGroupItem value="turn">Last turn</ToggleGroupItem>
+						</ToggleGroup>
 					</div>
 					<Changes tab={tab} turn={view === "turn"} openFile={(f) => (setFile(f), setView("files"))} />
 				</>

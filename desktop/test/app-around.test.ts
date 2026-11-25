@@ -533,6 +533,13 @@ test("a conversation moves into a worktree of its folder: the chip names the bra
 	await page.locator("[data-slot=code-panel]").getByRole("tab", { name: "Files" }).click();
 	await page.locator("[data-slot=code-panel]").getByRole("tab", { name: "Changes" }).click();
 	await sees("[data-slot=code-panel] >> text=1 ahead of");
+	// Which changes is a switch of two: what the last message changed, and back to all of them.
+	const which = page.locator("[data-slot=code-panel] [aria-label='Which changes']");
+	await which.getByRole("button", { name: "Last turn" }).click();
+	await sees("[data-slot=code-panel] >> text=Since");
+	assert.equal(await which.getByRole("button", { name: "Last turn" }).getAttribute("aria-pressed"), "true");
+	await which.getByRole("button", { name: "All changes" }).click();
+	await sees("[data-slot=code-panel] >> text=1 ahead of");
 	await shot("16-worktree");
 	await page.locator("[data-slot=code-panel]").getByRole("button", { name: "Merge…" }).click();
 	await confirm("[cmdk-group-heading] >> text=1 commit ahead of");

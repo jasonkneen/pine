@@ -127,3 +127,14 @@ test("a server the agent left running is one click away in the conversation's br
 	await sees("header [data-toggle=code][data-behind]");
 	assert.deepEqual(await app.evaluate(() => (globalThis as any).opened), [], "nothing went to the owner's own browser");
 });
+
+test("a program is stopped from Running, through a confirm that closes on Stop", async () => {
+	await menu("code-running");
+	const panel = page.locator("[data-slot=code-panel]");
+	await panel.getByRole("button", { name: "Stop", exact: true }).click();
+	const confirm = page.getByRole("alertdialog");
+	await confirm.waitFor({ timeout: 5000 });
+	await confirm.getByRole("button", { name: "Stop", exact: true }).click();
+	await confirm.waitFor({ state: "detached", timeout: 5000 });
+	await sees("[data-slot=code-panel] >> text=Nothing is running", 20_000);
+});
