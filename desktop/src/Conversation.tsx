@@ -40,6 +40,7 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
+import { runs } from "./work-runs.ts";
 import { type Bookmark, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
@@ -222,21 +223,6 @@ function workHead(parts: Part[], done: boolean): string {
 		.join(" · ");
 }
 
-type Run = { at: number; words: Part; steps?: undefined } | { at: number; words?: undefined; steps: Array<{ part: Part; at: number }> };
-
-/** Parts cut into runs of steps, at what was said between them; `first` is where the first part stands in the turn, its key. */
-function runs(parts: Part[], first: number): Run[] {
-	const out: Run[] = [];
-	parts.forEach((part, i) => {
-		const at = first + i;
-		const last = out.at(-1);
-		if (part.p === "words") out.push({ at, words: part });
-		else if (last?.steps) last.steps.push({ part, at });
-		else out.push({ at, steps: [{ part, at }] });
-	});
-	return out;
-}
-
 /** The work of a turn (Task): a summary line that opens into its steps as they are taken. */
 function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 	const [open, setOpen] = useState(item.open);
@@ -263,11 +249,11 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 			</TraceCollapsibleTrigger>
 			<TraceCollapsibleContent className="flex flex-col gap-2">
 				{/* One Trace per run of steps: what the agent said on the way ends a run (Trace's rule). */}
-				{runs(shown, open ? 0 : parts.length - shown.length).map((run) =>
+				{runs(parts, parts.length - shown.length).map((run) =>
 					run.words ? (
-						<PartLine key={run.at} part={run.words} live={!item.done} />
+						<PartLine key={run.key} part={run.words} live={!item.done} />
 					) : (
-						<Trace key={run.at}>
+						<Trace key={run.key}>
 							{run.steps.map(({ part, at }) => (
 								<PartLine key={at} part={part} live={!item.done} />
 							))}

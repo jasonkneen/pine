@@ -12,6 +12,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { type Layout, usePanelRef } from "react-resizable-panels";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { cn } from "cn";
+import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -316,8 +317,6 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 	const kept = main ? "the agent's own, always kept" : c.pinned ? "pinned" : c.group ? `kept in the group ${c.group}` : c.open ? "open in a tab" : c.expires ? `goes ${until(c.expires)}` : "kept";
 	const working = tab?.busy || s.isBusy(agent, c.session);
 	const on = Boolean(tab && tab === s.active);
-	// The confirm is the dialog's action, which does not close it by itself (Base UI): it is closed here.
-	const [removing, setRemoving] = useState(false);
 	return (
 		// The row is the stock menu button drawn as the list's option, so the list keeps its one tab stop and its arrows.
 		<SidebarMenuItem
@@ -336,7 +335,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 			{c.tasks ? <SidebarMenuBadge className={cn(!main && UNDER_ACTIONS)}>{ago(c.last).replace(" ago", "")}</SidebarMenuBadge> : null}
 			{main ? null : (
 				// A stop of its own after the row (Tab from the list), shown with the pointer or the keyboard on the row; its keys are not the list's.
-				<AlertDialog open={removing} onOpenChange={setRemoving}>
+				<AlertDialog>
 					<HoverTooltip>
 						<TooltipTrigger render={<AlertDialogTrigger render={<SidebarMenuAction showOnHover onKeyDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} />} aria-label="Remove this conversation for good"><Trash2Icon /></AlertDialogTrigger>} />
 						<TooltipContent>Remove this conversation for good</TooltipContent>
@@ -347,7 +346,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction variant="destructive" onClick={() => (setRemoving(false), void s.removeConversation(agent, c.session))}>Remove</AlertDialogAction>
+							<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void s.removeConversation(agent, c.session)}>Remove</AlertDialogPrimitive.Close>
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>

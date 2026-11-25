@@ -16,3 +16,8 @@ export const Welcome: Story = {};
 export const OnAnotherMachine: Story = {
 	args: { home: "/home/pi/.pine", here: false },
 };
+
+/** A long home path wraps inside its sentence instead of overflowing a phone's width. */
+export const LongHome: Story = {
+	args: { home: "/Users/someone-with-a-long-name/Library/Application Support/pine/homes/a-rather-long-home-folder/.pine" },
+};

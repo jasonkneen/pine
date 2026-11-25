@@ -35,6 +35,7 @@ import { bridge } from "./bridge.ts";
 import { Steps } from "./Conversation.tsx";
 import { type CodeView, mediaKind, ROOM, store, type Tab, useModel, useSignal } from "./model.ts";
 import { clock, errText, oneLine, plural, short, size, tilde, took } from "./text.ts";
+import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { LISTBOX, onPick, rowClass, TREE_ITEM } from "./lists.tsx";
 import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
@@ -436,7 +437,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction variant="destructive" onClick={() => (setLeaving(false), leave())}>Leave</AlertDialogAction>
+							<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={leave}>Leave</AlertDialogPrimitive.Close>
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>
@@ -578,7 +579,19 @@ function Running({ tab }: { tab: Tab }) {
 									<TooltipContent>Opens in the browser beside this conversation</TooltipContent>
 								</HoverTooltip>
 							))}
-							<StopProgram tab={tab} id={p.id} command={p.command} />
+							{/* Stop, asked first. */}
+							<AlertDialog>
+								<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Stop</AlertDialogTrigger>
+								<AlertDialogContent>
+									<AlertDialogHeader>
+										<AlertDialogTitle>Stop {short(p.command, 80)}?</AlertDialogTitle>
+									</AlertDialogHeader>
+									<AlertDialogFooter>
+										<AlertDialogCancel>Cancel</AlertDialogCancel>
+										<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.stopProgram(tab.agent, tab.session, p.id)).then(() => store.flash("Stopping…"))}>Stop</AlertDialogPrimitive.Close>
+									</AlertDialogFooter>
+								</AlertDialogContent>
+							</AlertDialog>
 						</ItemActions>
 					</Item>
 					{p.output ? <Printed text={p.output} sm /> : null}
@@ -587,29 +600,6 @@ function Running({ tab }: { tab: Tab }) {
 			))}
 			</ItemGroup>
 		</div></ScrollArea>
-	);
-}
-
-/** Stop, asked first. AlertDialogAction does not close the dialog by itself in Base UI: Stop closes it, then stops. */
-function StopProgram({ tab, id, command }: { tab: Tab; id: number; command: string }) {
-	const [open, setOpen] = useState(false);
-	const stop = () => {
-		setOpen(false);
-		void store.attempt(() => api.stopProgram(tab.agent, tab.session, id)).then(() => store.flash("Stopping…"));
-	};
-	return (
-		<AlertDialog open={open} onOpenChange={setOpen}>
-			<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Stop</AlertDialogTrigger>
-			<AlertDialogContent>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Stop {short(command, 80)}?</AlertDialogTitle>
-				</AlertDialogHeader>
-				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction variant="destructive" onClick={stop}>Stop</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
 	);
 }
 

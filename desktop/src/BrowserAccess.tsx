@@ -7,6 +7,7 @@ import { LaptopIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useInterval } from "usehooks-ts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,6 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 	const [service, setService] = useState(state.service);
 	const [serviceError, setServiceError] = useState<string>();
 	const [turningOn, setTurningOn] = useState(false);
-	const [removing, setRemoving] = useState<string>();
 	const [login, setLogin] = useState(true);
 	const [error, setError] = useState<string>();
 	useEffect(() => setService(state.service), [state.service]);
@@ -171,7 +171,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 									<ItemDescription className="line-clamp-none">{deviceLine(d, now)}</ItemDescription>
 								</ItemContent>
 								<ItemActions>
-									<AlertDialog open={removing === d.id} onOpenChange={(open) => setRemoving(open ? d.id : undefined)}>
+									<AlertDialog>
 										<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Remove</AlertDialogTrigger>
 										<AlertDialogContent>
 											<AlertDialogHeader>
@@ -180,7 +180,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 											</AlertDialogHeader>
 											<AlertDialogFooter>
 												<AlertDialogCancel>Cancel</AlertDialogCancel>
-												<AlertDialogAction variant="destructive" onClick={() => (setRemoving(undefined), actions.remove(d.id))}>Remove</AlertDialogAction>
+												<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => actions.remove(d.id)}>Remove</AlertDialogPrimitive.Close>
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
@@ -230,8 +230,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						</Field>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							{/* (Base UI's action does not close the dialog by itself.) */}
-							<AlertDialogAction onClick={() => (setTurningOn(false), change({ enabled: true, openAtLogin: login }))}>Turn on</AlertDialogAction>
+							<AlertDialogPrimitive.Close render={<AlertDialogAction />} onClick={() => change({ enabled: true, openAtLogin: login })}>Turn on</AlertDialogPrimitive.Close>
 						</AlertDialogFooter>
 					</div>
 				</AlertDialogContent>

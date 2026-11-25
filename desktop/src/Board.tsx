@@ -5,6 +5,7 @@
 // (and can repeat outside content): it is drawn as plain text, never as markup.
 import { CircleCheckIcon, CircleHelpIcon, CircleIcon, CircleXIcon, ClipboardListIcon, EllipsisIcon, HourglassIcon, PlusIcon, SendIcon, StickyNoteIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -217,7 +218,6 @@ function countsLine(b: BoardBrief): string {
 export function BoardTab({ tab }: { tab: Tab }) {
 	useModel(tab);
 	const [picked, setPicked] = useState<number>();
-	const [clearing, setClearing] = useState(false);
 	useEffect(() => setPicked(undefined), [tab.key]);
 	const board = tab.boards.find((b) => b.id === picked) ?? tab.boards[0];
 	const view = useLoad(async () => (board ? await api.board(board.id) : undefined), [tab.key, board?.id, tab.boardTick]);
@@ -271,7 +271,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 					<span className="text-foreground">{boardLabel(board)}</span>
 				)}
 				<span className="min-w-0 flex-1 truncate">{countsLine(board)}</span>
-				<AlertDialog open={clearing} onOpenChange={setClearing}>
+				<AlertDialog>
 					<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Clear</AlertDialogTrigger>
 					<AlertDialogContent>
 						<AlertDialogHeader>
@@ -280,10 +280,9 @@ export function BoardTab({ tab }: { tab: Tab }) {
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							{/* (Base UI's action does not close the dialog by itself.) */}
-							<AlertDialogAction variant="destructive" onClick={() => (setClearing(false), void store.attempt(() => api.boardRemove(board.id)).then(done))}>
+							<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.boardRemove(board.id)).then(done)}>
 								Remove
-							</AlertDialogAction>
+							</AlertDialogPrimitive.Close>
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>

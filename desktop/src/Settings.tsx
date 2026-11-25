@@ -29,6 +29,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -978,7 +979,7 @@ function ProviderRow({ p, reload }: { p: Provider; reload: () => void }) {
 							</AlertDialogHeader>
 							<AlertDialogFooter>
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
-								<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.logout(p.id)).then((r) => r && reload())}>Sign out</AlertDialogCancel>
+								<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.logout(p.id)).then((r) => r && reload())}>Sign out</AlertDialogPrimitive.Close>
 							</AlertDialogFooter>
 						</AlertDialogContent>
 					</AlertDialog>
@@ -1088,7 +1089,7 @@ function ModelServerCard({ server: x, inUse, fallback, reload }: { server: Model
 							</AlertDialogHeader>
 							<AlertDialogFooter>
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
-								<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeModelServer(x.name)).then((r) => r && (store.flash(`Removed ${x.name}.`), reload()))}>Remove</AlertDialogCancel>
+								<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.removeModelServer(x.name)).then((r) => r && (store.flash(`Removed ${x.name}.`), reload()))}>Remove</AlertDialogPrimitive.Close>
 							</AlertDialogFooter>
 						</AlertDialogContent>
 					</AlertDialog>
@@ -1365,7 +1366,7 @@ function Mcp() {
 													</AlertDialogHeader>
 													<AlertDialogFooter>
 														<AlertDialogCancel>Cancel</AlertDialogCancel>
-														<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeMcp(x.name, agent)).then((r) => r && (store.flash(`Removed ${x.name}.`), reload()))}>Remove</AlertDialogCancel>
+														<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.removeMcp(x.name, agent)).then((r) => r && (store.flash(`Removed ${x.name}.`), reload()))}>Remove</AlertDialogPrimitive.Close>
 													</AlertDialogFooter>
 												</AlertDialogContent>
 											</AlertDialog>}
@@ -1482,7 +1483,7 @@ function Skills() {
 												</AlertDialogHeader>
 												<AlertDialogFooter>
 													<AlertDialogCancel>Cancel</AlertDialogCancel>
-													<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeSkill(x.name, x.agent, x.session)).then((r) => r && (store.flash(`Removed the skill ${x.name}.`), skills.reload()))}>Remove</AlertDialogCancel>
+													<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.removeSkill(x.name, x.agent, x.session)).then((r) => r && (store.flash(`Removed the skill ${x.name}.`), skills.reload()))}>Remove</AlertDialogPrimitive.Close>
 												</AlertDialogFooter>
 											</AlertDialogContent>
 										</AlertDialog> : null}
@@ -1782,7 +1783,7 @@ function Sources() {
 											</AlertDialogHeader>
 											<AlertDialogFooter>
 												<AlertDialogCancel>Cancel</AlertDialogCancel>
-												<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeSource(x.name, x.scope === "global" ? undefined : x.scope)).then((r) => r && (store.flash(`Removed the event source ${x.name}.`), sources.reload()))}>Remove</AlertDialogCancel>
+												<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.removeSource(x.name, x.scope === "global" ? undefined : x.scope)).then((r) => r && (store.flash(`Removed the event source ${x.name}.`), sources.reload()))}>Remove</AlertDialogPrimitive.Close>
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
@@ -1979,7 +1980,7 @@ export function Schedules() {
 											</AlertDialogHeader>
 											<AlertDialogFooter>
 												<AlertDialogCancel>Cancel</AlertDialogCancel>
-												<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeSchedule(x.name, x.scope === "global" ? undefined : x.scope)).then((r) => r && list.reload())}>Remove</AlertDialogCancel>
+												<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.removeSchedule(x.name, x.scope === "global" ? undefined : x.scope)).then((r) => r && list.reload())}>Remove</AlertDialogPrimitive.Close>
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
@@ -2208,7 +2209,7 @@ export function Routes() {
 												</AlertDialogHeader>
 												<AlertDialogFooter>
 													<AlertDialogCancel>Cancel</AlertDialogCancel>
-													<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeRoute(r.name)).then((x) => x && list.reload())}>Remove</AlertDialogCancel>
+													<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void store.attempt(() => api.removeRoute(r.name)).then((x) => x && list.reload())}>Remove</AlertDialogPrimitive.Close>
 												</AlertDialogFooter>
 											</AlertDialogContent>
 										</AlertDialog>
@@ -2587,16 +2588,9 @@ export function MachineList() {
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction
-								variant="destructive"
-								onClick={() => {
-									const target = forgetting.host;
-									setForgetting(undefined);
-									void s.forgetMachine(target, { closeWindows: true });
-								}}
-							>
+							<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => void s.forgetMachine(forgetting.host, { closeWindows: true })}>
 								{forgetting.count === 1 ? "Close its window and forget" : `Close its ${forgetting.count} windows and forget`}
-							</AlertDialogAction>
+							</AlertDialogPrimitive.Close>
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>

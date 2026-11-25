@@ -46,8 +46,8 @@ export function WelcomeLetter({ main, home, here, settings, reveal, say }: Lette
 					</ItemActions>
 				</Item>
 				<p>
-					{/* Links in the text do something in the app and never open an address: the stock link button, at the size of the text around it. */}
-					Everything lives in {here ? <Button variant="link" className="h-auto p-0 [font-size:inherit]" onClick={reveal}>{home}</Button> : <span className="font-mono text-xs wrap-anywhere">{home}</span>} and <Button variant="link" className="h-auto p-0 [font-size:inherit]" onClick={() => settings()}>Settings</Button>, but telling <b>{main}</b> is usually enough.
+					{/* Links in the text do something in the app and never open an address: the stock link button, at the size of the text around it. The home's path wraps inside the sentence: a long one would overflow a narrow window. */}
+					Everything lives in {here ? <Button variant="link" className="inline h-auto shrink p-0 text-left [font-size:inherit] whitespace-normal wrap-anywhere" onClick={reveal}>{home}</Button> : <span className="font-mono text-xs wrap-anywhere">{home}</span>} and <Button variant="link" className="h-auto p-0 [font-size:inherit]" onClick={() => settings()}>Settings</Button>, but telling <b>{main}</b> is usually enough.
 				</p>
 			</MessageContent>
 		</Message>
