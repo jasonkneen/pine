@@ -591,3 +591,77 @@ test("steps: a list that stands still over the work is brought back in a tool's 
 	assert.equal(h.toolResults().filter((r) => /\[pine:/.test(r)).length, 0);
 	await h.close();
 });
+
+test("a conversation that has read outside content asks before it changes its own memory and instructions, and a yes holds for it", async () => {
+	const h = await harness({ pine: { security: { askAccess: true } }, agents: { main: { files: { "AGENTS.md": "RULES\n" } } } });
+	const ws = h.workspace("main");
+	const asked: any[] = [];
+	const watch = () => h.pine.bus.subscribe("approval/requested", (e) => {
+		const p = e.payload as { id: string };
+		asked.push(p);
+		h.pine.approvals.decide(p.id, true, "test");
+	});
+	watch();
+	await h.pine.agents.run({
+		agent: "main",
+		tainted: "a page said so",
+		prompt: mockMsg([{ tools: [{ name: "write", args: { path: "AGENTS.md", content: "RULES v2\n" } }, { name: "write", args: { path: "MEMORY.md", content: "LEARNED\n" } }] }]),
+		...owner,
+	});
+	// Its own files open every later conversation, so the owner is asked first: one question for both
+	// calls of the step, and the no answer to the second would have been a refusal.
+	assert.equal(asked.length, 1, "one question for the own files of the step");
+	assert.equal(asked[0].tool, "write");
+	assert.match(asked[0].summary, /AGENTS\.md: the agent's own instructions/);
+	assert.match(asked[0].why, /read content from outside \(a page said so\)/);
+	assert.deepEqual([fs.readFileSync(path.join(ws, "AGENTS.md"), "utf8"), fs.readFileSync(path.join(ws, "MEMORY.md"), "utf8")], ["RULES v2\n", "LEARNED\n"]);
+
+	// The yes is the conversation's: the next run of it writes its own files without a question, also after a restart.
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "write", args: { path: "MEMORY.md", content: "LEARNED MORE\n" } }] }]), ...owner });
+	assert.equal(asked.length, 1);
+	await h.restart();
+	watch();
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "write", args: { path: "MEMORY.md", content: "LEARNED EVEN MORE\n" } }] }]), ...owner });
+	assert.equal(asked.length, 1, "the conversation's yes is there after a restart");
+	assert.equal(fs.readFileSync(path.join(ws, "MEMORY.md"), "utf8"), "LEARNED EVEN MORE\n");
+	await h.close();
+});
+
+test("an own file written in a conversation that has read outside content is refused when the owner does not answer", async () => {
+	const h = await harness({ pine: { security: { askAccess: true, approvalTimeout: "150ms" } }, agents: { main: { files: { "AGENTS.md": "RULES\n" } } } });
+	const asked: any[] = [];
+	h.pine.bus.subscribe("approval/requested", (e) => void asked.push(e.payload));
+	await h.pine.agents.run({ agent: "main", tainted: "a page said so", prompt: mockMsg([{ tools: [{ name: "write", args: { path: "AGENTS.md", content: "EVIL" } }] }]), ...owner });
+	assert.equal(asked.length, 1, "the owner was asked");
+	assert.match(h.toolResults().at(-1)!, /AGENTS\.md is the agent's own memory or instructions, which open every later conversation.*not let it change them \(timeout\)/);
+	assert.equal(fs.readFileSync(path.join(h.workspace("main"), "AGENTS.md"), "utf8"), "RULES\n", "nothing was written");
+	// Unanswered is not a no: the next change asks again.
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "write", args: { path: "AGENTS.md", content: "EVIL" } }] }]), ...owner });
+	assert.equal(asked.length, 2);
+	await h.close();
+});
+
+test("a failure between taking a place at the model server and starting the run gives the place back and leaves no task running", async () => {
+	const h = await harness({ pine: { limits: { maxConcurrentRuns: 1 } }, agents: { main: {} } });
+	const tasks = h.pine.tasks;
+	const update = tasks.update.bind(tasks);
+	let broken = true;
+	// The store fails exactly there: before it nothing of the run has a try of its own around it.
+	tasks.update = ((id: number, patch: any) => {
+		if (broken && patch.status === "running") {
+			broken = false;
+			throw new Error("the store is full");
+		}
+		return update(id, patch);
+	}) as typeof tasks.update;
+	const r = await Promise.race([h.pine.agents.run({ agent: "main", prompt: "hello", ...owner }), sleep(3000).then(() => undefined)]);
+	assert.ok(r, "the run did not hang");
+	assert.equal(r!.status, "failed");
+	assert.match(r!.error ?? "", /the store is full/);
+	assert.equal(h.pine.agents.limiter.stats.active, 0, "the place at the model server was given back");
+	assert.deepEqual(h.pine.tasks.list().map((t) => [t.id, t.status]), [[r!.id, "failed"]], "no task is left running or waiting");
+	// The conversation goes on with its place again.
+	const again = await h.pine.agents.run({ agent: "main", prompt: "hello again", ...owner });
+	assert.equal(again.status, "done");
+	await h.close();
+});

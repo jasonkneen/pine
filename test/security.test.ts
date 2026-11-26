@@ -330,10 +330,14 @@ test("after a session has seen outside content, actions that send things out nee
 	await h.close();
 });
 
-test("after outside content an agent keeps its own memory and instructions, and nothing else that is read as instructions can be written; a run from outside writes neither", { skip: !sandboxAvailable() }, async () => {
-	const h = await harness({ agents: { main: { agent: { mcp: { feed }, untrusted: { tools: ["read", "write"] } }, files: { "AGENTS.md": "RULES\n" } } } });
+test("after outside content an agent's own memory and instructions are put to the owner, and nothing else that is read as instructions can be written; a run from outside writes neither", { skip: !sandboxAvailable() }, async () => {
+	const h = await harness({ pine: { security: { askAccess: true } }, agents: { main: { agent: { mcp: { feed }, untrusted: { tools: ["read", "write"] } }, files: { "AGENTS.md": "RULES\n" } } } });
 	const asked: any[] = [];
-	h.pine.bus.subscribe("approval/requested", (e) => void asked.push(e.payload));
+	h.pine.bus.subscribe("approval/requested", (e) => {
+		const p = e.payload as { id: string };
+		asked.push(p);
+		h.pine.approvals.decide(p.id, true, "test");
+	});
 	const ws = h.workspace("main");
 	await h.pine.agents.run({
 		agent: "main",
@@ -353,9 +357,11 @@ test("after outside content an agent keeps its own memory and instructions, and 
 		...owner,
 	});
 	const out = h.toolResults().slice(-5);
-	// Its own files are its own, by tool and by command, and nobody is asked.
+	// Its own files are its own once the owner says so for the conversation: one question for both
+	// writes, and by tool and by command they go on as before.
 	assert.deepEqual([fs.readFileSync(path.join(ws, "AGENTS.md"), "utf8"), fs.readFileSync(path.join(ws, "MEMORY.md"), "utf8")], ["RULES v2\n", "LEARNED\nMORE\n"]);
-	assert.equal(asked.length, 0);
+	assert.equal(asked.length, 1, "one question about its own files");
+	assert.match(asked[0].summary, /the agent's own (memory|instructions)/);
 	// What somebody else would read as instructions is not written: the file tools refuse it, and the sandbox refuses the command.
 	assert.ok(/holds agent instructions/.test(out[2]) && /holds agent instructions/.test(out[3]), out.join(" | "));
 	// (On Linux a file that did not exist cannot be forbidden, only taken away again after the command: see the check below.)

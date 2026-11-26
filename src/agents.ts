@@ -434,6 +434,12 @@ export class AgentManager {
 	private warnedNoSandbox = new Set<string>();
 	/** Conversations ("agent:session") where the owner chose bypass although they have read outside content. */
 	private bypassAnyway = new Set<string>();
+	/**
+	 * What the owner answered when a conversation that had read outside content was about to change the
+	 * agent's own memory or instructions ("agent:session" -> keep them or not). A yes is also in the
+	 * store (`keep:`), while a no is not asked again until the conversation is reset or pine restarts.
+	 */
+	private keepOwn = new Map<string, boolean>();
 	private readonly views: BrowserViews;
 	/** Until when a UI of the owner's counts as showing the browser itself (browserEmbedded). */
 	private embedUntil = 0;
@@ -2083,7 +2089,7 @@ export class AgentManager {
 		const done = renameAgent(this.cfg, { kv: this.kv, tasks: this.tasks, boards: this.boards }, from, to);
 		// What the owner allowed its conversations, and what they were refused, is theirs under the new name too.
 		const moved = (key: string) => `${to}${key.slice(from.length)}`;
-		for (const map of [this.allowed, this.grants, this.refused] as Array<Map<string, unknown>>) {
+		for (const map of [this.allowed, this.grants, this.refused, this.keepOwn] as Array<Map<string, unknown>>) {
 			for (const key of [...map.keys()].filter(ours)) {
 				map.set(moved(key), map.get(key));
 				map.delete(key);
@@ -2177,7 +2183,7 @@ export class AgentManager {
 				this.kv.set(`${mark}:${agentId}:${a}${end}`, null);
 				if (had !== undefined && had !== null) this.kv.set(`${mark}:${agentId}:${b}${end}`, had);
 			}
-			for (const map of [this.allowed, this.grants] as Array<Map<string, any>>) {
+			for (const map of [this.allowed, this.grants, this.keepOwn] as Array<Map<string, any>>) {
 				const had = map.get(`${agentId}:${a}${end}`);
 				map.delete(`${agentId}:${a}${end}`);
 				if (had !== undefined) map.set(`${agentId}:${b}${end}`, had);
@@ -2378,11 +2384,20 @@ export class AgentManager {
 		const ctx: RunContext & { live?: Live } = { task, slot };
 		this.running.set(task.id, ctx);
 		const started = Date.now();
-		this.tasks.update(task.id, { status: "running", started });
 		const source = `agent:${agent.id}`;
 		// Fields every activity event carries, so a viewer can attach it to the conversation that caused it.
 		const ids = { task: task.id, agent: agent.id, get session() { return task.session; }, root: task.meta.root ?? task.id, parent: task.parent, depth: task.depth };
-		this.bus.publish(`agent/${agent.id}/started`, { ...ids, kind: task.kind, reply: task.reply, label: task.meta.label, prompt: truncate(task.prompt, 2000), images: task.meta.images?.length || undefined, requeued: task.meta.requeued, compact: task.meta.compact, quotes: shortQuotes(task.meta.quotes), body: task.meta.body === undefined ? undefined : truncate(task.meta.body, 2000) }, { source, cause: this.causeOf(task) });
+		// Between taking the place at the model server and the run itself: the task is marked as started and
+		// its start is announced. A store that cannot be written, or an event that cannot go out, would
+		// leave the place held and the task running for good, and everybody who waits for it waits forever.
+		try {
+			this.tasks.update(task.id, { status: "running", started });
+			this.bus.publish(`agent/${agent.id}/started`, { ...ids, kind: task.kind, reply: task.reply, label: task.meta.label, prompt: truncate(task.prompt, 2000), images: task.meta.images?.length || undefined, requeued: task.meta.requeued, compact: task.meta.compact, quotes: shortQuotes(task.meta.quotes), body: task.meta.body === undefined ? undefined : truncate(task.meta.body, 2000) }, { source, cause: this.causeOf(task) });
+		} catch (e) {
+			slot.release();
+			this.running.delete(task.id);
+			return this.finish(task, "failed", "", errText(e), undefined);
+		}
 
 		const stats: NonNullable<Task["meta"]["stats"]> = { input: 0, output: 0, turns: 0, tools: [], ms: 0 };
 		let status: TaskStatus = "done";
@@ -3019,7 +3034,10 @@ export class AgentManager {
 			taint: (reason) => {
 				if (live.tainted || cfg.security.taint === "off") return;
 				live.tainted = reason;
-				if (persistTaint) this.kv.set(`taint:${agent.id}:${live.key}`, reason);
+if (persistTaint) this.kv.set(`taint:${agent.id}:${live.key}`, reason);
+				// What the conversation may do changes with the mark: its own memory and instructions close
+				// until the owner says it keeps them.
+				live.syncGrants();
 				this.log.info(`session ${agent.id}/${live.key} is now tainted: ${reason}`);
 			},
 			restricted: () => live.trust === "untrusted" || Boolean(live.tainted),
@@ -3295,6 +3313,7 @@ export class AgentManager {
 	private dropGrants(perm: string): void {
 		if (this.todos(perm).length) this.kv.set(`todos:${perm}`, []);
 		this.grants.delete(perm);
+		this.keepOwn.delete(perm);
 		this.handed.delete(perm);
 		this.refused.delete(perm);
 		this.toldHome.delete(perm);
@@ -3325,8 +3344,11 @@ export class AgentManager {
 				for (const p of g.read) if (!roots.read.includes(p)) roots.read.push(p);
 				for (const p of g.write) if (!roots.write.includes(p)) roots.write.push(p);
 			}
-			// Its own memory and instructions stay its own to write in the owner's conversations, also after outside content.
-			roots.ownOpen = live.trust === "owner";
+			// Its own memory and instructions stay its own to write in the owner's conversations. Not once one
+			// has read outside content: those files open every later conversation, so a page that got in could
+			// plant what survives a reset. The owner's answer is what opens them again (decideKeep).
+			const answered = this.keepOwn.has(live.perm) ? this.keepOwn.get(live.perm) === true : this.kv.get(`keep:${live.perm}`) === true;
+			roots.ownOpen = live.trust === "owner" && (!live.tainted || answered);
 		};
 		sync();
 		live.sandboxed = sandboxed;
@@ -3334,6 +3356,18 @@ export class AgentManager {
 		live.network = () => !sandboxed || agent.sandbox.network || network || live.wide();
 		// An agent that works with the owner's account in its owner's conversations.
 		const account = sandboxed && live.trust === "owner" && unsandboxed(stricter(levelOf(agent), live.cap));
+		/**
+		 * The owner's answer on whether a conversation that has read outside content may still change the
+		 * agent's own memory and instructions. A yes belongs to the conversation like the mark it answers:
+		 * it is in the store, there after a restart, gone with a reset. A no is not asked again until then.
+		 */
+		const decideKeep = (keep: boolean) => {
+			this.keepOwn.set(live.perm, keep);
+			if (keep && cfg.security.taint === "session" && !live.ephemeral) this.kv.set(`keep:${live.perm}`, true);
+			for (const other of this.lives.values()) if (other.perm === live.perm) other.syncGrants();
+			sync();
+			this.log.info(`conversation ${live.perm} has read outside content and ${keep ? "keeps" : "does not keep"} its own memory and instructions`);
+		};
 		live.grant = (kind, target) => {
 			if (!jail) return "there is no sandbox on this session, so there is nothing to widen";
 			const g = this.grants.get(live.perm) ?? { network: false, read: [], write: [], local: [], apps: [] };
@@ -3851,6 +3885,38 @@ export class AgentManager {
 				// this call runs without, and the next one asks again.
 				let answered = false;
 				const own = fileKind === "write" && typeof input.path === "string" ? ownFileOf(roots, input.path, agent.workspace) : undefined;
+				// Its own memory and instructions are read into every later conversation, so a change to them
+				// here outlives the conversation that made it: the first one in a conversation that has read
+				// outside content is put to the owner, and a yes holds for the rest of the conversation.
+				// Nothing is asked where there is no sandbox to hold the reach back (bypass): a command writes
+				// the file there anyway, so a question on the file tool would only be a word.
+				if (own && !roots.ownOpen && live.trust === "owner" && !lone && !isOpen(live.variant()) && cfg.security.askAccess) {
+					let by = "your owner said no";
+					let mine = false;
+					// Calls issued side by side wait for the one question about these files.
+					await this.askOnce(`keep:${live.perm}`, async () => {
+						const decision = await run.slot.suspend(() =>
+							this.approvals.request(
+								{
+									agent: agent.id,
+									task: run.task.id,
+									root: run.task.meta.root ?? run.task.id,
+									tool,
+									summary: `${tool} ${path.basename(own)}: the agent's own ${path.basename(own) === "MEMORY.md" ? "memory" : "instructions"}\n${truncate(typeof input.content === "string" ? input.content : JSON.stringify(input.edits ?? input), 900)}`,
+									why: `this conversation has read content from outside (${live.tainted}), which may try to steer the agent. Its ${WORKSPACE_FILES.join(", ")} open every later conversation, so what is written there goes on from here, also after this conversation is reset. Yes: it may change them in this conversation until it is reset. No: it cannot change them here`,
+									holds: "this conversation",
+								},
+								ctx?.signal,
+							),
+						);
+						by = decision.by;
+						mine = decision.allow;
+						// Nobody answered: that is not a no, and the next change asks again.
+						if (decision.allow || !["timeout", "aborted", "shutdown"].includes(decision.by)) decideKeep(decision.allow);
+					});
+					if (mine) answered = true;
+					if (!roots.ownOpen) return { block: true, reason: `${path.basename(own)} is the agent's own memory or instructions, which open every later conversation. This one has read content from outside, and your owner has not let it change them (${by}). Do not retry and do not look for another way: go on without it, or tell your owner what you wanted to write and why.` };
+				}
 				// A tool of the bundled app control server, by its own name ("app_click").
 				const appServer = prefixes.find((p) => tool.startsWith(p.prefix) && profile.mcp[p.name]?.pine === "computer");
 				const appTool = appServer ? tool.slice(appServer.prefix.length) : undefined;
