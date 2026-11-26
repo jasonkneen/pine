@@ -152,7 +152,12 @@ test("pictures: an agent is told, in the tool's answer, that the picture a serve
 	await h.close();
 });
 
-test("tui: pictures from a tool, in an answer and attached to a message are drawn; a web picture waits for a click", mac, async () => {
+test("tui: pictures from a tool, in an answer and attached to a message are drawn; a web picture waits for a click", mac, async (ctx) => {
+	// The capabilities here are the runner's terminal, not a choice of the test: on a terminal that shows real
+	// pictures (Kitty, Ghostty, WezTerm) that path is taken and there are no half-blocks to count.
+	const before = getCapabilities();
+	setCapabilities({ ...before, images: null });
+	ctx.after(() => setCapabilities(before));
 	const t = await open({ agents: { main: {} } });
 	await t.sees("type a message");
 	const ws = t.h.workspace("main");
@@ -257,7 +262,11 @@ test("tui: a menu opened over a real picture is not covered by it; the picture i
 
 const ffmpeg = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].find((f) => fs.existsSync(f));
 
-test("tui: a video plays by itself when it arrives, at the size it is shown; pause, play, enlarge and the player are separate clicks", { skip: !ffmpeg }, async () => {
+test("tui: a video plays by itself when it arrives, at the size it is shown; pause, play, enlarge and the player are separate clicks", { skip: !ffmpeg }, async (ctx) => {
+	// As above: a frame is counted in half-blocks, so the terminal the runner was started from decides nothing here.
+	const before = getCapabilities();
+	setCapabilities({ ...before, images: null });
+	ctx.after(() => setCapabilities(before));
 	const { execFileSync } = await import("node:child_process");
 	const opened: string[] = [];
 	const h = await harness({ pine: { main: "main", http: { port: 0 } }, agents: { main: {} } });

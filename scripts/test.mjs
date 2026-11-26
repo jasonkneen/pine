@@ -10,7 +10,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "..");
-const given = process.argv.slice(2);
+// What the Test workflow runs, so that a green run here and a green run there mean the same thing: a
+// test that hangs gives up instead of holding the run for ever, and every wait is as patient as on a
+// busy runner (test/support/harness.ts). Given flags and a PINE_TEST_PATIENCE of one's own still win.
+const given = ["--test-timeout=180000", ...process.argv.slice(2).filter((a) => !a.startsWith("--test-timeout"))];
+if (!process.env.PINE_TEST_PATIENCE) process.env.PINE_TEST_PATIENCE = "4";
 /** Somebody who names a reporter gets that reporter and nothing beside it, so no second run either. */
 const plain = !given.some((a) => a === "--test-reporter" || a.startsWith("--test-reporter="));
 const failedList = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pine-test-")), "failed");

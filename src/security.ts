@@ -373,6 +373,11 @@ export function sandboxProfile(_cfg: PineConfig, agent: AgentConfig, roots: Root
 		'(allow file-ioctl (regex #"^/dev/tty") (literal "/dev/null"))',
 		"(allow file-read*)",
 		`(allow file-write* ${subpaths(roots.write)} (literal "/dev/null") (literal "/dev/zero") (literal "/dev/dtracehelper") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
+		// The system's lookup of a tool (xcrun, which /usr/bin/git is a shim for) keeps a throwaway cache of
+		// where the tools are. It asks the system for the folder, not TMPDIR, so the sandbox's own temp does
+		// not reach it, and without this every command that runs git reports a refusal for a cache file and
+		// reads as partly blocked. A database of tool paths: no file of the owner's, no other program.
+		'(allow file-write* (regex #"^/(private/)?var/folders/[^/]+/[^/]+/T/xcrun_db(-[^/]*)?$"))',
 		`(deny file-read* (subpath ${q(userHome)})${said})`,
 		`(allow file-read-metadata (subpath ${q(userHome)}))`,
 		`(allow file-read* ${subpaths(roots.read)})`,
